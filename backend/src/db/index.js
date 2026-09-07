@@ -1,0 +1,19 @@
+/**
+ * db/index.js — Aggregates the per-domain DB modules into one import surface.
+ * See ../db.js for why this exists as a folder instead of one file.
+ */
+export { db, getLastSyncedBlock, setLastSyncedBlock } from "./connection.js";
+export { upsertActor, updateActorStatus, getActor, listActors } from "./actors.js";
+export {
+  createUser,
+  getUserByEmail,
+  getUserById,
+  setPasswordHash,
+  bumpTokenVersion,
+  createPasswordReset,
+  getPasswordReset,
+  invalidateAllPasswordResetsForUser,
+} from "./users.js";
+export { upsertCredential, getCredentialsForStudent, getCredentialSummaries } from "./credentials.js";
+export { upsertVisit, getVisitsForCollege, getRecentVisits } from "./visits.js";
+export { getPerCollegePlacementStats, countPlacedStudentsGlobal } from "./publicStats.js";

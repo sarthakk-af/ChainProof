@@ -1,0 +1,26 @@
+{
+  "name": "chainproof-backend",
+  "version": "1.0.0",
+  "description": "ChainProof — admin verification service and on-chain event indexer",
+  "private": true,
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node --watch src/server.js",
+    "start": "node src/server.js",
+    "test": "node --test test/admin.test.js test/auth.test.js test/public.test.js test/me.test.js test/credentials.test.js test/visits.test.js test/colleges.test.js test/students.test.js test/auth-flow.test.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^11.3.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "ethers": "^6.13.0",
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.7.0",
+    "jsonwebtoken": "^9.0.3"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0"
+  }
+}

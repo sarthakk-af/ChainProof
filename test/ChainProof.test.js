@@ -1,0 +1,1015 @@
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+/**
+ * ChainProof Test Suite
+ * =======================
+ * Comprehensive unit tests for ActorRegistry.sol, CredentialIssuer.sol, and
+ * PlacementTracker.sol. Tests are organized into describe blocks mirroring the
+ * contract architecture.
+ *
+ * Run: npx hardhat test
+ * Run with gas report: REPORT_GAS=true npx hardhat test
+ */
+
+describe("ChainProof — Full Test Suite", function () {
+  // Shared test state — refreshed before each top-level suite
+  let actorRegistry;
+  let credentialIssuer;
+  let placementTracker;
+  let deployer, verifier, student1, student2, college1, college2, company1, company2, stranger;
+
+  // Enum mirrors for readable assertions (must match contract enum order)
+  const Role = { None: 0, Student: 1, College: 2, Company: 3 };
+  const Status = { None: 0, Pending: 1, Active: 2, Rejected: 3 };
+  const CredentialType = { General: 0, Shortlist: 1, Interview: 2, Offer: 3, Rejection: 4 };
+
+  // Sample IPFS hashes for test credentials
+  const SAMPLE_IPFS_HASH = "QmTestHash1234567890abcdefABCDEF";
+  const SAMPLE_IPFS_HASH_2 = "QmAnotherHash0987654321fedcbaFEDCBA";
+
+  const ZERO_ADDRESS = ethers.ZeroAddress;
+
+  // =========================================================================
+  // Shared Setup — Deploy fresh contracts before each `it` block
+  // =========================================================================
+  beforeEach(async function () {
+    [deployer, verifier, student1, student2, college1, college2, company1, company2, stranger] =
+      await ethers.getSigners();
+
+    // Deploy ActorRegistry with `verifier` as the platform verifier
+    const ActorRegistry = await ethers.getContractFactory("ActorRegistry");
+    actorRegistry = await ActorRegistry.deploy(verifier.address);
+
+    // Deploy CredentialIssuer with registry address
+    const CredentialIssuer = await ethers.getContractFactory("CredentialIssuer");
+    credentialIssuer = await CredentialIssuer.deploy(
+      await actorRegistry.getAddress()
+    );
+
+    // Deploy PlacementTracker with registry address
+    const PlacementTracker = await ethers.getContractFactory("PlacementTracker");
+    placementTracker = await PlacementTracker.deploy(
+      await actorRegistry.getAddress()
+    );
+  });
+
+  /** Helper: register + approve a College in one step. */
+  async function registerActiveCollege(signer, name) {
+    await actorRegistry.connect(signer).register(Role.College, name, "", ZERO_ADDRESS);
+    await actorRegistry.connect(verifier).approveActor(signer.address);
+  }
+
+  /** Helper: register + approve a Company in one step. */
+  async function registerActiveCompany(signer, name) {
+    await actorRegistry.connect(signer).register(Role.Company, name, "", ZERO_ADDRESS);
+    await actorRegistry.connect(verifier).approveActor(signer.address);
+  }
+
+  // =========================================================================
+  // 1. ActorRegistry Tests
+  // =========================================================================
+  describe("ActorRegistry", function () {
+
+    describe("Deployment", function () {
+      it("should set the deployment-time verifier address", async function () {
+        expect(await actorRegistry.verifier()).to.equal(verifier.address);
+      });
+
+      it("should revert deployment with a zero verifier address", async function () {
+        const ActorRegistry = await ethers.getContractFactory("ActorRegistry");
+        await expect(ActorRegistry.deploy(ZERO_ADDRESS)).to.be.revertedWithCustomError(
+          ActorRegistry,
+          "ZeroAddress"
+        );
+      });
+
+      it("should return zero totalRegisteredStudents for any college initially", async function () {
+        expect(await actorRegistry.totalRegisteredStudents(college1.address)).to.equal(0);
+      });
+
+      it("should return Role.None for any unregistered address", async function () {
+        expect(await actorRegistry.getActorRole(stranger.address)).to.equal(Role.None);
+        expect(await actorRegistry.isRegistered(stranger.address)).to.be.false;
+        expect(await actorRegistry.isActive(stranger.address)).to.be.false;
+      });
+    });
+
+    describe("College / Company Registration — Pending by default", function () {
+      it("should register a College as Pending, not Active", async function () {
+        await actorRegistry.connect(college1).register(Role.College, "IIT Bombay", "", ZERO_ADDRESS);
+
+        const actor = await actorRegistry.getActor(college1.address);
+        expect(actor.role).to.equal(Role.College);
+        expect(actor.status).to.equal(Status.Pending);
+        expect(await actorRegistry.isActive(college1.address)).to.be.false;
+      });
+
+      it("should register a Company as Pending, not Active", async function () {
+        await actorRegistry.connect(company1).register(Role.Company, "Infosys Ltd", "", ZERO_ADDRESS);
+
+        const actor = await actorRegistry.getActor(company1.address);
+        expect(actor.role).to.equal(Role.Company);
+        expect(actor.status).to.equal(Status.Pending);
+        expect(await actorRegistry.isActive(company1.address)).to.be.false;
+      });
+
+      it("should emit ActorRegistered with initialStatus Pending for a College", async function () {
+        await expect(
+          actorRegistry.connect(college1).register(Role.College, "IIT Bombay", "", ZERO_ADDRESS)
+        )
+          .to.emit(actorRegistry, "ActorRegistered")
+          .withArgs(college1.address, Role.College, "IIT Bombay", Status.Pending);
+      });
+
+      it("should NOT increment any college's totalRegisteredStudents on College/Company registration", async function () {
+        await actorRegistry.connect(college1).register(Role.College, "IIT Bombay", "", ZERO_ADDRESS);
+        await actorRegistry.connect(company1).register(Role.Company, "Google", "", ZERO_ADDRESS);
+        expect(await actorRegistry.totalRegisteredStudents(college1.address)).to.equal(0);
+      });
+    });
+
+    describe("Verifier — Approve / Reject Workflow", function () {
+      beforeEach(async function () {
+        await actorRegistry.connect(college1).register(Role.College, "IIT Bombay", "", ZERO_ADDRESS);
+        await actorRegistry.connect(company1).register(Role.Company, "Google", "", ZERO_ADDRESS);
+      });
+
+      it("should allow the verifier to approve a Pending College", async function () {
+        await actorRegistry.connect(verifier).approveActor(college1.address);
+        expect(await actorRegistry.isActive(college1.address)).to.be.true;
+
+        const actor = await actorRegistry.getActor(college1.address);
+        expect(actor.status).to.equal(Status.Active);
+      });
+
+      it("should emit ActorApproved on approval", async function () {
+        await expect(actorRegistry.connect(verifier).approveActor(college1.address))
+          .to.emit(actorRegistry, "ActorApproved")
+          .withArgs(college1.address, verifier.address);
+      });
+
+      it("should allow the verifier to reject a Pending Company", async function () {
+        await actorRegistry.connect(verifier).rejectActor(company1.address);
+        const actor = await actorRegistry.getActor(company1.address);
+        expect(actor.status).to.equal(Status.Rejected);
+        expect(await actorRegistry.isActive(company1.address)).to.be.false;
+      });
+
+      it("should emit ActorRejected on rejection", async function () {
+        await expect(actorRegistry.connect(verifier).rejectActor(company1.address))
+          .to.emit(actorRegistry, "ActorRejected")
+          .withArgs(company1.address, verifier.address);
+      });
+
+      it("should revert with NotVerifier when a non-verifier attempts to approve", async function () {
+        await expect(
+          actorRegistry.connect(stranger).approveActor(college1.address)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "NotVerifier")
+          .withArgs(stranger.address);
+      });
+
+      it("should revert with NotVerifier when a non-verifier attempts to reject", async function () {
+        await expect(
+          actorRegistry.connect(deployer).rejectActor(college1.address)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "NotVerifier")
+          .withArgs(deployer.address);
+      });
+
+      it("should revert with ActorNotPending when approving an already-Active actor", async function () {
+        await actorRegistry.connect(verifier).approveActor(college1.address);
+        await expect(
+          actorRegistry.connect(verifier).approveActor(college1.address)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "ActorNotPending")
+          .withArgs(college1.address);
+      });
+
+      it("should revert with ActorNotPending when approving an unregistered address", async function () {
+        await expect(
+          actorRegistry.connect(verifier).approveActor(stranger.address)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "ActorNotPending")
+          .withArgs(stranger.address);
+      });
+
+      it("should revert with ActorNotPending when rejecting an already-Rejected actor", async function () {
+        await actorRegistry.connect(verifier).rejectActor(company1.address);
+        await expect(
+          actorRegistry.connect(verifier).rejectActor(company1.address)
+        ).to.be.revertedWithCustomError(actorRegistry, "ActorNotPending");
+      });
+    });
+
+    describe("Verifier Rotation", function () {
+      it("should allow the current verifier to rotate to a new verifier", async function () {
+        await expect(actorRegistry.connect(verifier).setVerifier(deployer.address))
+          .to.emit(actorRegistry, "VerifierUpdated")
+          .withArgs(verifier.address, deployer.address);
+
+        expect(await actorRegistry.verifier()).to.equal(deployer.address);
+      });
+
+      it("should revert if a non-verifier attempts to rotate the verifier", async function () {
+        await expect(
+          actorRegistry.connect(stranger).setVerifier(stranger.address)
+        ).to.be.revertedWithCustomError(actorRegistry, "NotVerifier");
+      });
+
+      it("should revert if rotating to the zero address", async function () {
+        await expect(
+          actorRegistry.connect(verifier).setVerifier(ZERO_ADDRESS)
+        ).to.be.revertedWithCustomError(actorRegistry, "ZeroAddress");
+      });
+
+      it("should require the new verifier's approval after rotation, not the old one", async function () {
+        await actorRegistry.connect(verifier).setVerifier(deployer.address);
+        await actorRegistry.connect(college1).register(Role.College, "IIT Bombay", "", ZERO_ADDRESS);
+
+        await expect(
+          actorRegistry.connect(verifier).approveActor(college1.address)
+        ).to.be.revertedWithCustomError(actorRegistry, "NotVerifier");
+
+        await expect(actorRegistry.connect(deployer).approveActor(college1.address)).to.not.be
+          .reverted;
+      });
+    });
+
+    describe("Student Registration — Requires an Active College", function () {
+      it("should revert if the declared college has never registered", async function () {
+        await expect(
+          actorRegistry.connect(student1).register(Role.Student, "Alice", "", college1.address)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "CollegeNotActive")
+          .withArgs(college1.address);
+      });
+
+      it("should revert if the declared college is still Pending", async function () {
+        await actorRegistry.connect(college1).register(Role.College, "IIT Bombay", "", ZERO_ADDRESS);
+        await expect(
+          actorRegistry.connect(student1).register(Role.Student, "Alice", "", college1.address)
+        ).to.be.revertedWithCustomError(actorRegistry, "CollegeNotActive");
+      });
+
+      it("should revert if the declared address is a Company, not a College", async function () {
+        await registerActiveCompany(company1, "Google");
+        await expect(
+          actorRegistry.connect(student1).register(Role.Student, "Alice", "", company1.address)
+        ).to.be.revertedWithCustomError(actorRegistry, "CollegeNotActive");
+      });
+
+      it("should register a Student as Active immediately once their College is Active", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(student1).register(Role.Student, "Alice", "", college1.address);
+
+        const actor = await actorRegistry.getActor(student1.address);
+        expect(actor.role).to.equal(Role.Student);
+        expect(actor.status).to.equal(Status.Active);
+        expect(actor.college).to.equal(college1.address);
+        expect(await actorRegistry.isActive(student1.address)).to.be.true;
+      });
+
+      it("should increment the declared college's totalRegisteredStudents", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(student1).register(Role.Student, "Alice", "", college1.address);
+        expect(await actorRegistry.totalRegisteredStudents(college1.address)).to.equal(1);
+
+        await actorRegistry.connect(student2).register(Role.Student, "Bob", "", college1.address);
+        expect(await actorRegistry.totalRegisteredStudents(college1.address)).to.equal(2);
+      });
+
+      it("should keep per-college student counts isolated", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await registerActiveCollege(college2, "IIT Delhi");
+
+        await actorRegistry.connect(student1).register(Role.Student, "Alice", "", college1.address);
+        await actorRegistry.connect(student2).register(Role.Student, "Bob", "", college2.address);
+
+        expect(await actorRegistry.totalRegisteredStudents(college1.address)).to.equal(1);
+        expect(await actorRegistry.totalRegisteredStudents(college2.address)).to.equal(1);
+      });
+
+      it("should record the correct declared college via getStudentCollege", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(student1).register(Role.Student, "Alice", "", college1.address);
+        expect(await actorRegistry.getStudentCollege(student1.address)).to.equal(college1.address);
+      });
+    });
+
+    describe("Double-Registration Prevention", function () {
+      it("should revert with AlreadyRegistered if address registers twice", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(student1).register(Role.Student, "Alice", "", college1.address);
+
+        await expect(
+          actorRegistry.connect(student1).register(Role.College, "Hacker College", "", ZERO_ADDRESS)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "AlreadyRegistered")
+          .withArgs(student1.address);
+      });
+
+      it("should revert even if the same role is attempted again", async function () {
+        await actorRegistry.connect(college1).register(Role.College, "IIT", "", ZERO_ADDRESS);
+        await expect(
+          actorRegistry.connect(college1).register(Role.College, "IIT Duplicate", "", ZERO_ADDRESS)
+        ).to.be.revertedWithCustomError(actorRegistry, "AlreadyRegistered");
+      });
+
+      it("should allow resubmission after rejection, not block it", async function () {
+        // A rejection is a "try again", not a permanent ban — see the
+        // "Resubmission After Rejection" suite below for the full behavior.
+        await actorRegistry.connect(company1).register(Role.Company, "Google", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).rejectActor(company1.address);
+
+        await expect(
+          actorRegistry.connect(company1).register(Role.Company, "Google Retry", "", ZERO_ADDRESS)
+        ).to.not.be.reverted;
+      });
+    });
+
+    describe("Invalid Role Prevention", function () {
+      it("should revert with InvalidRole if Role.None (0) is passed", async function () {
+        await expect(
+          actorRegistry.connect(stranger).register(Role.None, "Invalid Actor", "", ZERO_ADDRESS)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "InvalidRole")
+          .withArgs(0);
+      });
+    });
+
+    describe("Resubmission After Rejection", function () {
+      it("should let a rejected Company resubmit and re-enter Pending", async function () {
+        await actorRegistry.connect(company1).register(Role.Company, "Google", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).rejectActor(company1.address);
+
+        await actorRegistry.connect(company1).register(Role.Company, "Google Retry", "", ZERO_ADDRESS);
+
+        const actor = await actorRegistry.getActor(company1.address);
+        expect(actor.status).to.equal(Status.Pending);
+        expect(actor.name).to.equal("Google Retry");
+      });
+
+      it("should carry the rejectionCount forward across a resubmission", async function () {
+        await actorRegistry.connect(college1).register(Role.College, "IIT", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).rejectActor(college1.address);
+
+        let actor = await actorRegistry.getActor(college1.address);
+        expect(actor.rejectionCount).to.equal(1);
+
+        await actorRegistry.connect(college1).register(Role.College, "IIT Retry", "", ZERO_ADDRESS);
+        actor = await actorRegistry.getActor(college1.address);
+        expect(actor.rejectionCount).to.equal(1); // preserved, not reset
+
+        await actorRegistry.connect(verifier).rejectActor(college1.address);
+        actor = await actorRegistry.getActor(college1.address);
+        expect(actor.rejectionCount).to.equal(2); // increments again
+      });
+
+      it("should allow a resubmission to pick a different role", async function () {
+        await actorRegistry.connect(company1).register(Role.College, "Wrong Role College", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).rejectActor(company1.address);
+
+        await actorRegistry.connect(company1).register(Role.Company, "Actually A Company", "", ZERO_ADDRESS);
+        const actor = await actorRegistry.getActor(company1.address);
+        expect(actor.role).to.equal(Role.Company);
+        expect(actor.rejectionCount).to.equal(1);
+      });
+
+      it("should still block re-registration for a Pending actor", async function () {
+        await actorRegistry.connect(company1).register(Role.Company, "Google", "", ZERO_ADDRESS);
+        await expect(
+          actorRegistry.connect(company1).register(Role.Company, "Google Again", "", ZERO_ADDRESS)
+        ).to.be.revertedWithCustomError(actorRegistry, "AlreadyRegistered");
+      });
+
+      it("should still block re-registration for an Active actor", async function () {
+        await registerActiveCompany(company1, "Google");
+        await expect(
+          actorRegistry.connect(company1).register(Role.Company, "Google Again", "", ZERO_ADDRESS)
+        ).to.be.revertedWithCustomError(actorRegistry, "AlreadyRegistered");
+      });
+
+      it("should allow a resubmitted-then-reapproved actor to be rejected again later", async function () {
+        await actorRegistry.connect(company1).register(Role.Company, "Google", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).rejectActor(company1.address);
+        await actorRegistry.connect(company1).register(Role.Company, "Google Retry", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).approveActor(company1.address);
+
+        expect(await actorRegistry.isActive(company1.address)).to.be.true;
+        const actor = await actorRegistry.getActor(company1.address);
+        expect(actor.rejectionCount).to.equal(1); // one rejection in its history, now Active
+      });
+    });
+  });
+
+  // =========================================================================
+  // 2. CredentialIssuer Tests
+  // =========================================================================
+  describe("CredentialIssuer", function () {
+
+    // Setup registered + verified actors for credential tests
+    beforeEach(async function () {
+      await actorRegistry.connect(college1).register(Role.College, "IIT Bombay", "", ZERO_ADDRESS);
+      await actorRegistry.connect(verifier).approveActor(college1.address);
+
+      await actorRegistry.connect(student1).register(Role.Student, "Alice", "", college1.address);
+      await actorRegistry.connect(student2).register(Role.Student, "Bob", "", college1.address);
+
+      await actorRegistry.connect(company1).register(Role.Company, "Google", "", ZERO_ADDRESS);
+      await actorRegistry.connect(verifier).approveActor(company1.address);
+    });
+
+    describe("Deployment", function () {
+      it("should store the correct registry address", async function () {
+        expect(await credentialIssuer.actorRegistry()).to.equal(
+          await actorRegistry.getAddress()
+        );
+      });
+
+      it("should start with zero totalPlacedStudents and nextCredentialId", async function () {
+        expect(await credentialIssuer.totalPlacedStudents(college1.address)).to.equal(0);
+        expect(await credentialIssuer.nextCredentialId()).to.equal(0);
+      });
+
+      it("should revert if deployed with a zero registry address", async function () {
+        const CredentialIssuer = await ethers.getContractFactory("CredentialIssuer");
+        await expect(
+          CredentialIssuer.deploy(ZERO_ADDRESS)
+        ).to.be.revertedWithCustomError(CredentialIssuer, "InvalidRegistryAddress");
+      });
+    });
+
+    describe("Credential Issuance — Authorization", function () {
+      it("should allow an Active College to issue a General credential", async function () {
+        await expect(
+          credentialIssuer
+            .connect(college1)
+            .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.General)
+        ).to.not.be.reverted;
+      });
+
+      it("should allow an Active Company to issue a Shortlist credential", async function () {
+        await expect(
+          credentialIssuer
+            .connect(company1)
+            .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Shortlist)
+        ).to.not.be.reverted;
+      });
+
+      it("should revert with NotAuthorizedIssuer when a still-Pending College tries to issue", async function () {
+        await actorRegistry.connect(college2).register(Role.College, "IIT Delhi", "", ZERO_ADDRESS);
+        await expect(
+          credentialIssuer
+            .connect(college2)
+            .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.General)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "NotAuthorizedIssuer")
+          .withArgs(college2.address);
+      });
+
+      it("should revert with NotAuthorizedIssuer when a Rejected Company tries to issue", async function () {
+        await actorRegistry.connect(company2).register(Role.Company, "Microsoft", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).rejectActor(company2.address);
+
+        await expect(
+          credentialIssuer
+            .connect(company2)
+            .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.General)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "NotAuthorizedIssuer")
+          .withArgs(company2.address);
+      });
+
+      it("should revert with NotAuthorizedIssuer when a Student tries to issue", async function () {
+        await expect(
+          credentialIssuer
+            .connect(student1)
+            .issueCredential(student2.address, SAMPLE_IPFS_HASH, CredentialType.General)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "NotAuthorizedIssuer")
+          .withArgs(student1.address);
+      });
+
+      it("should revert with NotAuthorizedIssuer for unregistered callers", async function () {
+        await expect(
+          credentialIssuer
+            .connect(stranger)
+            .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.General)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "NotAuthorizedIssuer")
+          .withArgs(stranger.address);
+      });
+
+      it("should revert with RecipientNotStudent when issuing to a College", async function () {
+        await expect(
+          credentialIssuer
+            .connect(company1)
+            .issueCredential(college1.address, SAMPLE_IPFS_HASH, CredentialType.General)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "RecipientNotStudent")
+          .withArgs(college1.address);
+      });
+
+      it("should revert with RecipientNotStudent when issuing to an unregistered address", async function () {
+        await expect(
+          credentialIssuer
+            .connect(company1)
+            .issueCredential(stranger.address, SAMPLE_IPFS_HASH, CredentialType.General)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "RecipientNotStudent")
+          .withArgs(stranger.address);
+      });
+    });
+
+    describe("Credential Data & Events", function () {
+      it("should emit CredentialIssued event with correct parameters", async function () {
+        const tx = await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Interview);
+
+        const receipt = await tx.wait();
+        const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+        await expect(tx)
+          .to.emit(credentialIssuer, "CredentialIssued")
+          .withArgs(
+            student1.address,
+            company1.address,
+            0, // first credential ID
+            SAMPLE_IPFS_HASH,
+            CredentialType.Interview,
+            block.timestamp,
+            false, // isCorrection
+            0 // supersedesId (unused when isCorrection is false)
+          );
+      });
+
+      it("should auto-increment credential IDs across multiple issuances", async function () {
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Shortlist);
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH_2, CredentialType.Interview);
+
+        const credentials = await credentialIssuer.getStudentCredentials(student1.address);
+        expect(credentials[0].id).to.equal(0);
+        expect(credentials[1].id).to.equal(1);
+        expect(await credentialIssuer.nextCredentialId()).to.equal(2);
+      });
+
+      it("should store credential data correctly", async function () {
+        await credentialIssuer
+          .connect(college1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.General);
+
+        const credentials = await credentialIssuer.getStudentCredentials(student1.address);
+        expect(credentials.length).to.equal(1);
+        expect(credentials[0].ipfsHash).to.equal(SAMPLE_IPFS_HASH);
+        expect(credentials[0].issuer).to.equal(college1.address);
+        expect(credentials[0].credType).to.equal(CredentialType.General);
+      });
+    });
+
+    describe("Placement Metrics — The Truth Layer (Per-College)", function () {
+      it("should mark a student as placed when an Offer credential is issued", async function () {
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.false;
+
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.true;
+        expect(await credentialIssuer.totalPlacedStudents(college1.address)).to.equal(1);
+      });
+
+      it("should NOT double-count a student who receives multiple Offer credentials", async function () {
+        // First offer — places the student
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+
+        // Second offer from a different company — student already placed
+        await actorRegistry.connect(company2).register(Role.Company, "Microsoft", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).approveActor(company2.address);
+        await credentialIssuer
+          .connect(company2)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH_2, CredentialType.Offer);
+
+        // Counter must still be 1
+        expect(await credentialIssuer.totalPlacedStudents(college1.address)).to.equal(1);
+      });
+
+      it("should NOT increment placed counter for non-Offer credentials", async function () {
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Shortlist);
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Interview);
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Rejection);
+
+        expect(await credentialIssuer.totalPlacedStudents(college1.address)).to.equal(0);
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.false;
+      });
+
+      it("should emit StudentPlaced event with the student's college when first marked placed", async function () {
+        await expect(
+          credentialIssuer
+            .connect(company1)
+            .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer)
+        )
+          .to.emit(credentialIssuer, "StudentPlaced")
+          .withArgs(student1.address, college1.address, 1, 2, true); // 2 students registered under college1 in beforeEach
+      });
+
+      it("should correctly calculate placement percentage via getPlacementPercentage(college)", async function () {
+        // 2 students registered under college1; 0 placed -> 0%
+        expect(await credentialIssuer.getPlacementPercentage(college1.address)).to.equal(0);
+
+        // Place student1 -> 1/2 = 50% -> scaled: 5000
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+        expect(await credentialIssuer.getPlacementPercentage(college1.address)).to.equal(5000);
+
+        // Place student2 -> 2/2 = 100% -> scaled: 10000
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student2.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+        expect(await credentialIssuer.getPlacementPercentage(college1.address)).to.equal(10000);
+      });
+
+      it("should keep placement percentages isolated between colleges", async function () {
+        // Second college with its own student
+        await actorRegistry.connect(college2).register(Role.College, "IIT Delhi", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).approveActor(college2.address);
+
+        const [, , , , , , , , , student3] = await ethers.getSigners();
+        await actorRegistry.connect(student3).register(Role.Student, "Carol", "", college2.address);
+
+        // Place the college2 student only
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student3.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+
+        // college2: 1/1 = 100%; college1: 0/2 = 0% (unaffected)
+        expect(await credentialIssuer.getPlacementPercentage(college2.address)).to.equal(10000);
+        expect(await credentialIssuer.getPlacementPercentage(college1.address)).to.equal(0);
+      });
+
+      it("should return 0 for placement percentage when a college has no registered students", async function () {
+        expect(await credentialIssuer.getPlacementPercentage(stranger.address)).to.equal(0);
+      });
+    });
+
+    describe("Student Credential History", function () {
+      it("should correctly track credential count for a student", async function () {
+        expect(
+          await credentialIssuer.getStudentCredentialCount(student1.address)
+        ).to.equal(0);
+
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Shortlist);
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH_2, CredentialType.Interview);
+
+        expect(
+          await credentialIssuer.getStudentCredentialCount(student1.address)
+        ).to.equal(2);
+      });
+
+      it("should isolate credentials between different students", async function () {
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+
+        const s1Creds = await credentialIssuer.getStudentCredentials(student1.address);
+        const s2Creds = await credentialIssuer.getStudentCredentials(student2.address);
+
+        expect(s1Creds.length).to.equal(1);
+        expect(s2Creds.length).to.equal(0);
+      });
+    });
+
+    describe("Credential Corrections — Append-Only", function () {
+      it("should rescind a student's only Offer, un-placing them", async function () {
+        const issueTx = await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+        await issueTx.wait();
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.true;
+        expect(await credentialIssuer.totalPlacedStudents(college1.address)).to.equal(1);
+
+        await expect(
+          credentialIssuer
+            .connect(company1)
+            .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH_2, CredentialType.Rejection)
+        )
+          .to.emit(credentialIssuer, "StudentPlaced")
+          .withArgs(student1.address, college1.address, 0, 2, false);
+
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.false;
+        expect(await credentialIssuer.totalPlacedStudents(college1.address)).to.equal(0);
+      });
+
+      it("should mark the original credential as superseded and record the correction linked to it", async function () {
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+        await credentialIssuer
+          .connect(company1)
+          .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH_2, CredentialType.Rejection);
+
+        const creds = await credentialIssuer.getStudentCredentials(student1.address);
+        expect(creds.length).to.equal(2);
+        expect(creds[0].superseded).to.be.true;
+        expect(creds[1].isCorrection).to.be.true;
+        expect(creds[1].supersedesId).to.equal(0);
+        expect(creds[1].credType).to.equal(CredentialType.Rejection);
+      });
+
+      it("should place a student when correcting a Rejection into an Offer", async function () {
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Rejection);
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.false;
+
+        await expect(
+          credentialIssuer
+            .connect(company1)
+            .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH_2, CredentialType.Offer)
+        )
+          .to.emit(credentialIssuer, "StudentPlaced")
+          .withArgs(student1.address, college1.address, 1, 2, true);
+
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.true;
+        expect(await credentialIssuer.totalPlacedStudents(college1.address)).to.equal(1);
+      });
+
+      it("should NOT un-place a student who still holds another active Offer", async function () {
+        await actorRegistry.connect(company2).register(Role.Company, "Microsoft", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).approveActor(company2.address);
+
+        // Two offers from two different companies
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer); // id 0
+        await credentialIssuer
+          .connect(company2)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH_2, CredentialType.Offer); // id 1
+
+        expect(await credentialIssuer.totalPlacedStudents(college1.address)).to.equal(1);
+
+        // Rescind only company1's offer — company2's still stands
+        await credentialIssuer
+          .connect(company1)
+          .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH, CredentialType.Rejection);
+
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.true;
+        expect(await credentialIssuer.totalPlacedStudents(college1.address)).to.equal(1);
+      });
+
+      it("should revert with CredentialNotFound for a bad original id", async function () {
+        await expect(
+          credentialIssuer
+            .connect(company1)
+            .issueCorrection(student1.address, 999, SAMPLE_IPFS_HASH, CredentialType.Rejection)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "CredentialNotFound")
+          .withArgs(student1.address, 999);
+      });
+
+      it("should revert with NotOriginalIssuer when a different issuer tries to correct it", async function () {
+        await actorRegistry.connect(company2).register(Role.Company, "Microsoft", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).approveActor(company2.address);
+
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+
+        await expect(
+          credentialIssuer
+            .connect(company2)
+            .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH_2, CredentialType.Rejection)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "NotOriginalIssuer")
+          .withArgs(company2.address, 0);
+      });
+
+      it("should revert with CredentialAlreadySuperseded on a second direct correction of the same original", async function () {
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+        await credentialIssuer
+          .connect(company1)
+          .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH_2, CredentialType.Rejection);
+
+        await expect(
+          credentialIssuer
+            .connect(company1)
+            .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH, CredentialType.Offer)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "CredentialAlreadySuperseded")
+          .withArgs(0);
+      });
+
+      it("should allow correcting a correction (chaining)", async function () {
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer); // id 0
+        await credentialIssuer
+          .connect(company1)
+          .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH_2, CredentialType.Rejection); // id 1, corrects 0
+
+        await expect(
+          credentialIssuer
+            .connect(company1)
+            .issueCorrection(student1.address, 1, SAMPLE_IPFS_HASH, CredentialType.Offer) // id 2, corrects 1
+        ).to.not.be.reverted;
+
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.true;
+        const creds = await credentialIssuer.getStudentCredentials(student1.address);
+        expect(creds.length).to.equal(3);
+        expect(creds[1].superseded).to.be.true;
+        expect(creds[2].supersedesId).to.equal(1);
+      });
+
+      it("should keep the full original+correction history visible via getStudentCredentials", async function () {
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+        await credentialIssuer
+          .connect(company1)
+          .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH_2, CredentialType.Rejection);
+
+        const creds = await credentialIssuer.getStudentCredentials(student1.address);
+        expect(creds.length).to.equal(2);
+        expect(creds[0].id).to.equal(0);
+        expect(creds[0].isCorrection).to.be.false;
+        expect(creds[1].id).to.equal(1);
+        expect(creds[1].isCorrection).to.be.true;
+      });
+
+      it("should still enforce issuer/recipient authorization on issueCorrection", async function () {
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+
+        await expect(
+          credentialIssuer
+            .connect(student2)
+            .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH, CredentialType.Rejection)
+        ).to.be.revertedWithCustomError(credentialIssuer, "NotAuthorizedIssuer");
+      });
+    });
+  });
+
+  // =========================================================================
+  // 3. PlacementTracker Tests
+  // =========================================================================
+  describe("PlacementTracker", function () {
+
+    beforeEach(async function () {
+      await actorRegistry.connect(college1).register(Role.College, "IIT Bombay", "", ZERO_ADDRESS);
+      await actorRegistry.connect(verifier).approveActor(college1.address);
+
+      await actorRegistry.connect(company1).register(Role.Company, "Google", "", ZERO_ADDRESS);
+      await actorRegistry.connect(verifier).approveActor(company1.address);
+
+      await actorRegistry.connect(student1).register(Role.Student, "Alice", "", college1.address);
+    });
+
+    describe("Deployment", function () {
+      it("should store the correct registry address", async function () {
+        expect(await placementTracker.actorRegistry()).to.equal(
+          await actorRegistry.getAddress()
+        );
+      });
+
+      it("should revert if deployed with a zero registry address", async function () {
+        const PlacementTracker = await ethers.getContractFactory("PlacementTracker");
+        await expect(
+          PlacementTracker.deploy(ZERO_ADDRESS)
+        ).to.be.revertedWithCustomError(PlacementTracker, "InvalidRegistryAddress");
+      });
+
+      it("should start with zero nextVisitId and no visits for any college", async function () {
+        expect(await placementTracker.nextVisitId()).to.equal(0);
+        expect(await placementTracker.getCollegeVisitCount(college1.address)).to.equal(0);
+      });
+    });
+
+    describe("Announcing Visits — Authorization", function () {
+      it("should allow an Active College to announce a visit", async function () {
+        await expect(
+          placementTracker
+            .connect(college1)
+            .announceVisit("Microsoft India", SAMPLE_IPFS_HASH, 1735689600)
+        ).to.not.be.reverted;
+      });
+
+      it("should revert with NotActiveCollege for a still-Pending College", async function () {
+        await actorRegistry.connect(college2).register(Role.College, "IIT Delhi", "", ZERO_ADDRESS);
+        await expect(
+          placementTracker
+            .connect(college2)
+            .announceVisit("Microsoft India", SAMPLE_IPFS_HASH, 1735689600)
+        )
+          .to.be.revertedWithCustomError(placementTracker, "NotActiveCollege")
+          .withArgs(college2.address);
+      });
+
+      it("should revert with NotActiveCollege when a Company tries to announce", async function () {
+        await expect(
+          placementTracker
+            .connect(company1)
+            .announceVisit("Microsoft India", SAMPLE_IPFS_HASH, 1735689600)
+        )
+          .to.be.revertedWithCustomError(placementTracker, "NotActiveCollege")
+          .withArgs(company1.address);
+      });
+
+      it("should revert with NotActiveCollege when a Student tries to announce", async function () {
+        await expect(
+          placementTracker
+            .connect(student1)
+            .announceVisit("Microsoft India", SAMPLE_IPFS_HASH, 1735689600)
+        )
+          .to.be.revertedWithCustomError(placementTracker, "NotActiveCollege")
+          .withArgs(student1.address);
+      });
+
+      it("should revert with NotActiveCollege for an unregistered caller", async function () {
+        await expect(
+          placementTracker
+            .connect(stranger)
+            .announceVisit("Microsoft India", SAMPLE_IPFS_HASH, 1735689600)
+        ).to.be.revertedWithCustomError(placementTracker, "NotActiveCollege");
+      });
+    });
+
+    describe("Visit Data & Events", function () {
+      it("should emit VisitAnnounced with correct parameters", async function () {
+        const tx = await placementTracker
+          .connect(college1)
+          .announceVisit("Microsoft India", SAMPLE_IPFS_HASH, 1735689600);
+        const receipt = await tx.wait();
+        const block = await ethers.provider.getBlock(receipt.blockNumber);
+
+        await expect(tx)
+          .to.emit(placementTracker, "VisitAnnounced")
+          .withArgs(college1.address, 0, "Microsoft India", SAMPLE_IPFS_HASH, 1735689600, block.timestamp);
+      });
+
+      it("should store and retrieve visit data via getCollegeVisits", async function () {
+        await placementTracker
+          .connect(college1)
+          .announceVisit("Microsoft India", SAMPLE_IPFS_HASH, 1735689600);
+
+        const visits = await placementTracker.getCollegeVisits(college1.address);
+        expect(visits.length).to.equal(1);
+        expect(visits[0].companyName).to.equal("Microsoft India");
+        expect(visits[0].ipfsHash).to.equal(SAMPLE_IPFS_HASH);
+        expect(visits[0].announcedBy).to.equal(college1.address);
+      });
+
+      it("should auto-increment visit IDs globally across colleges", async function () {
+        await actorRegistry.connect(college2).register(Role.College, "IIT Delhi", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).approveActor(college2.address);
+
+        await placementTracker
+          .connect(college1)
+          .announceVisit("Microsoft India", SAMPLE_IPFS_HASH, 1735689600);
+        await placementTracker
+          .connect(college2)
+          .announceVisit("Google", SAMPLE_IPFS_HASH_2, 1735776000);
+
+        const college1Visits = await placementTracker.getCollegeVisits(college1.address);
+        const college2Visits = await placementTracker.getCollegeVisits(college2.address);
+
+        expect(college1Visits[0].id).to.equal(0);
+        expect(college2Visits[0].id).to.equal(1);
+        expect(await placementTracker.nextVisitId()).to.equal(2);
+      });
+
+      it("should isolate visits between different colleges", async function () {
+        await actorRegistry.connect(college2).register(Role.College, "IIT Delhi", "", ZERO_ADDRESS);
+        await actorRegistry.connect(verifier).approveActor(college2.address);
+
+        await placementTracker
+          .connect(college1)
+          .announceVisit("Microsoft India", SAMPLE_IPFS_HASH, 1735689600);
+
+        expect(await placementTracker.getCollegeVisitCount(college1.address)).to.equal(1);
+        expect(await placementTracker.getCollegeVisitCount(college2.address)).to.equal(0);
+      });
+    });
+  });
+});

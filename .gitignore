@@ -1,0 +1,33 @@
+# ChainProof Root — .gitignore
+# ==============================
+
+# Environment variables (NEVER commit these)
+.env
+.env.local
+.env.production
+
+# Hardhat build artifacts & cache
+cache/
+artifacts/
+
+# Node modules
+node_modules/
+
+# Gas reporter output
+gas-report.txt
+
+# Coverage reports
+coverage/
+coverage.json
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/settings.json
+.idea/
+.aider*
+
+# Claude Code project config (local tooling, not meant to be shared)
+.claude/

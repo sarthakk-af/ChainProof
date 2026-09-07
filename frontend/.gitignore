@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.local
+.DS_Store
+
+# Generated on every contract deployment — see scripts/deploy.js.
+# Regenerate locally rather than relying on a committed copy (README covers this).
+src/contracts/deployment.js

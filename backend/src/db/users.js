@@ -1,0 +1,58 @@
+import { db } from "./connection.js";
+
+export function createUser({ email, passwordHash, walletAddress, encryptedPrivateKey }) {
+  const result = db
+    .prepare(
+      `INSERT INTO users (email, password_hash, wallet_address, encrypted_private_key, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(email, passwordHash, walletAddress, encryptedPrivateKey, Date.now());
+  return getUserById(result.lastInsertRowid);
+}
+
+export function getUserByEmail(email) {
+  return db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+}
+
+export function getUserById(id) {
+  return db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+}
+
+export function setPasswordHash(userId, passwordHash) {
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, userId);
+}
+
+/**
+ * Invalidates every previously-issued token for this user (see userAuth.js,
+ * which rejects any token whose embedded version doesn't match this one).
+ * Called on logout and on a successful password reset.
+ */
+export function bumpTokenVersion(userId) {
+  db.prepare("UPDATE users SET token_version = token_version + 1 WHERE id = ?").run(userId);
+}
+
+// =========================================================================
+// Password resets
+// =========================================================================
+
+/** `tokenHash` is the only thing stored — the raw token is emailed, never persisted. */
+export function createPasswordReset({ tokenHash, userId, expiresAt }) {
+  db.prepare(
+    "INSERT INTO password_resets (token_hash, user_id, expires_at, used) VALUES (?, ?, ?, 0)"
+  ).run(tokenHash, userId, expiresAt);
+}
+
+export function getPasswordReset(tokenHash) {
+  return db.prepare("SELECT * FROM password_resets WHERE token_hash = ?").get(tokenHash);
+}
+
+/**
+ * Marks every outstanding reset token for a user as used. Called after a
+ * successful reset — otherwise, requesting "forgot password" more than once
+ * (e.g. because the first email was slow to arrive) leaves multiple valid
+ * links, any of which could still reset the password again within the hour
+ * even after the account owner already completed a reset with one of them.
+ */
+export function invalidateAllPasswordResetsForUser(userId) {
+  db.prepare("UPDATE password_resets SET used = 1 WHERE user_id = ?").run(userId);
+}
