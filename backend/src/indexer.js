@@ -26,6 +26,7 @@ async function syncActor(address, blockNumber) {
     role: Number(actor.role),
     status: Number(actor.status),
     name: actor.name,
+    metadata: actor.metadata || null,
     college: actor.college === ethers.ZeroAddress ? null : actor.college,
     registeredAtBlock: blockNumber,
     updatedAtBlock: blockNumber,

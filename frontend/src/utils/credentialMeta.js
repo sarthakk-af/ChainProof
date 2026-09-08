@@ -7,9 +7,9 @@ export const CRED_TYPE_META = {
   Rejection: { label: "Rejection", icon: "❌", cls: "cred-rejection", badgeCls: "badge-danger" },
 };
 
-export function formatTimestamp(ts) {
-  return new Date(Number(ts) * 1000).toLocaleString("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
+export { formatTimestamp } from "./format.js";
+
+/** Same badge colors as CRED_TYPE_META, keyed just by name — for places that only need the badge class. */
+export const STAGE_BADGE = Object.fromEntries(
+  Object.entries(CRED_TYPE_META).map(([key, meta]) => [key, meta.badgeCls])
+);

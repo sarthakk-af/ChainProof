@@ -1,13 +1,6 @@
 import React from "react";
-
-function shortAddr(addr) { return addr?.slice(0, 6) + "…" + addr?.slice(-4); }
-
-const STAGE_BADGE = {
-  Shortlist: "badge-warning",
-  Interview: "badge-student",
-  Offer: "badge-success",
-  Rejection: "badge-danger",
-};
+import { shortAddr } from "../../utils/format.js";
+import { STAGE_BADGE } from "../../utils/credentialMeta.js";
 
 export default function StudentList({ students, loading, activeAddress, onSelect }) {
   if (loading) {

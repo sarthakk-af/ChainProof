@@ -97,8 +97,8 @@ export function AuthProvider({ children }) {
     return api.post("/auth/reset-password", { token, newPassword });
   }, []);
 
-  const registerActor = useCallback(async ({ role, name, collegeAddress }) => {
-    const { actor: newActor } = await api.post("/me/register", { role, name, collegeAddress });
+  const registerActor = useCallback(async ({ role, name, collegeAddress, website }) => {
+    const { actor: newActor } = await api.post("/me/register", { role, name, collegeAddress, website });
     setActor(newActor);
   }, []);
 

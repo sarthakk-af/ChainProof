@@ -29,6 +29,16 @@ credentialsRouter.post("/issue", async (req, res) => {
       .json({ error: "Only a verifier-approved College or Company can issue credentials" });
   }
 
+  // Checked here, before ever touching the chain, so a mistyped or
+  // not-yet-registered address gets a plain, specific explanation instead of
+  // a raw "execution reverted" string bubbling up from the contract revert.
+  const recipient = getActor(studentAddress);
+  if (!recipient || recipient.role !== ROLE.Student) {
+    return res.status(400).json({
+      error: "That address isn't a registered student — double-check it and try again.",
+    });
+  }
+
   try {
     const receipt = await withWalletLock(req.user.address, async (nonce) => {
       const signer = getUserSigner(req.user.id);

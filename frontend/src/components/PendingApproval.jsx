@@ -38,13 +38,19 @@ export default function PendingApproval() {
         {isRejected ? (
           <>
             Your registration as <strong>{actor?.name}</strong> was reviewed and not approved.
+            {actor?.rejectionReason && (
+              <>
+                {" "}The administrator's note: <em>"{actor.rejectionReason}"</em>
+              </>
+            )}{" "}
             You're welcome to submit a corrected application below.
           </>
         ) : (
           <>
             Thanks for registering, <strong>{actor?.name}</strong>. A platform administrator
-            needs to verify your institution before you can issue credentials or announce
-            visits — this stops anyone from falsely claiming to be a real college or company.
+            confirms every college and company on the platform is genuinely who they say they
+            are before they can issue credentials or announce visits — a quick check that
+            applies equally to everyone.
           </>
         )}
       </p>

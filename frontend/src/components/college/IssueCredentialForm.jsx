@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { api } from "../../utils/api.js";
 import { uploadToIPFS, buildCredentialMetadata } from "../../utils/ipfsService.js";
@@ -11,7 +11,7 @@ const CRED_TYPES = [
   { value: "Rejection", label: "Rejection" },
 ];
 
-export default function IssueCredentialForm({ onIssued }) {
+export default function IssueCredentialForm({ onIssued, presetAddress }) {
   const { user, actor } = useAuth();
 
   const [studentAddr, setStudentAddr] = useState("");
@@ -23,8 +23,24 @@ export default function IssueCredentialForm({ onIssued }) {
   const [issueSuccess, setIssueSuccess] = useState("");
   const [confirming, setConfirming] = useState(false);
 
+  // Clicking a student in the registry above fills this in — still fully
+  // editable by hand afterward, this is just a convenience, not a lock.
+  useEffect(() => {
+    if (presetAddress) {
+      setStudentAddr(presetAddress);
+      setConfirming(false);
+    }
+  }, [presetAddress]);
+
   const handleIssue = async (e) => {
     e.preventDefault();
+
+    // Guards against a duplicate on-chain write: the submit button is
+    // disabled while `issuing` is true, but the button's disabled attribute
+    // alone doesn't stop a second submit event (e.g. a fast Enter-key
+    // resubmit) that lands before React re-renders — so the handler checks
+    // its own in-flight state directly instead of trusting the DOM.
+    if (issuing) return;
 
     // Issuing a credential is permanent and on-chain — require an explicit
     // second confirmation before actually submitting.
@@ -124,7 +140,7 @@ export default function IssueCredentialForm({ onIssued }) {
       <div className="flex gap-8">
         <button id="issue-cred-btn" type="submit" className="btn btn-primary" disabled={issuing} style={{ flex: 1 }}>
           {issuing ? (
-            <><div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Issuing…</>
+            <><div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Writing to the record…</>
           ) : confirming ? (
             "✅ Confirm & Issue"
           ) : (
@@ -137,6 +153,11 @@ export default function IssueCredentialForm({ onIssued }) {
           </button>
         )}
       </div>
+      {issuing && (
+        <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", margin: 0, textAlign: "center" }}>
+          This is a permanent blockchain transaction — it usually takes a few seconds to confirm.
+        </p>
+      )}
     </form>
   );
 }

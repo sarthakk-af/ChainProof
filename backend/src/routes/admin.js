@@ -26,7 +26,7 @@ adminRouter.get("/actors/:address", (req, res) => {
   res.json({ actor: serializeActor(row) });
 });
 
-async function handleVerifierAction(req, res, { contractMethod, expectedResultingStatus, event }) {
+async function handleVerifierAction(req, res, { contractMethod, expectedResultingStatus, event, rejectionReason }) {
   const { address } = req.params;
   const cached = getActor(address);
   if (!cached) {
@@ -46,8 +46,8 @@ async function handleVerifierAction(req, res, { contractMethod, expectedResultin
       const tx = await actorRegistryAsVerifier[contractMethod](address, { nonce });
       return tx.wait();
     });
-    updateActorStatus(address, expectedResultingStatus, receipt.blockNumber);
-    logger.info(event, { address, name: cached.name });
+    updateActorStatus(address, expectedResultingStatus, receipt.blockNumber, rejectionReason || null);
+    logger.info(event, { address, name: cached.name, rejectionReason });
     res.json({ actor: serializeActor(getActor(address)), txHash: receipt.hash });
   } catch (err) {
     const reason = err.reason || err.shortMessage || err.message;
@@ -64,13 +64,15 @@ adminRouter.post("/actors/:address/approve", (req, res) =>
   })
 );
 
-adminRouter.post("/actors/:address/reject", (req, res) =>
-  handleVerifierAction(req, res, {
+adminRouter.post("/actors/:address/reject", (req, res) => {
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 500) : "";
+  return handleVerifierAction(req, res, {
     contractMethod: "rejectActor",
     expectedResultingStatus: STATUS.Rejected,
     event: "actor_rejected",
-  })
-);
+    rejectionReason: reason || null,
+  });
+});
 
 // Exposed for tests / health checks that want to confirm chain connectivity.
 adminRouter.get("/health", async (_req, res) => {

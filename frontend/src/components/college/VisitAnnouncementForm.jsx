@@ -17,6 +17,10 @@ export default function VisitAnnouncementForm({ onAnnounced }) {
   const handleAddVisit = async (e) => {
     e.preventDefault();
 
+    // See IssueCredentialForm.jsx's handleIssue for why this checks the
+    // in-flight state directly rather than trusting the button's disabled attribute.
+    if (addingVisit) return;
+
     // Permanent on-chain record — require an explicit second confirmation.
     if (!confirming) {
       setConfirming(true);
@@ -86,7 +90,7 @@ export default function VisitAnnouncementForm({ onAnnounced }) {
 
       <div className="flex gap-8">
         <button id="add-visit-btn" type="submit" className="btn btn-secondary" disabled={addingVisit} style={{ flex: 1 }}>
-          {addingVisit ? "Publishing…" : confirming ? "✅ Confirm & Publish" : "📌 Publish Announcement"}
+          {addingVisit ? "Writing to the record…" : confirming ? "✅ Confirm & Publish" : "📌 Publish Announcement"}
         </button>
         {confirming && (
           <button type="button" className="btn btn-ghost" onClick={() => setConfirming(false)}>
@@ -94,6 +98,11 @@ export default function VisitAnnouncementForm({ onAnnounced }) {
           </button>
         )}
       </div>
+      {addingVisit && (
+        <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", margin: 0, textAlign: "center" }}>
+          This is a permanent blockchain transaction — it usually takes a few seconds to confirm.
+        </p>
+      )}
     </form>
   );
 }

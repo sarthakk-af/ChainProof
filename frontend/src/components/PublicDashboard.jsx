@@ -2,21 +2,21 @@
  * PublicDashboard.jsx — Public accountability dashboard
  *
  * No login required. This is the page that makes the platform's core promise
- * real: anyone can see placement stats computed straight from on-chain data,
- * without any college or company being able to hide or inflate them. Reads
- * from the /public/* backend routes, which are pure DB aggregation (see
- * backend/src/routes/public.js) — cheap enough for anonymous traffic.
+ * real: anyone can see placement stats calculated automatically from real,
+ * recorded on-chain activity. Reads from the /public/* backend routes, which
+ * are pure DB aggregation (see backend/src/routes/public.js) — cheap enough
+ * for anonymous traffic.
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import { api } from "../utils/api.js";
+import { shortAddr, formatDate, formatTimestamp as formatDateTime } from "../utils/format.js";
 
-function shortAddr(addr) { return addr?.slice(0, 6) + "…" + addr?.slice(-4); }
-function formatDate(unixSeconds) {
-  return new Date(Number(unixSeconds) * 1000).toLocaleDateString("en-IN", {
-    dateStyle: "medium",
-  });
-}
+const SORTS = {
+  rate: (a, b) => b.percentage - a.percentage,
+  name: (a, b) => a.name.localeCompare(b.name),
+  records: (a, b) => b.registered - a.registered,
+};
 
 export default function PublicDashboard() {
   const [overview, setOverview] = useState(null);
@@ -24,6 +24,19 @@ export default function PublicDashboard() {
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState("rate");
+  const [drilldown, setDrilldown] = useState(null); // { college: {address,name}, records, loading, error } | null
+
+  const viewRecords = useCallback(async (college) => {
+    setDrilldown({ college, records: [], loading: true, error: "" });
+    try {
+      const data = await api.get(`/public/colleges/${college.address}/records`);
+      setDrilldown({ college, records: data.records, loading: false, error: "" });
+    } catch (err) {
+      setDrilldown({ college, records: [], loading: false, error: err.message || "Could not load records." });
+    }
+  }, []);
 
   const fetchAll = useCallback(async () => {
     setError("");
@@ -76,8 +89,8 @@ export default function PublicDashboard() {
       <div className="section-eyebrow">Public · No Sign-In Required</div>
       <h2 style={{ marginBottom: 4 }}>Placement Accountability Dashboard</h2>
       <p style={{ marginBottom: 32 }}>
-        Every figure below is computed directly from immutable blockchain records —
-        no college or company can selectively hide or inflate these numbers.
+        Every figure below is calculated automatically from verified on-chain activity,
+        visible to everyone in real time.
       </p>
 
       {error && (
@@ -87,27 +100,26 @@ export default function PublicDashboard() {
       )}
 
       {/* Overview */}
-      <div className="grid-4 stagger-children animate-fade-in-up" style={{ marginBottom: 32 }}>
-        <div className="stat-card">
-          <div className="stat-label">Verified Colleges</div>
-          <div className="stat-value">{overview.totalColleges}</div>
+      <div className="kpi-strip">
+        <div className="kpi">
+          <span className="kpi-n">{overview.totalColleges}</span>
+          <span className="kpi-l">Verified colleges</span>
         </div>
-        <div className="stat-card">
-          <div className="stat-label">Verified Companies</div>
-          <div className="stat-value">{overview.totalCompanies}</div>
+        <div className="kpi">
+          <span className="kpi-n">{overview.totalCompanies}</span>
+          <span className="kpi-l">Verified companies</span>
         </div>
-        <div className="stat-card">
-          <div className="stat-label">Registered Students</div>
-          <div className="stat-value">{overview.totalStudents}</div>
+        <div className="kpi">
+          <span className="kpi-n">{overview.totalStudents}</span>
+          <span className="kpi-l">Registered students</span>
         </div>
-        <div className="stat-card">
-          <div className="stat-label">Overall Placement %</div>
-          <div className="stat-value">{overview.overallPlacementPercentage}%</div>
-          <div className="stat-sub">{overview.totalPlaced} / {overview.totalStudents} placed</div>
+        <div className="kpi">
+          <span className="kpi-n accent">{overview.overallPlacementPercentage}%</span>
+          <span className="kpi-l">{overview.totalPlaced} / {overview.totalStudents} placed overall</span>
         </div>
       </div>
 
-      <div className="grid-2" style={{ gap: 28 }}>
+      <div className="grid-2" style={{ gap: 28, marginTop: 32 }}>
         {/* Per-college leaderboard */}
         <div>
           <div className="section-eyebrow" style={{ marginBottom: 12 }}>
@@ -120,9 +132,38 @@ export default function PublicDashboard() {
               <p style={{ fontSize: "0.85rem" }}>Check back once colleges have been approved.</p>
             </div>
           ) : (
-            <div className="flex flex-col gap-10">
-              {colleges.map((c) => (
-                <div key={c.address} className="glass-card animate-fade-in-up" style={{ padding: "16px 20px" }}>
+            <>
+              <div className="board-toolbar">
+                <input
+                  type="text"
+                  placeholder="Search colleges…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  style={{ width: 220 }}
+                />
+                <div className="board-sort">
+                  <span>Sort by</span>
+                  <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                    <option value="rate">Placement rate</option>
+                    <option value="name">Name, A–Z</option>
+                    <option value="records">Most registered</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex flex-col gap-10">
+                {colleges
+                  .filter((c) => c.name.toLowerCase().includes(search.trim().toLowerCase()))
+                  .sort(SORTS[sortBy])
+                  .map((c) => (
+                <div
+                  key={c.address}
+                  className="glass-card animate-fade-in-up"
+                  style={{ padding: "16px 20px", cursor: "pointer", border: drilldown?.college.address === c.address ? "1px solid var(--accent-primary)" : undefined }}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => viewRecords(c)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); viewRecords(c); } }}
+                >
                   <div className="flex items-center justify-between" style={{ marginBottom: 8 }}>
                     <strong style={{ fontFamily: "var(--font-head)" }}>{c.name}</strong>
                     <span className="badge badge-college">{c.percentage}%</span>
@@ -132,39 +173,87 @@ export default function PublicDashboard() {
                   </div>
                   <div className="flex items-center justify-between" style={{ marginTop: 6 }}>
                     <span className="mono-addr" style={{ fontSize: "0.7rem" }}>{shortAddr(c.address)}</span>
-                    <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                      {c.placed} / {c.registered} placed
+                    <span style={{ fontSize: "0.75rem", color: "var(--accent-primary)" }}>
+                      {c.placed} / {c.registered} placed — view records →
                     </span>
                   </div>
                 </div>
               ))}
-            </div>
+              </div>
+            </>
           )}
         </div>
 
-        {/* Recent activity feed */}
+        {/* Recent activity feed, or a college's drill-down records */}
         <div>
-          <div className="section-eyebrow" style={{ marginBottom: 12 }}>Recent Activity</div>
-          {visits.length === 0 ? (
-            <div className="empty-state glass-card">
-              <div className="empty-state-icon">📅</div>
-              <h3>No Activity Yet</h3>
-              <p style={{ fontSize: "0.85rem" }}>Company visit announcements will appear here as colleges publish them.</p>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-10">
-              {visits.map((v) => (
-                <div key={v.id} className="glass-card animate-fade-in-up" style={{ padding: "14px 18px" }}>
-                  <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-                    <strong style={{ fontFamily: "var(--font-head)", fontSize: "0.9rem" }}>{v.companyName}</strong>
-                    <span className="badge badge-company">{formatDate(v.visitDate)}</span>
-                  </div>
-                  <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                    Announced by {v.collegeName || shortAddr(v.collegeAddress)}
-                  </span>
+          {drilldown ? (
+            <>
+              <div className="flex items-center justify-between" style={{ marginBottom: 12 }}>
+                <div className="section-eyebrow" style={{ marginBottom: 0 }}>
+                  Records for {drilldown.college.name}
                 </div>
-              ))}
-            </div>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDrilldown(null)}>
+                  ← Back to Activity
+                </button>
+              </div>
+              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 12 }}>
+                Every credential behind this college's percentage — issuer and type are shown;
+                which student it belongs to is kept private.
+              </p>
+              {drilldown.loading ? (
+                <div className="flex justify-center" style={{ padding: 24 }}>
+                  <div className="spinner" />
+                </div>
+              ) : drilldown.error ? (
+                <div className="alert alert-danger"><span>❌</span><span>{drilldown.error}</span></div>
+              ) : drilldown.records.length === 0 ? (
+                <div className="empty-state glass-card">
+                  <div className="empty-state-icon">📭</div>
+                  <h3>No Records Yet</h3>
+                  <p style={{ fontSize: "0.85rem" }}>Nothing has been issued to this college's students yet.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-10">
+                  {drilldown.records.map((r) => (
+                    <div key={r.id} className="glass-card animate-fade-in-up" style={{ padding: "14px 18px" }}>
+                      <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+                        <span className="badge badge-college">{r.credType}</span>
+                        <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{formatDateTime(r.timestamp)}</span>
+                      </div>
+                      <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                        Issued by {r.issuerName || shortAddr(r.issuerAddress)}
+                        {r.issuerRole ? ` (${r.issuerRole})` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="section-eyebrow" style={{ marginBottom: 12 }}>Recent Activity</div>
+              {visits.length === 0 ? (
+                <div className="empty-state glass-card">
+                  <div className="empty-state-icon">📅</div>
+                  <h3>No Activity Yet</h3>
+                  <p style={{ fontSize: "0.85rem" }}>Company visit announcements will appear here as colleges publish them.</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-10">
+                  {visits.map((v) => (
+                    <div key={v.id} className="glass-card animate-fade-in-up" style={{ padding: "14px 18px" }}>
+                      <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
+                        <strong style={{ fontFamily: "var(--font-head)", fontSize: "0.9rem" }}>{v.companyName}</strong>
+                        <span className="badge badge-company">{formatDate(v.visitDate)}</span>
+                      </div>
+                      <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                        Announced by {v.collegeName || shortAddr(v.collegeAddress)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

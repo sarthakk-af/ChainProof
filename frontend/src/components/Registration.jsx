@@ -20,7 +20,7 @@ const ROLES = [
     value: "College",
     label: "College / Placement Cell",
     icon: "🏛️",
-    desc: "Register as a college to issue credentials, manage placement records, and view tamper-proof metrics.",
+    desc: "Register as a college to issue credentials, manage placement records, and view tamper-proof metrics. An administrator reviews and approves new colleges before they can act — usually a short wait.",
     color: "var(--accent-secondary)",
     badgeClass: "badge-college",
   },
@@ -28,7 +28,7 @@ const ROLES = [
     value: "Company",
     label: "Company / Recruiter",
     icon: "🏢",
-    desc: "Register as a company to browse students and progress candidates through the hiring pipeline.",
+    desc: "Register as a company to browse students and progress candidates through the hiring pipeline. An administrator reviews and approves new companies before they can act — usually a short wait.",
     color: "var(--accent-company)",
     badgeClass: "badge-company",
   },
@@ -39,6 +39,7 @@ export default function Registration() {
 
   const [selectedRole, setSelectedRole] = useState(null);
   const [name, setName]                 = useState("");
+  const [website, setWebsite]           = useState("");
   const [collegeAddress, setCollegeAddress] = useState("");
   const [colleges, setColleges]         = useState([]);
   const [collegesLoading, setCollegesLoading] = useState(false);
@@ -58,6 +59,9 @@ export default function Registration() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    // See IssueCredentialForm.jsx's handleIssue for why this checks the
+    // in-flight state directly rather than trusting the button's disabled attribute.
+    if (loading) return;
     if (!selectedRole || !name.trim()) return;
     if (selectedRole === "Student" && !collegeAddress) return;
 
@@ -69,6 +73,7 @@ export default function Registration() {
         role: selectedRole,
         name: name.trim(),
         collegeAddress: selectedRole === "Student" ? collegeAddress : undefined,
+        website: selectedRole !== "Student" ? website.trim() : undefined,
       });
     } catch (err) {
       setError(err.message || "Registration failed.");
@@ -79,7 +84,10 @@ export default function Registration() {
 
   return (
     <div className="page-container animate-fade-in-up" style={{ maxWidth: 680, marginTop: 60 }}>
-      <div className="section-eyebrow">Step 1 of 1</div>
+      <div className="flex items-center gap-8" style={{ marginBottom: 8 }}>
+        <span className="badge badge-student">Step 2 of 2</span>
+        <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Almost done — just your role and name</span>
+      </div>
       <h2 style={{ marginBottom: 8 }}>Choose Your Role</h2>
       <p style={{ marginBottom: 36 }}>
         Your role is recorded permanently on-chain.
@@ -166,6 +174,22 @@ export default function Registration() {
             />
           </div>
 
+          {(selectedRole === "College" || selectedRole === "Company") && (
+            <div className="form-group">
+              <label htmlFor="reg-website">Official Website (optional)</label>
+              <input
+                id="reg-website"
+                type="text"
+                placeholder="e.g. https://www.iitb.ac.in"
+                value={website}
+                onChange={(e) => setWebsite(e.target.value)}
+              />
+              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4 }}>
+                Helps the admin confirm this is a real institution — shown on the verification queue.
+              </p>
+            </div>
+          )}
+
           {selectedRole === "Student" && (
             <div className="form-group">
               <label htmlFor="reg-college">Your College</label>
@@ -209,11 +233,16 @@ export default function Registration() {
             disabled={loading || !name.trim() || (selectedRole === "Student" && !collegeAddress)}
           >
             {loading ? (
-              <><div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Registering…</>
+              <><div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Writing to the blockchain…</>
             ) : (
               "✅ Register on Blockchain"
             )}
           </button>
+          {loading && (
+            <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", margin: 0, textAlign: "center" }}>
+              This is a permanent blockchain transaction — it usually takes a few seconds to confirm.
+            </p>
+          )}
         </form>
       )}
     </div>

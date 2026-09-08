@@ -17,9 +17,11 @@ db.exec(`
     role INTEGER NOT NULL,
     status INTEGER NOT NULL,
     name TEXT NOT NULL,
+    metadata TEXT,
     college TEXT,
     registered_at_block INTEGER NOT NULL,
-    updated_at_block INTEGER NOT NULL
+    updated_at_block INTEGER NOT NULL,
+    rejection_reason TEXT
   );
 
   CREATE TABLE IF NOT EXISTS indexer_state (
@@ -75,6 +77,15 @@ db.exec(`
 const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.name);
 if (!userColumns.includes("token_version")) {
   db.exec("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0");
+}
+
+// Same pattern for a database file created before rejection_reason existed.
+const actorColumns = db.prepare("PRAGMA table_info(actors)").all().map((c) => c.name);
+if (!actorColumns.includes("rejection_reason")) {
+  db.exec("ALTER TABLE actors ADD COLUMN rejection_reason TEXT");
+}
+if (!actorColumns.includes("metadata")) {
+  db.exec("ALTER TABLE actors ADD COLUMN metadata TEXT");
 }
 
 export function getLastSyncedBlock() {

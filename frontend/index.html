@@ -19,13 +19,20 @@
     <meta property="og:description" content="Tamper-proof, blockchain-verified placement credentials for Indian universities." />
     <meta property="og:type" content="website" />
 
-    <!-- Google Fonts: Inter for UI, Space Grotesk for headings -->
+    <!-- Google Fonts: Fraunces for headings, IBM Plex Sans for UI, IBM Plex Mono for data -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
       rel="stylesheet"
     />
+    <!-- Applied before first paint so switching pages/refreshing never flashes the wrong theme -->
+    <script>
+      (function () {
+        var saved = localStorage.getItem("chainproof_theme");
+        if (saved) document.documentElement.dataset.theme = saved;
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

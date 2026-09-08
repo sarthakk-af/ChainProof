@@ -1,4 +1,5 @@
 import React from "react";
+import { formatDate, formatTimestamp } from "../../utils/format.js";
 
 export default function VisitsFeed({ visits, loading }) {
   if (loading) {
@@ -25,12 +26,17 @@ export default function VisitsFeed({ visits, loading }) {
           <div className="flex items-center justify-between" style={{ marginBottom: 6 }}>
             <strong style={{ fontFamily: "var(--font-head)" }}>{v.companyName}</strong>
             <span className="badge badge-company">
-              {new Date(v.visitDate * 1000).toLocaleDateString("en-IN")}
+              {formatDate(v.visitDate)}
             </span>
           </div>
-          <span className="mono-addr" title={v.ipfsHash} style={{ fontSize: "0.7rem" }}>
-            IPFS: {v.ipfsHash.slice(0, 24)}…
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="mono-addr" title={v.ipfsHash} style={{ fontSize: "0.7rem" }}>
+              IPFS: {v.ipfsHash.slice(0, 24)}…
+            </span>
+            <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+              Recorded on-chain {formatTimestamp(v.timestamp)}
+            </span>
+          </div>
         </div>
       ))}
     </div>

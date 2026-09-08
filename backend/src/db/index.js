@@ -3,7 +3,7 @@
  * See ../db.js for why this exists as a folder instead of one file.
  */
 export { db, getLastSyncedBlock, setLastSyncedBlock } from "./connection.js";
-export { upsertActor, updateActorStatus, getActor, listActors } from "./actors.js";
+export { upsertActor, updateActorStatus, getActor, listActors, clearRejectionReason } from "./actors.js";
 export {
   createUser,
   getUserByEmail,
@@ -16,4 +16,4 @@ export {
 } from "./users.js";
 export { upsertCredential, getCredentialsForStudent, getCredentialSummaries } from "./credentials.js";
 export { upsertVisit, getVisitsForCollege, getRecentVisits } from "./visits.js";
-export { getPerCollegePlacementStats, countPlacedStudentsGlobal } from "./publicStats.js";
+export { getPerCollegePlacementStats, countPlacedStudentsGlobal, getCollegeRecords } from "./publicStats.js";

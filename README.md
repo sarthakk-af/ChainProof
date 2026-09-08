@@ -1,6 +1,6 @@
 # ChainProof
 
-ChainProof proves that a college's student-placement statistics are real. Instead of a college self-reporting numbers, every step of the process — a student registering, a company issuing an offer, a college announcing a recruiting visit — is written permanently to a blockchain by the party actually doing it. Nobody can quietly inflate a placement percentage after the fact, and anyone can check the real numbers on the public dashboard without an account.
+ChainProof gives student-placement statistics an independently verifiable record. Every step of the process — a student registering, a company issuing an offer, a college announcing a recruiting visit — is written permanently by the party actually doing it. The resulting placement percentage is calculated automatically, and anyone can check it on the public dashboard without an account.
 
 ## How it's put together
 

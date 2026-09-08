@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { localRetrieve } from "../../utils/ipfsService.js";
 import { CRED_TYPE_META, formatTimestamp } from "../../utils/credentialMeta.js";
 
-export default function ProofGenerator({ credentials, visibility, isPlaced, studentAddress, studentName }) {
+export default function ProofGenerator({ credentials, visibility, studentAddress, studentName }) {
   const [proof, setProof] = useState(null);
   const [copied, setCopied] = useState(false);
 
@@ -73,29 +73,6 @@ export default function ProofGenerator({ credentials, visibility, isPlaced, stud
           />
         </div>
       )}
-
-      {/* Stats */}
-      <div className="divider" />
-      <div className="grid-2" style={{ gap: 12 }}>
-        <div className="stat-card" style={{ padding: 16, textAlign: "center" }}>
-          <div className="stat-label">Total Credentials</div>
-          <div className="stat-value" style={{ fontSize: "1.8rem" }}>{credentials.length}</div>
-        </div>
-        <div className="stat-card" style={{ padding: 16, textAlign: "center" }}>
-          <div className="stat-label">Placement Status</div>
-          <div
-            className="stat-value"
-            style={{
-              fontSize: "1.1rem",
-              background: isPlaced
-                ? "linear-gradient(135deg, var(--accent-success), #00b07a)"
-                : "linear-gradient(135deg, var(--text-muted), var(--text-secondary))",
-            }}
-          >
-            {isPlaced ? "Placed 🎉" : "Active"}
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

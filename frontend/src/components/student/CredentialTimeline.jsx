@@ -1,8 +1,7 @@
 import React from "react";
 import { localRetrieve } from "../../utils/ipfsService.js";
 import { CRED_TYPE_META, formatTimestamp } from "../../utils/credentialMeta.js";
-
-function shortAddr(addr) { return addr?.slice(0, 6) + "…" + addr?.slice(-4); }
+import { shortAddr } from "../../utils/format.js";
 
 export default function CredentialTimeline({ credentials, visibility, onToggleVisibility }) {
   if (credentials.length === 0) {

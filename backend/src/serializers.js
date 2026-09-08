@@ -12,9 +12,11 @@ export function serializeActor(row) {
     role: ROLE_NAMES[row.role],
     status: STATUS_NAMES[row.status],
     name: row.name,
+    website: row.metadata || null,
     college: row.college,
     registeredAtBlock: row.registered_at_block,
     updatedAtBlock: row.updated_at_block,
+    rejectionReason: row.rejection_reason || null,
   };
 }
 

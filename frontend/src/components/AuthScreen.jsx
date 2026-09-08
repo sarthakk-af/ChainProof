@@ -1,20 +1,31 @@
 /**
- * AuthScreen.jsx — Landing / sign-in screen
- * Shown when there is no active session. Normal email + password, no wallet.
+ * AuthScreen.jsx — The actual sign-in/sign-up form.
+ *
+ * The "what is ChainProof" explanation lives in ProjectExplainer.jsx now —
+ * this component is just the account form itself, shown by LandingPage.jsx
+ * once someone clicks "Create an account" (not embedded further down the
+ * same page anymore — one entry point, not two). Kept as its own file/
+ * component since Registration.jsx (the role + profile step right after
+ * signup) is a separate screen — this step indicator is step 1 of that same
+ * two-step onboarding.
  */
 
 import React, { useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 
-export default function AuthScreen() {
+export default function AuthScreen({ initialMode = "login" }) {
   const { signup, login, forgotPassword } = useAuth();
 
-  const [mode, setMode] = useState("login"); // "login" | "signup" | "forgot"
+  const [mode, setMode] = useState(initialMode); // "login" | "signup" | "forgot"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
+  // Only true for the one error we can confidently attribute to a specific
+  // field (email already registered) — ambiguous errors like "invalid email
+  // or password" stay as a general banner rather than falsely blaming one field.
+  const emailError = Boolean(error) && mode === "signup" && error.toLowerCase().includes("email");
 
   const switchMode = (next) => {
     setMode(next);
@@ -44,50 +55,15 @@ export default function AuthScreen() {
   };
 
   return (
-    <div className="page-container animate-fade-in-up" style={{ maxWidth: 640, marginTop: 60 }}>
-      {/* Hero */}
-      <div className="text-center" style={{ marginBottom: 48 }}>
-        <div style={{ fontSize: "4rem", marginBottom: 16, filter: "drop-shadow(0 0 24px rgba(108,99,255,0.6))" }}>
-          ⛓️
-        </div>
-        <div className="section-eyebrow">Decentralised · Transparent · Tamper-Proof</div>
-        <h1 style={{ marginBottom: 16 }}>
-          Welcome to{" "}
-          <span
-            style={{
-              background: "linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))",
-              WebkitBackgroundClip: "text",
-              WebkitTextFillColor: "transparent",
-              backgroundClip: "text",
-            }}
-          >
-            ChainProof
-          </span>
-        </h1>
-        <p style={{ fontSize: "1.05rem", maxWidth: 480, margin: "0 auto" }}>
-          A neutral ledger for verifiable student placement credentials — every
-          record lives on the blockchain. Just sign in like any other app; no
-          wallet or crypto knowledge needed.
-        </p>
-      </div>
-
-      {/* Features */}
-      <div className="grid-3 stagger-children" style={{ marginBottom: 40 }}>
-        {[
-          { icon: "🎓", title: "Students", desc: "Own your placement proof on-chain. No admin can alter it." },
-          { icon: "🏛️", title: "Colleges", desc: "Issue tamper-proof credentials. View unalterable placement stats." },
-          { icon: "🏢", title: "Companies", desc: "Manage recruitment pipelines with transparent, auditable records." },
-        ].map((f) => (
-          <div key={f.title} className="glass-card p-24 text-center animate-fade-in-up">
-            <div style={{ fontSize: "2rem", marginBottom: 10 }}>{f.icon}</div>
-            <h3 style={{ marginBottom: 6, fontSize: "1rem" }}>{f.title}</h3>
-            <p style={{ fontSize: "0.85rem" }}>{f.desc}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Auth form */}
+    <div id="get-started" className="page-container" style={{ maxWidth: 480, paddingTop: 0 }}>
       <form className="glass-card p-32 animate-pulse-glow flex flex-col gap-16" onSubmit={handleSubmit}>
+        {mode === "signup" && (
+          <div className="flex items-center gap-8" style={{ marginBottom: -4 }}>
+            <span className="badge badge-student">Step 1 of 2</span>
+            <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Account · next comes your role</span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
           <h3 style={{ margin: 0 }}>
             {mode === "signup" ? "Create your account" : mode === "forgot" ? "Reset your password" : "Sign in"}
@@ -110,10 +86,15 @@ export default function AuthScreen() {
             type="email"
             placeholder="you@example.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => { setEmail(e.target.value); setError(""); }}
             autoComplete="email"
             required
+            style={emailError ? { borderColor: "var(--accent-danger)" } : undefined}
+            aria-invalid={emailError ? "true" : undefined}
           />
+          {emailError && (
+            <span style={{ fontSize: "0.78rem", color: "var(--accent-danger)" }}>{error}</span>
+          )}
         </div>
 
         {mode !== "forgot" && (
@@ -143,7 +124,7 @@ export default function AuthScreen() {
           </button>
         )}
 
-        {error && (
+        {error && !emailError && (
           <div className="alert alert-danger">
             <span>❌</span>
             <span>{error}</span>

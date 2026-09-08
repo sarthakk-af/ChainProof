@@ -30,3 +30,26 @@ export function countPlacedStudentsGlobal() {
     .prepare("SELECT COUNT(DISTINCT student_address) AS c FROM credentials WHERE cred_type = 3")
     .get().c;
 }
+
+/**
+ * The individual on-chain records behind one college's placement percentage —
+ * what a skeptical visitor drills into to check the number is real, without
+ * publicly naming which student received which credential. Deliberately
+ * shows the record (type, when, which verified issuer) and not student
+ * identity — "verifiable" should mean checking the underlying activity is
+ * real, not broadcasting a named student's personal outcome to the internet.
+ */
+export function getCollegeRecords(collegeAddress, limit = 100) {
+  return db
+    .prepare(
+      `SELECT c.id, c.cred_type, c.timestamp, c.issuer_address,
+              i.name AS issuer_name, i.role AS issuer_role
+       FROM credentials c
+       JOIN actors s ON s.address = c.student_address
+       LEFT JOIN actors i ON i.address = c.issuer_address
+       WHERE s.college = ?
+       ORDER BY c.timestamp DESC
+       LIMIT ?`
+    )
+    .all(collegeAddress, limit);
+}

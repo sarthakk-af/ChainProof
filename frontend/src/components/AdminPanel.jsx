@@ -8,11 +8,10 @@
  */
 
 import React, { useState, useEffect, useCallback } from "react";
+import { shortAddr } from "../utils/format.js";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 const ADMIN_KEY_STORAGE = "chainproof_admin_key";
-
-function shortAddr(addr) { return addr?.slice(0, 8) + "…" + addr?.slice(-6); }
 
 const STATUS_BADGE = {
   Pending: "badge-warning",
@@ -28,7 +27,9 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
-  const [confirmingReject, setConfirmingReject] = useState(null); // address awaiting reject confirmation, or null
+  const [confirming, setConfirming] = useState(null); // { address, action } awaiting confirmation, or null
+  const [actingOn, setActingOn] = useState(null); // address currently mid-request, or null
+  const [rejectReason, setRejectReason] = useState("");
 
   const adminFetch = useCallback(
     async (path, options = {}) => {
@@ -70,14 +71,24 @@ export default function AdminPanel() {
     setAdminKey(keyInput);
   };
 
-  const handleAction = async (address, action) => {
+  const handleAction = async (address, action, reason) => {
+    // See frontend's IssueCredentialForm.jsx handleIssue for why this checks
+    // the in-flight state directly rather than trusting the button's disabled/hidden state.
+    if (actingOn) return;
     setActionError("");
-    setConfirmingReject(null);
+    setConfirming(null);
+    setActingOn(address);
     try {
-      await adminFetch(`/admin/actors/${address}/${action}`, { method: "POST" });
-      fetchActors();
+      await adminFetch(`/admin/actors/${address}/${action}`, {
+        method: "POST",
+        body: action === "reject" ? JSON.stringify({ reason: reason || "" }) : undefined,
+      });
+      await fetchActors();
     } catch (err) {
       setActionError(err.message);
+    } finally {
+      setActingOn(null);
+      setRejectReason("");
     }
   };
 
@@ -152,37 +163,82 @@ export default function AdminPanel() {
         <div className="flex flex-col gap-10">
           {actors.map((a) => (
             <div key={a.address} className="glass-card animate-fade-in-up" style={{ padding: "16px 20px" }}>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 12 }}>
                 <div>
                   <div className="flex items-center gap-8" style={{ marginBottom: 4 }}>
                     <strong style={{ fontFamily: "var(--font-head)" }}>{a.name}</strong>
                     <span className="badge badge-none">{a.role}</span>
                     <span className={`badge ${STATUS_BADGE[a.status] || "badge-none"}`}>{a.status}</span>
                   </div>
-                  <span className="mono-addr" style={{ fontSize: "0.75rem" }}>{shortAddr(a.address)}</span>
+                  <span className="mono-addr" style={{ fontSize: "0.75rem" }}>{shortAddr(a.address, { head: 8, tail: 6 })}</span>
+                  {a.website ? (
+                    <p style={{ fontSize: "0.78rem", marginTop: 6 }}>
+                      🔗 <a href={a.website} target="_blank" rel="noopener noreferrer">{a.website}</a>
+                    </p>
+                  ) : a.role !== "Student" ? (
+                    <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: 6 }}>
+                      No website given — verify identity by other means before approving.
+                    </p>
+                  ) : null}
+                  {a.status === "Rejected" && a.rejectionReason && (
+                    <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: 6, maxWidth: 420 }}>
+                      Reason given: "{a.rejectionReason}"
+                    </p>
+                  )}
                 </div>
                 {a.status === "Pending" && (
-                  <div className="flex gap-8">
-                    <button className="btn btn-success btn-sm" onClick={() => handleAction(a.address, "approve")}>
-                      ✅ Approve
-                    </button>
-                    {confirmingReject === a.address ? (
+                  <div className="flex items-center gap-8">
+                    {actingOn === a.address ? (
+                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
+                        <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
+                        Writing to the record…
+                      </span>
+                    ) : confirming?.address === a.address ? (
                       <>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleAction(a.address, "reject")}>
-                          Confirm Reject
+                        <button
+                          className={`btn btn-sm ${confirming.action === "approve" ? "btn-success" : "btn-danger"}`}
+                          onClick={() => handleAction(a.address, confirming.action, rejectReason)}
+                        >
+                          Confirm {confirming.action === "approve" ? "Approve" : "Reject"}
                         </button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => setConfirmingReject(null)}>
+                        <button className="btn btn-ghost btn-sm" onClick={() => { setConfirming(null); setRejectReason(""); }}>
                           Cancel
                         </button>
                       </>
                     ) : (
-                      <button className="btn btn-danger btn-sm" onClick={() => setConfirmingReject(a.address)}>
-                        ❌ Reject
-                      </button>
+                      <>
+                        <button className="btn btn-success btn-sm" onClick={() => setConfirming({ address: a.address, action: "approve" })}>
+                          ✅ Approve
+                        </button>
+                        <button className="btn btn-danger btn-sm" onClick={() => setConfirming({ address: a.address, action: "reject" })}>
+                          ❌ Reject
+                        </button>
+                      </>
                     )}
                   </div>
                 )}
               </div>
+              {confirming?.address === a.address && actingOn !== a.address && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border-card)" }}>
+                  {confirming.action === "reject" ? (
+                    <div className="form-group">
+                      <label htmlFor={`reject-reason-${a.address}`}>Reason (shown to {a.name})</label>
+                      <input
+                        id={`reject-reason-${a.address}`}
+                        type="text"
+                        placeholder="e.g. Couldn't confirm this is an official institution — please resubmit with more detail"
+                        value={rejectReason}
+                        onChange={(e) => setRejectReason(e.target.value)}
+                        maxLength={500}
+                      />
+                    </div>
+                  ) : (
+                    <p style={{ fontSize: "0.85rem", margin: 0 }}>
+                      This grants {a.name} full access to issue credentials{a.role === "College" ? "/announce visits" : ""} under this identity.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>

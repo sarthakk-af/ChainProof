@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { api } from "../../utils/api.js";
 import { uploadToIPFS, buildCredentialMetadata } from "../../utils/ipfsService.js";
+import { shortAddr } from "../../utils/format.js";
 
 const PIPELINE_STAGES = [
   { value: "Shortlist", label: "Shortlisted", icon: "⭐", btnClass: "btn-warning" },
@@ -9,8 +10,6 @@ const PIPELINE_STAGES = [
   { value: "Offer", label: "Offer", icon: "🎉", btnClass: "btn-success" },
   { value: "Rejection", label: "Rejection", icon: "❌", btnClass: "btn-danger" },
 ];
-
-function shortAddr(addr) { return addr?.slice(0, 6) + "…" + addr?.slice(-4); }
 
 export default function PipelineActionPanel({ activeStudent, onDeselect, onIssued }) {
   const { user, actor } = useAuth();
@@ -40,7 +39,10 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
   }, [activeStudent]);
 
   const issuePipelineCredential = async (studentAddress, stage) => {
-    if (!studentAddress || !stage) return;
+    // See IssueCredentialForm.jsx's handleIssue for why this checks the
+    // in-flight state directly — these stage buttons aren't a form submit,
+    // so a fast double-click could otherwise fire two on-chain writes.
+    if (txLoading || !studentAddress || !stage) return;
     setTxLoading(true);
     setTxError("");
     setTxSuccess("");
@@ -101,7 +103,7 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
 
       {activeStudent ? (
         <div className="glass-card p-24 animate-fade-in-up flex flex-col gap-16">
-          <div style={{ padding: "12px 16px", background: "rgba(108,99,255,0.08)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
+          <div style={{ padding: "12px 16px", background: "rgba(59,107,76,0.08)", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-subtle)" }}>
             <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: 4 }}>Selected Student</div>
             <strong style={{ fontFamily: "var(--font-head)" }}>{activeStudent.name}</strong>
             <div className="mono-addr" style={{ marginTop: 4, fontSize: "0.72rem" }}>{shortAddr(activeStudent.address)}</div>
@@ -141,6 +143,11 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
           <button className="btn btn-ghost btn-sm" onClick={onDeselect}>
             ← Deselect
           </button>
+          {txLoading && (
+            <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", margin: 0, textAlign: "center" }}>
+              Writing to the record — this is a permanent blockchain transaction, usually a few seconds.
+            </p>
+          )}
         </div>
       ) : (
         <div className="glass-card p-24 flex flex-col gap-16">
@@ -189,7 +196,7 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
 
             <div className="flex gap-8">
               <button type="submit" className="btn btn-primary" disabled={txLoading} style={{ flex: 1 }}>
-                {txLoading ? "Issuing…" : confirming ? "✅ Confirm & Issue" : "📤 Issue"}
+                {txLoading ? "Writing to the record…" : confirming ? "✅ Confirm & Issue" : "📤 Issue"}
               </button>
               {confirming && (
                 <button type="button" className="btn btn-ghost" onClick={() => setConfirming(false)}>
@@ -197,6 +204,11 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
                 </button>
               )}
             </div>
+            {txLoading && (
+              <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", margin: 0, textAlign: "center" }}>
+                This is a permanent blockchain transaction — it usually takes a few seconds to confirm.
+              </p>
+            )}
           </form>
         </div>
       )}

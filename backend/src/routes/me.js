@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { ethers } from "ethers";
-import { getActor, getUserById } from "../db.js";
+import { getActor, getUserById, clearRejectionReason } from "../db.js";
 import { getUserSigner } from "../wallets.js";
 import { actorRegistryAsSigner, ROLE, STATUS } from "../chain.js";
 import { syncActor } from "../indexer.js";
@@ -21,7 +21,7 @@ meRouter.get("/", (req, res) => {
 });
 
 meRouter.post("/register", async (req, res) => {
-  const { role, name, collegeAddress } = req.body || {};
+  const { role, name, collegeAddress, website } = req.body || {};
   const roleNumber = ROLE[role];
   if (roleNumber === undefined || roleNumber === ROLE.None) {
     return res.status(400).json({
@@ -50,12 +50,15 @@ meRouter.post("/register", async (req, res) => {
       const tx = await registry.register(
         roleNumber,
         name.trim(),
-        "",
+        typeof website === "string" ? website.trim().slice(0, 200) : "",
         roleNumber === ROLE.Student ? collegeAddress : "0x0000000000000000000000000000000000000000",
         { nonce }
       );
       const receipt = await tx.wait();
       await syncActor(req.user.address, receipt.blockNumber);
+      // A fresh registration/resubmission starts clean — any reason from a
+      // past rejection belonged to that earlier attempt, not this one.
+      clearRejectionReason(req.user.address);
     });
     logger.info("actor_registered", { address: req.user.address, role, name: name.trim() });
     res.status(201).json({ actor: serializeActor(getActor(req.user.address)) });

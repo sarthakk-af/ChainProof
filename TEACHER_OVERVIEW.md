@@ -2,13 +2,13 @@
 
 ## 1. What is ChainProof?
 
-ChainProof is a website that keeps a permanent, honest record of a college's placement activity — who got hired, by which company, and when — in a way that nobody, not even the college itself, can secretly change afterward.
+ChainProof is a website that keeps a permanent, shared record of a college's placement activity — who got hired, by which company, and when — that stays exactly as it was created, for everyone involved to rely on.
 
 ## 2. The Problem It Solves
 
-When a college says "95% of our students got placed," there is usually no way to check if that is true. The college collects and reports the numbers itself, so nothing stops a college from leaving out students who did not get placed, or rounding numbers up, to look better. Students have no independent proof of their own achievements beyond what the college says about them. Companies have no easy way to confirm that a student's claimed interviews or offers actually happened.
+When a college shares its placement numbers, there is usually no independent way to verify them — the underlying activity lives across many separate conversations, spreadsheets, and records that nobody outside the college can easily check. This is not any one party's fault; it is simply how placement tracking has always worked. Students do not have an independent, portable record of their own achievements. Companies do not have an easy way to confirm that a student's claimed interviews or offers actually took place.
 
-There is no neutral, outside record that students, colleges, and companies can all trust equally.
+What is missing is a neutral, shared record that students, colleges, and companies can all rely on equally.
 
 ## 3. The Core Idea, Explained Simply
 
@@ -16,14 +16,14 @@ Imagine a notebook that anyone involved can write a new entry into, but nobody �
 
 That is what a blockchain is being used for here. It is not a magic word — it is simply a shared record book with one unusual rule: entries are permanent.
 
-Because of that one rule, a college cannot quietly inflate its placement numbers, because every step that led to that number is out there permanently, for anyone to check.
+Because of that one rule, the placement percentage is always calculated from the same activity everyone can see — it updates automatically as real steps happen, rather than being compiled and reported separately.
 
 ## 4. Who Uses It
 
 - **Students** — sign up, get linked to their college, and receive permanent records of things like being shortlisted, interviewed, or receiving an offer.
 - **Colleges** — publish which companies are visiting, and issue those permanent records to their own students.
 - **Companies** — issue the same kind of records directly (shortlist, interview, offer, rejection) to the students they interact with.
-- **An administrator** — checks that a college or company signing up is genuinely real before letting them act on the platform, so nobody can pretend to be a real institution without being verified first.
+- **An administrator** — confirms that a college or company signing up is genuinely who they say they are before letting them act on the platform.
 - **The public** — anyone, without logging in, can visit a public page and see real, verified placement statistics for every college on the platform.
 
 ## 5. How It Actually Works, Step by Step
@@ -39,10 +39,10 @@ Because of that one rule, a college cannot quietly inflate its placement numbers
 
 ## 6. What Makes It Trustworthy
 
-- **Nothing can be secretly deleted or edited.** Every action — a registration, a credential, a visit announcement — stays visible forever.
-- **Mistakes are corrected openly, never hidden.** If something needs to change later, it happens by adding a new, clearly linked record. The original stays visible, so nobody can quietly rewrite history.
-- **Placement percentages are calculated automatically**, directly from these records, not typed in by a college. A college cannot report a percentage that does not match its own actual recorded activity.
-- **A rejected college or company is not permanently shut out.** If a registration is denied by mistake, they can simply try again — and the earlier rejection still remains part of the honest record either way.
+- **Nothing is ever deleted or edited.** Every action — a registration, a credential, a visit announcement — stays visible permanently.
+- **Mistakes are corrected openly, as part of the record.** If something needs to change later, it happens by adding a new, clearly linked record. The original stays visible right alongside it, so the full history is always there to see.
+- **Placement percentages are calculated automatically**, directly from these records, rather than being compiled and reported by hand.
+- **A rejected college or company is not permanently shut out.** If a registration is denied by mistake, they can simply try again — and the earlier attempt still remains part of the honest record either way.
 
 ## 7. What It's Built On
 
