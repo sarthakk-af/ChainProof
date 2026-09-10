@@ -14,7 +14,7 @@ export function getPerCollegePlacementStats() {
     .prepare(
       `SELECT a.college AS college_address,
               COUNT(DISTINCT a.address) AS registered,
-              COUNT(DISTINCT CASE WHEN c.cred_type = 3 THEN a.address END) AS placed
+              COUNT(DISTINCT CASE WHEN c.cred_type = 3 AND c.superseded = 0 THEN a.address END) AS placed
        FROM actors a
        LEFT JOIN credentials c ON c.student_address = a.address
        WHERE a.role = 1 AND a.college IS NOT NULL
@@ -24,10 +24,14 @@ export function getPerCollegePlacementStats() {
   return new Map(rows.map((r) => [r.college_address, r]));
 }
 
-/** Platform-wide count of distinct students with at least one Offer credential. */
+/**
+ * Platform-wide count of distinct students with at least one *currently
+ * standing* Offer credential — a rescinded offer (corrected into something
+ * else) no longer counts, same rule the contract's own placement recompute uses.
+ */
 export function countPlacedStudentsGlobal() {
   return db
-    .prepare("SELECT COUNT(DISTINCT student_address) AS c FROM credentials WHERE cred_type = 3")
+    .prepare("SELECT COUNT(DISTINCT student_address) AS c FROM credentials WHERE cred_type = 3 AND superseded = 0")
     .get().c;
 }
 

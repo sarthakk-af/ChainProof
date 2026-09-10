@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { ShieldCheck, KeyRound, Copy, Check } from "lucide-react";
 import { localRetrieve } from "../../utils/ipfsService.js";
 import { CRED_TYPE_META, formatTimestamp } from "../../utils/credentialMeta.js";
 
@@ -42,7 +43,7 @@ export default function ProofGenerator({ credentials, visibility, studentAddress
         switches on credentials you want to include or exclude.
       </p>
       <div className="alert alert-info" style={{ fontSize: "0.82rem" }}>
-        <span>🔐</span>
+        <ShieldCheck size={16} style={{ flexShrink: 0, marginTop: 2 }} />
         <span>
           Each credential's <code>ipfsHash</code> can be independently verified against the
           on-chain record. The blockchain timestamp is cryptographically immutable.
@@ -55,7 +56,7 @@ export default function ProofGenerator({ credentials, visibility, studentAddress
         onClick={generateProof}
         disabled={credentials.length === 0}
       >
-        🔑 Generate Proof JSON
+        <KeyRound size={16} /> Generate Proof JSON
       </button>
 
       {proof && (
@@ -63,7 +64,7 @@ export default function ProofGenerator({ credentials, visibility, studentAddress
           <div className="flex items-center justify-between">
             <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Proof Document</span>
             <button id="copy-proof-btn" className="btn btn-ghost btn-sm" onClick={copyProof}>
-              {copied ? "✅ Copied!" : "📋 Copy"}
+              {copied ? <><Check size={13} /> Copied</> : <><Copy size={13} /> Copy</>}
             </button>
           </div>
           <textarea

@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import { GraduationCap, Landmark, Briefcase, AlertTriangle, AlertCircle, Link2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 
@@ -11,7 +12,7 @@ const ROLES = [
   {
     value: "Student",
     label: "Student",
-    icon: "🎓",
+    Icon: GraduationCap,
     desc: "Register as a student to receive verifiable placement credentials on-chain.",
     color: "var(--accent-primary)",
     badgeClass: "badge-student",
@@ -19,7 +20,7 @@ const ROLES = [
   {
     value: "College",
     label: "College / Placement Cell",
-    icon: "🏛️",
+    Icon: Landmark,
     desc: "Register as a college to issue credentials, manage placement records, and view tamper-proof metrics. An administrator reviews and approves new colleges before they can act — usually a short wait.",
     color: "var(--accent-secondary)",
     badgeClass: "badge-college",
@@ -27,7 +28,7 @@ const ROLES = [
   {
     value: "Company",
     label: "Company / Recruiter",
-    icon: "🏢",
+    Icon: Briefcase,
     desc: "Register as a company to browse students and progress candidates through the hiring pipeline. An administrator reviews and approves new companies before they can act — usually a short wait.",
     color: "var(--accent-company)",
     badgeClass: "badge-company",
@@ -124,7 +125,7 @@ export default function Registration() {
             }}
           >
             <div className="flex items-center gap-16">
-              <span style={{ fontSize: "2rem" }}>{r.icon}</span>
+              <r.Icon size={32} style={{ color: r.color, flexShrink: 0 }} />
               <div style={{ flex: 1 }}>
                 <div className="flex items-center gap-8" style={{ marginBottom: 4 }}>
                   <strong style={{ fontFamily: "var(--font-head)" }}>{r.label}</strong>
@@ -200,7 +201,7 @@ export default function Registration() {
                 </div>
               ) : colleges.length === 0 ? (
                 <div className="alert alert-warning" style={{ fontSize: "0.82rem" }}>
-                  <span>⚠</span>
+                  <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
                   <span>No verified colleges yet. Ask your college to register and get
                   approved first, then come back.</span>
                 </div>
@@ -221,8 +222,9 @@ export default function Registration() {
           )}
 
           {error && (
-            <div className="alert alert-danger">
-              <span>❌</span><span>{error}</span>
+            <div className="alert alert-danger" role="alert">
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>{error}</span>
             </div>
           )}
 
@@ -235,7 +237,7 @@ export default function Registration() {
             {loading ? (
               <><div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Writing to the blockchain…</>
             ) : (
-              "✅ Register on Blockchain"
+              <><Link2 size={16} /> Register on Blockchain</>
             )}
           </button>
           {loading && (

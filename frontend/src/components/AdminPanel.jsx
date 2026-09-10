@@ -8,6 +8,18 @@
  */
 
 import React, { useState, useEffect, useCallback } from "react";
+import {
+  ClipboardList,
+  RefreshCw,
+  AlertCircle,
+  AlertTriangle,
+  Inbox,
+  Check,
+  X,
+  ExternalLink,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 import { shortAddr } from "../utils/format.js";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
@@ -30,6 +42,9 @@ export default function AdminPanel() {
   const [confirming, setConfirming] = useState(null); // { address, action } awaiting confirmation, or null
   const [actingOn, setActingOn] = useState(null); // address currently mid-request, or null
   const [rejectReason, setRejectReason] = useState("");
+  const [showLog, setShowLog] = useState(false);
+  const [actionLog, setActionLog] = useState([]);
+  const [logLoading, setLogLoading] = useState(false);
 
   const adminFetch = useCallback(
     async (path, options = {}) => {
@@ -65,6 +80,21 @@ export default function AdminPanel() {
 
   useEffect(() => { fetchActors(); }, [fetchActors]);
 
+  const fetchLog = useCallback(async () => {
+    if (!adminKey) return;
+    setLogLoading(true);
+    try {
+      const { actions } = await adminFetch("/admin/actions?limit=50");
+      setActionLog(actions);
+    } catch {
+      setActionLog([]);
+    } finally {
+      setLogLoading(false);
+    }
+  }, [adminKey, adminFetch]);
+
+  useEffect(() => { if (showLog) fetchLog(); }, [showLog, fetchLog]);
+
   const handleKeySubmit = (e) => {
     e.preventDefault();
     sessionStorage.setItem(ADMIN_KEY_STORAGE, keyInput);
@@ -84,6 +114,7 @@ export default function AdminPanel() {
         body: action === "reject" ? JSON.stringify({ reason: reason || "" }) : undefined,
       });
       await fetchActors();
+      if (showLog) fetchLog();
     } catch (err) {
       setActionError(err.message);
     } finally {
@@ -133,19 +164,70 @@ export default function AdminPanel() {
             {s}
           </button>
         ))}
-        <button className="btn btn-ghost btn-sm" onClick={fetchActors} style={{ marginLeft: "auto" }}>
-          🔄 Refresh
+        <button
+          className={`btn btn-sm ${showLog ? "btn-primary" : "btn-ghost"}`}
+          onClick={() => setShowLog((v) => !v)}
+          style={{ marginLeft: "auto" }}
+        >
+          <ClipboardList size={14} /> Recent Decisions
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={fetchActors}>
+          <RefreshCw size={14} /> Refresh
         </button>
       </div>
 
+      {showLog && (
+        <div className="glass-card p-16" style={{ marginBottom: 20 }}>
+          <div className="section-eyebrow" style={{ marginBottom: 10 }}>
+            Recent Verification Decisions
+          </div>
+          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: -4, marginBottom: 12 }}>
+            A permanent record of every approve/reject decision — who was affected, when, and why.
+          </p>
+          {logLoading ? (
+            <div className="flex justify-center" style={{ padding: 16 }}>
+              <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
+            </div>
+          ) : actionLog.length === 0 ? (
+            <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>No decisions recorded yet.</p>
+          ) : (
+            <div className="flex flex-col gap-8">
+              {actionLog.map((a) => (
+                <div
+                  key={a.id}
+                  style={{ fontSize: "0.8rem", borderBottom: "1px solid var(--border-card)", paddingBottom: 8 }}
+                >
+                  <span
+                    className={`badge ${a.action === "actor_approved" ? "badge-success" : "badge-danger"}`}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                  >
+                    {a.action === "actor_approved" ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                    {a.action === "actor_approved" ? "Approved" : "Rejected"}
+                  </span>{" "}
+                  <strong>{a.actor_name || shortAddr(a.actor_address)}</strong>{" "}
+                  <span style={{ color: "var(--text-muted)" }}>
+                    — {new Date(a.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                  </span>
+                  {a.reason && (
+                    <p style={{ margin: "4px 0 0", color: "var(--text-secondary)" }}>Reason: "{a.reason}"</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {actionError && (
-        <div className="alert alert-danger" style={{ marginBottom: 16 }}>
-          <span>❌</span><span>{actionError}</span>
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{actionError}</span>
         </div>
       )}
       {error && (
-        <div className="alert alert-danger" style={{ marginBottom: 16 }}>
-          <span>❌</span><span>{error}</span>
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{error}</span>
         </div>
       )}
 
@@ -155,7 +237,7 @@ export default function AdminPanel() {
         </div>
       ) : actors.length === 0 ? (
         <div className="empty-state glass-card">
-          <div className="empty-state-icon">📭</div>
+          <Inbox size={48} className="empty-state-icon" />
           <h3>Nothing here</h3>
           <p style={{ fontSize: "0.85rem" }}>No {statusFilter.toLowerCase()} actors right now.</p>
         </div>
@@ -169,11 +251,21 @@ export default function AdminPanel() {
                     <strong style={{ fontFamily: "var(--font-head)" }}>{a.name}</strong>
                     <span className="badge badge-none">{a.role}</span>
                     <span className={`badge ${STATUS_BADGE[a.status] || "badge-none"}`}>{a.status}</span>
+                    {a.rejectionCount > 0 && (
+                      <span
+                        className="badge badge-none"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                        title="Recorded on-chain and preserved across resubmission — never hidden by a later approval"
+                      >
+                        <AlertTriangle size={12} /> Previously rejected {a.rejectionCount}x
+                      </span>
+                    )}
                   </div>
                   <span className="mono-addr" style={{ fontSize: "0.75rem" }}>{shortAddr(a.address, { head: 8, tail: 6 })}</span>
                   {a.website ? (
-                    <p style={{ fontSize: "0.78rem", marginTop: 6 }}>
-                      🔗 <a href={a.website} target="_blank" rel="noopener noreferrer">{a.website}</a>
+                    <p style={{ fontSize: "0.78rem", marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                      <ExternalLink size={12} />
+                      <a href={a.website} target="_blank" rel="noopener noreferrer">{a.website}</a>
                     </p>
                   ) : a.role !== "Student" ? (
                     <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: 6 }}>
@@ -199,6 +291,7 @@ export default function AdminPanel() {
                           className={`btn btn-sm ${confirming.action === "approve" ? "btn-success" : "btn-danger"}`}
                           onClick={() => handleAction(a.address, confirming.action, rejectReason)}
                         >
+                          {confirming.action === "approve" ? <Check size={14} /> : <X size={14} />}
                           Confirm {confirming.action === "approve" ? "Approve" : "Reject"}
                         </button>
                         <button className="btn btn-ghost btn-sm" onClick={() => { setConfirming(null); setRejectReason(""); }}>
@@ -208,10 +301,10 @@ export default function AdminPanel() {
                     ) : (
                       <>
                         <button className="btn btn-success btn-sm" onClick={() => setConfirming({ address: a.address, action: "approve" })}>
-                          ✅ Approve
+                          <Check size={14} /> Approve
                         </button>
                         <button className="btn btn-danger btn-sm" onClick={() => setConfirming({ address: a.address, action: "reject" })}>
-                          ❌ Reject
+                          <X size={14} /> Reject
                         </button>
                       </>
                     )}
@@ -230,7 +323,14 @@ export default function AdminPanel() {
                         value={rejectReason}
                         onChange={(e) => setRejectReason(e.target.value)}
                         maxLength={500}
+                        aria-describedby={`reject-reason-count-${a.address}`}
                       />
+                      <span
+                        id={`reject-reason-count-${a.address}`}
+                        style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}
+                      >
+                        {rejectReason.length}/500
+                      </span>
                     </div>
                   ) : (
                     <p style={{ fontSize: "0.85rem", margin: 0 }}>

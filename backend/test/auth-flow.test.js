@@ -133,18 +133,18 @@ test("a full reset cycle changes the password and invalidates old tokens", async
 
   const res = await request(app)
     .post("/auth/reset-password")
-    .send({ token, newPassword: "brandnewpassword" });
+    .send({ token, newPassword: "brandnewpassword1" });
   assert.equal(res.status, 200);
 
   const updated = getUserByEmail("resetme@example.com");
-  assert.equal(await verifyPassword("brandnewpassword", updated.password_hash), true);
+  assert.equal(await verifyPassword("brandnewpassword1", updated.password_hash), true);
   assert.equal(await verifyPassword("originalpassword", updated.password_hash), false);
   assert.equal(updated.token_version, 1); // bumped by the reset
 
   // The same token can't be reused.
   const reused = await request(app)
     .post("/auth/reset-password")
-    .send({ token, newPassword: "yetanotherpassword" });
+    .send({ token, newPassword: "yetanotherpassword1" });
   assert.equal(reused.status, 400);
 });
 
@@ -169,12 +169,12 @@ test("resetting a password invalidates every other outstanding reset token for t
   // Use the second link successfully.
   const res = await request(app)
     .post("/auth/reset-password")
-    .send({ token: second.token, newPassword: "newerpassword" });
+    .send({ token: second.token, newPassword: "newerpassword1" });
   assert.equal(res.status, 200);
 
   // The first (still-unused, still-unexpired) link must no longer work.
   const staleAttempt = await request(app)
     .post("/auth/reset-password")
-    .send({ token: first.token, newPassword: "attackerpassword" });
+    .send({ token: first.token, newPassword: "attackerpassword1" });
   assert.equal(staleAttempt.status, 400);
 });

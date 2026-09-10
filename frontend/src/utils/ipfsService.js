@@ -67,6 +67,12 @@ export async function uploadToIPFS(payload) {
       });
       if (!res.ok) throw new Error(`Pinata error: ${res.statusText}`);
       const data = await res.json();
+      // Also cached locally so this browser's own UI (CredentialTimeline,
+      // ProofGenerator) can render the title/description instantly without
+      // a network round-trip — a real, third-party gateway lookup of the
+      // same hash (e.g. gateway.pinata.cloud/ipfs/<hash>) is what makes this
+      // genuinely verifiable now, not this local cache.
+      localStore(data.IpfsHash, payload);
       console.info("[IPFS] Pinned via Pinata:", data.IpfsHash);
       return data.IpfsHash;
     } catch (err) {
@@ -88,6 +94,7 @@ export async function uploadToIPFS(payload) {
       });
       if (!res.ok) throw new Error(`Web3.Storage error: ${res.statusText}`);
       const data = await res.json();
+      localStore(data.cid, payload);
       console.info("[IPFS] Stored via Web3.Storage:", data.cid);
       return data.cid;
     } catch (err) {

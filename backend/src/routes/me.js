@@ -31,6 +31,11 @@ meRouter.post("/register", async (req, res) => {
   if (!name || !name.trim()) {
     return res.status(400).json({ error: "name is required" });
   }
+  // This gets written permanently on-chain — capped so a careless or hostile
+  // paste can't bloat every future read of this actor's record forever.
+  if (name.trim().length > 100) {
+    return res.status(400).json({ error: "name must be 100 characters or fewer" });
+  }
   if (roleNumber === ROLE.Student && !ethers.isAddress(collegeAddress)) {
     return res.status(400).json({ error: "A valid collegeAddress is required for Student registration" });
   }

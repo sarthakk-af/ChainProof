@@ -22,7 +22,9 @@ export function useStudentCredentials(address) {
     refresh();
   }, [refresh]);
 
-  const isPlaced = credentials.some((c) => c.credType === "Offer");
+  // A superseded Offer no longer counts — it's been corrected (e.g. rescinded)
+  // by a later record, same "any non-superseded Offer" rule the contract itself uses.
+  const isPlaced = credentials.some((c) => c.credType === "Offer" && !c.superseded);
 
   return { credentials, loading, isPlaced, refresh };
 }

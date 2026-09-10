@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { listActors, getActor, updateActorStatus } from "../db.js";
+import { listActors, getActor, updateActorStatus, logAdminAction, listAdminActions } from "../db.js";
 import { actorRegistryAsVerifier, verifierSigner, provider, ROLE, STATUS } from "../chain.js";
 import { serializeActor, parseEnumQueryParam, STATUS_NAMES } from "../serializers.js";
 import { withWalletLock } from "../txQueue.js";
@@ -48,6 +48,13 @@ async function handleVerifierAction(req, res, { contractMethod, expectedResultin
     });
     updateActorStatus(address, expectedResultingStatus, receipt.blockNumber, rejectionReason || null);
     logger.info(event, { address, name: cached.name, rejectionReason });
+    logAdminAction({
+      actorAddress: address,
+      actorName: cached.name,
+      action: event,
+      reason: rejectionReason,
+      txHash: receipt.hash,
+    });
     res.json({ actor: serializeActor(getActor(address)), txHash: receipt.hash });
   } catch (err) {
     const reason = err.reason || err.shortMessage || err.message;
@@ -72,6 +79,13 @@ adminRouter.post("/actors/:address/reject", (req, res) => {
     event: "actor_rejected",
     rejectionReason: reason || null,
   });
+});
+
+// The verification audit trail — every approve/reject decision, permanently
+// recorded (see db/adminActions.js). Powers AdminPanel's "Recent Decisions" log.
+adminRouter.get("/actions", (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  res.json({ actions: listAdminActions(limit) });
 });
 
 // Exposed for tests / health checks that want to confirm chain connectivity.

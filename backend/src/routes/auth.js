@@ -10,7 +10,15 @@ import {
   getPasswordReset,
   invalidateAllPasswordResetsForUser,
 } from "../db.js";
-import { hashPassword, verifyPassword, signToken, generateResetToken, hashResetToken } from "../auth.js";
+import {
+  hashPassword,
+  verifyPassword,
+  signToken,
+  generateResetToken,
+  hashResetToken,
+  validatePassword,
+  PASSWORD_RULE_MESSAGE,
+} from "../auth.js";
 import { generateWallet } from "../wallets.js";
 import { fundWallet } from "../treasury.js";
 import { sendEmail, buildPasswordResetEmail } from "../email.js";
@@ -54,13 +62,34 @@ const resetPasswordLimiter = rateLimit({
   message: { error: "Too many attempts. Please try again later." },
 });
 
+const checkEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many checks. Please slow down." },
+});
+
+// Lets the signup form tell someone "that email's taken" as they type,
+// instead of only after they've filled in a password and submitted. Doesn't
+// leak anything beyond what /signup itself already reveals via its 409 —
+// this is signup-only, unlike /forgot-password, which deliberately never
+// confirms whether an email exists.
+authRouter.get("/check-email", checkEmailLimiter, (req, res) => {
+  const { email } = req.query;
+  if (!email || typeof email !== "string") {
+    return res.status(400).json({ error: "email is required" });
+  }
+  res.json({ available: !getUserByEmail(email) });
+});
+
 authRouter.post("/signup", signupLimiter, async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: "email and password are required" });
   }
-  if (password.length < 6) {
-    return res.status(400).json({ error: "password must be at least 6 characters" });
+  if (!validatePassword(password)) {
+    return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   }
 
   if (getUserByEmail(email)) {
@@ -155,8 +184,8 @@ authRouter.post("/reset-password", resetPasswordLimiter, async (req, res) => {
   if (!token || !newPassword) {
     return res.status(400).json({ error: "token and newPassword are required" });
   }
-  if (newPassword.length < 6) {
-    return res.status(400).json({ error: "password must be at least 6 characters" });
+  if (!validatePassword(newPassword)) {
+    return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   }
 
   const tokenHash = hashResetToken(token);

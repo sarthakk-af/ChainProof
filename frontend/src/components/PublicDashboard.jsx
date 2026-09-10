@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from "react";
+import { Landmark, Inbox, Calendar, AlertCircle, ArrowLeft, ArrowRight } from "lucide-react";
 import { api } from "../utils/api.js";
 import { shortAddr, formatDate, formatTimestamp as formatDateTime } from "../utils/format.js";
 
@@ -76,8 +77,8 @@ export default function PublicDashboard() {
   if (!overview) {
     return (
       <div className="page-container animate-fade-in-up" style={{ maxWidth: 480, marginTop: 100 }}>
-        <div className="alert alert-danger">
-          <span>❌</span>
+        <div className="alert alert-danger" role="alert">
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{error || "Could not load public data."}</span>
         </div>
       </div>
@@ -94,8 +95,9 @@ export default function PublicDashboard() {
       </p>
 
       {error && (
-        <div className="alert alert-danger" style={{ marginBottom: 24 }}>
-          <span>❌</span><span>{error}</span>
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: 24 }}>
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{error}</span>
         </div>
       )}
 
@@ -127,7 +129,7 @@ export default function PublicDashboard() {
           </div>
           {colleges.length === 0 ? (
             <div className="empty-state glass-card">
-              <div className="empty-state-icon">🏛️</div>
+              <Landmark size={48} className="empty-state-icon" />
               <h3>No Verified Colleges Yet</h3>
               <p style={{ fontSize: "0.85rem" }}>Check back once colleges have been approved.</p>
             </div>
@@ -173,8 +175,8 @@ export default function PublicDashboard() {
                   </div>
                   <div className="flex items-center justify-between" style={{ marginTop: 6 }}>
                     <span className="mono-addr" style={{ fontSize: "0.7rem" }}>{shortAddr(c.address)}</span>
-                    <span style={{ fontSize: "0.75rem", color: "var(--accent-primary)" }}>
-                      {c.placed} / {c.registered} placed — view records →
+                    <span style={{ fontSize: "0.75rem", color: "var(--accent-primary)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                      {c.placed} / {c.registered} placed — view records <ArrowRight size={12} />
                     </span>
                   </div>
                 </div>
@@ -193,7 +195,7 @@ export default function PublicDashboard() {
                   Records for {drilldown.college.name}
                 </div>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDrilldown(null)}>
-                  ← Back to Activity
+                  <ArrowLeft size={14} /> Back to Activity
                 </button>
               </div>
               <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 12 }}>
@@ -205,10 +207,13 @@ export default function PublicDashboard() {
                   <div className="spinner" />
                 </div>
               ) : drilldown.error ? (
-                <div className="alert alert-danger"><span>❌</span><span>{drilldown.error}</span></div>
+                <div className="alert alert-danger" role="alert">
+                  <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+                  <span>{drilldown.error}</span>
+                </div>
               ) : drilldown.records.length === 0 ? (
                 <div className="empty-state glass-card">
-                  <div className="empty-state-icon">📭</div>
+                  <Inbox size={48} className="empty-state-icon" />
                   <h3>No Records Yet</h3>
                   <p style={{ fontSize: "0.85rem" }}>Nothing has been issued to this college's students yet.</p>
                 </div>
@@ -234,7 +239,7 @@ export default function PublicDashboard() {
               <div className="section-eyebrow" style={{ marginBottom: 12 }}>Recent Activity</div>
               {visits.length === 0 ? (
                 <div className="empty-state glass-card">
-                  <div className="empty-state-icon">📅</div>
+                  <Calendar size={48} className="empty-state-icon" />
                   <h3>No Activity Yet</h3>
                   <p style={{ fontSize: "0.85rem" }}>Company visit announcements will appear here as colleges publish them.</p>
                 </div>

@@ -17,6 +17,7 @@ export function serializeActor(row) {
     registeredAtBlock: row.registered_at_block,
     updatedAtBlock: row.updated_at_block,
     rejectionReason: row.rejection_reason || null,
+    rejectionCount: row.rejection_count || 0,
   };
 }
 
@@ -29,6 +30,9 @@ export function serializeCredential(row) {
     credType: CRED_TYPE_NAMES[row.cred_type],
     timestamp: row.timestamp,
     blockNumber: row.block_number,
+    isCorrection: Boolean(row.is_correction),
+    supersedesId: row.supersedes_id,
+    superseded: Boolean(row.superseded),
   };
 }
 

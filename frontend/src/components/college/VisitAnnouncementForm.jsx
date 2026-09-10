@@ -1,7 +1,9 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
+import { Megaphone, CheckCircle2, AlertCircle, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { api } from "../../utils/api.js";
 import { uploadToIPFS } from "../../utils/ipfsService.js";
+import { getIdempotencyKey } from "../../utils/idempotency.js";
 
 export default function VisitAnnouncementForm({ onAnnounced }) {
   const { user, actor } = useAuth();
@@ -13,6 +15,7 @@ export default function VisitAnnouncementForm({ onAnnounced }) {
   const [visitError, setVisitError] = useState("");
   const [visitSuccess, setVisitSuccess] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const idempotencyRef = useRef(null);
 
   const handleAddVisit = async (e) => {
     e.preventDefault();
@@ -44,15 +47,20 @@ export default function VisitAnnouncementForm({ onAnnounced }) {
       const ipfsHash = await uploadToIPFS(payload);
       const visitDateUnix = Math.floor(new Date(visitDate).getTime() / 1000);
 
-      await api.post("/visits/announce", { companyName: visitCompany, ipfsHash, visitDate: visitDateUnix });
+      const idempotencyKey = getIdempotencyKey(
+        idempotencyRef,
+        JSON.stringify({ visitCompany, visitDate, visitDesc })
+      );
+      await api.post("/visits/announce", { companyName: visitCompany, ipfsHash, visitDate: visitDateUnix, idempotencyKey });
 
-      setVisitSuccess("✅ Visit announcement published successfully!");
+      idempotencyRef.current = null;
+      setVisitSuccess("Visit announcement published successfully.");
       setVisitCompany("");
       setVisitDate("");
       setVisitDesc("");
       onAnnounced?.();
     } catch (err) {
-      setVisitError("❌ " + (err.message || "Could not publish announcement."));
+      setVisitError(err.message || "Could not publish announcement.");
     } finally {
       setAddingVisit(false);
     }
@@ -75,12 +83,22 @@ export default function VisitAnnouncementForm({ onAnnounced }) {
         <label htmlFor="visit-desc">Details / Roles</label>
         <textarea id="visit-desc" placeholder="Roles offered, eligibility criteria..." value={visitDesc} onChange={(e) => setVisitDesc(e.target.value)} style={{ minHeight: 70 }} />
       </div>
-      {visitError && <div className="alert alert-danger"><span>❌</span><span>{visitError}</span></div>}
-      {visitSuccess && <div className="alert alert-success"><span>✅</span><span>{visitSuccess}</span></div>}
+      {visitError && (
+        <div className="alert alert-danger" role="alert">
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{visitError}</span>
+        </div>
+      )}
+      {visitSuccess && (
+        <div className="alert alert-success" role="status">
+          <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{visitSuccess}</span>
+        </div>
+      )}
 
       {confirming && (
-        <div className="alert alert-warning">
-          <span>⚠</span>
+        <div className="alert alert-warning" role="alert">
+          <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>
             This will permanently publish a visit announcement for <strong>{visitCompany}</strong> on-chain.
             It cannot be edited or deleted.
@@ -90,7 +108,7 @@ export default function VisitAnnouncementForm({ onAnnounced }) {
 
       <div className="flex gap-8">
         <button id="add-visit-btn" type="submit" className="btn btn-secondary" disabled={addingVisit} style={{ flex: 1 }}>
-          {addingVisit ? "Writing to the record…" : confirming ? "✅ Confirm & Publish" : "📌 Publish Announcement"}
+          {addingVisit ? "Writing to the record…" : confirming ? <><CheckCircle2 size={16} /> Confirm & Publish</> : <><Megaphone size={16} /> Publish Announcement</>}
         </button>
         {confirming && (
           <button type="button" className="btn btn-ghost" onClick={() => setConfirming(false)}>

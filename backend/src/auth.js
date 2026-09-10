@@ -7,6 +7,16 @@ const SALT_ROUNDS = 10;
 const TOKEN_TTL = "7d";
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+// Single source of truth for the password rule — signup and reset-password
+// both call this, and the frontend's upfront rule text/strength indicator
+// describes this same rule (kept in sync by hand since it's a separate
+// runtime, not a shared package).
+export const PASSWORD_RULE_MESSAGE = "Password must be at least 8 characters and include a number.";
+
+export function validatePassword(password) {
+  return typeof password === "string" && password.length >= 8 && /\d/.test(password);
+}
+
 export async function hashPassword(password) {
   return bcrypt.hash(password, SALT_ROUNDS);
 }

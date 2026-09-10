@@ -1,4 +1,5 @@
 import React from "react";
+import { CalendarDays } from "lucide-react";
 import { formatDate, formatTimestamp } from "../../utils/format.js";
 
 export default function VisitsFeed({ visits, loading }) {
@@ -13,7 +14,7 @@ export default function VisitsFeed({ visits, loading }) {
   if (visits.length === 0) {
     return (
       <div className="empty-state" style={{ padding: "32px 16px" }}>
-        <div className="empty-state-icon" style={{ fontSize: "2rem" }}>📅</div>
+        <CalendarDays size={32} className="empty-state-icon" />
         <p style={{ fontSize: "0.85rem" }}>No announcements published yet.</p>
       </div>
     );

@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useEffect } from "react";
+import { Link2, Sun, Moon, ArrowLeft, BarChart3, LayoutDashboard, User, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { shortAddr } from "../utils/format.js";
 
@@ -42,7 +43,7 @@ export default function Navbar() {
       {/* Brand — always links back home */}
       <div className="flex items-center gap-12">
         <a href="/" className="navbar-brand" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <span aria-hidden="true">⛓</span> ChainProof
+          <Link2 size={20} aria-hidden="true" /> ChainProof
         </a>
         <span
           className="badge badge-warning"
@@ -62,23 +63,23 @@ export default function Navbar() {
           aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
           title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
         >
-          <span aria-hidden="true">{theme === "dark" ? "☀️" : "🌙"}</span>
+          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </button>
         {path !== "/about" && (
           <a href="/about" className="btn btn-ghost btn-sm">How It Works</a>
         )}
         {path === "/public" ? (
-          <a href="/" className="btn btn-ghost btn-sm">← Back to App</a>
+          <a href="/" className="btn btn-ghost btn-sm"><ArrowLeft size={14} /> Back to App</a>
         ) : (
-          <a href="/public" className="btn btn-ghost btn-sm"><span aria-hidden="true">📊</span> Public Dashboard</a>
+          <a href="/public" className="btn btn-ghost btn-sm"><BarChart3 size={14} /> Public Dashboard</a>
         )}
         {status === "authenticated" && user && (
           <>
             {path !== "/" && (
-              <a href="/" className="btn btn-ghost btn-sm">Dashboard</a>
+              <a href="/" className="btn btn-ghost btn-sm"><LayoutDashboard size={14} /> Dashboard</a>
             )}
             {path !== "/profile" && (
-              <a href="/profile" className="btn btn-ghost btn-sm">Profile</a>
+              <a href="/profile" className="btn btn-ghost btn-sm"><User size={14} /> Profile</a>
             )}
             {actor && (
               <span className={`badge ${ROLE_BADGE_CLASS[actor.role] || "badge-none"}`}>
@@ -90,7 +91,7 @@ export default function Navbar() {
               {shortAddr(user.address)}
             </span>
             <button id="navbar-logout-btn" className="btn btn-ghost btn-sm" onClick={logout}>
-              Sign Out
+              <LogOut size={14} /> Sign Out
             </button>
           </>
         )}

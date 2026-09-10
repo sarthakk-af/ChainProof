@@ -7,17 +7,18 @@ export function upsertActor(actor) {
   // reason is off-chain-only metadata with no on-chain equivalent, so a
   // generic "re-mirror whatever's on-chain" sync has no authority to touch
   // it — only an explicit action (rejecting, or a fresh registration) should.
-  const row = { metadata: null, ...actor };
+  const row = { metadata: null, rejectionCount: 0, ...actor };
   db.prepare(
-    `INSERT INTO actors (address, role, status, name, metadata, college, registered_at_block, updated_at_block)
-     VALUES (@address, @role, @status, @name, @metadata, @college, @registeredAtBlock, @updatedAtBlock)
+    `INSERT INTO actors (address, role, status, name, metadata, college, registered_at_block, updated_at_block, rejection_count)
+     VALUES (@address, @role, @status, @name, @metadata, @college, @registeredAtBlock, @updatedAtBlock, @rejectionCount)
      ON CONFLICT(address) DO UPDATE SET
        role = excluded.role,
        status = excluded.status,
        name = excluded.name,
        metadata = excluded.metadata,
        college = excluded.college,
-       updated_at_block = excluded.updated_at_block`
+       updated_at_block = excluded.updated_at_block,
+       rejection_count = excluded.rejection_count`
   ).run(row);
 }
 

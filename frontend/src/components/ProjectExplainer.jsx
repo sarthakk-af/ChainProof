@@ -11,24 +11,25 @@
  */
 
 import React, { useState, useEffect } from "react";
+import { GraduationCap, Landmark, Briefcase } from "lucide-react";
 import { api } from "../utils/api.js";
 
 const ROLES = [
   {
     tag: "FOR STUDENTS",
-    icon: "🎓",
+    Icon: GraduationCap,
     title: "Your history, provable to anyone",
     body: "Get linked to your college and watch a permanent timeline build as you get shortlisted, interviewed, and offered — visible to anyone who checks, without a single phone call to verify it.",
   },
   {
     tag: "FOR COLLEGES",
-    icon: "🏛️",
+    Icon: Landmark,
     title: "A placement rate that speaks for itself",
     body: "Announce recruiter visits, issue credentials to your own students, and let your placement percentage update itself automatically, straight from that same activity as it happens.",
   },
   {
     tag: "FOR COMPANIES",
-    icon: "🏢",
+    Icon: Briefcase,
     title: "Hiring activity that speaks for itself",
     body: "Move candidates through shortlist, interview, and offer, issuing each step directly — a public, permanent record of how your hiring process actually ran.",
   },
@@ -163,7 +164,8 @@ export default function ProjectExplainer({ onGetStarted }) {
         <div className="grid-3 stagger-children">
           {ROLES.map((r) => (
             <div key={r.title} className="glass-card p-24 animate-fade-in-up">
-              <div className="section-eyebrow">{r.tag}</div>
+              <r.Icon size={24} style={{ color: "var(--accent-primary)" }} />
+              <div className="section-eyebrow" style={{ marginTop: 10 }}>{r.tag}</div>
               <h3 style={{ margin: "10px 0" }}>{r.title}</h3>
               <p style={{ fontSize: "0.85rem" }}>{r.body}</p>
             </div>
@@ -212,6 +214,11 @@ export default function ProjectExplainer({ onGetStarted }) {
           </p>
         </div>
       </div>
+
+      <p className="text-center" style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+        Curious what "permanent record" actually means for your data?{" "}
+        <a href="/privacy">Read the Privacy &amp; Data page →</a>
+      </p>
     </div>
   );
 }

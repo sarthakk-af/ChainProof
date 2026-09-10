@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
+import { Star, Mic, Trophy, X, CheckCircle2, AlertCircle, AlertTriangle, ArrowLeft, Users, Send } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { api } from "../../utils/api.js";
 import { uploadToIPFS, buildCredentialMetadata } from "../../utils/ipfsService.js";
 import { shortAddr } from "../../utils/format.js";
+import { getIdempotencyKey } from "../../utils/idempotency.js";
+import CorrectCredentialPanel from "../shared/CorrectCredentialPanel.jsx";
 
 const PIPELINE_STAGES = [
-  { value: "Shortlist", label: "Shortlisted", icon: "⭐", btnClass: "btn-warning" },
-  { value: "Interview", label: "Interviewed", icon: "🎙️", btnClass: "btn-secondary" },
-  { value: "Offer", label: "Offer", icon: "🎉", btnClass: "btn-success" },
-  { value: "Rejection", label: "Rejection", icon: "❌", btnClass: "btn-danger" },
+  { value: "Shortlist", label: "Shortlisted", btnClass: "btn-warning", Icon: Star },
+  { value: "Interview", label: "Interviewed", btnClass: "btn-secondary", Icon: Mic },
+  { value: "Offer", label: "Offer", btnClass: "btn-success", Icon: Trophy },
+  { value: "Rejection", label: "Rejection", btnClass: "btn-danger", Icon: X },
 ];
 
 export default function PipelineActionPanel({ activeStudent, onDeselect, onIssued }) {
@@ -22,6 +25,7 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
   const [manualAddr, setManualAddr] = useState("");
   const [manualStage, setManualStage] = useState("Shortlist");
   const [confirming, setConfirming] = useState(false);
+  const idempotencyRef = useRef(null);
 
   // Clear stale messages when the user picks a *different* student — but not
   // when activeStudent goes back to null (deselecting, including the
@@ -61,14 +65,19 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
       });
       const ipfsHash = await uploadToIPFS(payload);
 
-      await api.post("/credentials/issue", { studentAddress, ipfsHash, credType: stage });
+      const idempotencyKey = getIdempotencyKey(
+        idempotencyRef,
+        JSON.stringify({ studentAddress, stage, noteText })
+      );
+      await api.post("/credentials/issue", { studentAddress, ipfsHash, credType: stage, idempotencyKey });
 
-      setTxSuccess(`${stageInfo.icon} ${stageInfo.label} credential issued!`);
+      idempotencyRef.current = null;
+      setTxSuccess(`${stageInfo.label} credential issued.`);
       setNoteText("");
       onDeselect();
       onIssued();
     } catch (err) {
-      setTxError("❌ " + (err.message || "Transaction failed."));
+      setTxError(err.message || "Transaction failed.");
     } finally {
       setTxLoading(false);
     }
@@ -91,13 +100,15 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
   return (
     <>
       {txSuccess && (
-        <div className="alert alert-success animate-fade-in-up" style={{ marginBottom: 16 }}>
-          <span>✅</span><span>{txSuccess}</span>
+        <div className="alert alert-success animate-fade-in-up" role="status" style={{ marginBottom: 16 }}>
+          <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{txSuccess}</span>
         </div>
       )}
       {txError && (
-        <div className="alert alert-danger animate-fade-in-up" style={{ marginBottom: 16 }}>
-          <span>❌</span><span>{txError}</span>
+        <div className="alert alert-danger animate-fade-in-up" role="alert" style={{ marginBottom: 16 }}>
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{txError}</span>
         </div>
       )}
 
@@ -130,29 +141,26 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
                 disabled={txLoading}
                 onClick={() => issuePipelineCredential(activeStudent.address, stage.value)}
               >
-                {txLoading ? (
-                  <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-                ) : (
-                  stage.icon
-                )}
+                {txLoading ? <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} /> : <stage.Icon size={16} />}
                 {stage.label}
               </button>
             ))}
           </div>
 
           <button className="btn btn-ghost btn-sm" onClick={onDeselect}>
-            ← Deselect
+            <ArrowLeft size={14} /> Deselect
           </button>
           {txLoading && (
             <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", margin: 0, textAlign: "center" }}>
               Writing to the record — this is a permanent blockchain transaction, usually a few seconds.
             </p>
           )}
+          <CorrectCredentialPanel studentAddress={activeStudent.address} onCorrected={onIssued} />
         </div>
       ) : (
         <div className="glass-card p-24 flex flex-col gap-16">
           <div className="empty-state" style={{ padding: "24px 0" }}>
-            <div className="empty-state-icon" style={{ fontSize: "2.5rem" }}>👈</div>
+            <Users size={40} className="empty-state-icon" />
             <p style={{ fontSize: "0.85rem" }}>Select a student from the list to progress them through the pipeline.</p>
           </div>
 
@@ -185,8 +193,8 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
             </div>
 
             {confirming && (
-              <div className="alert alert-warning" style={{ fontSize: "0.8rem" }}>
-                <span>⚠</span>
+              <div className="alert alert-warning" role="alert" style={{ fontSize: "0.8rem" }}>
+                <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
                 <span>
                   This will permanently issue a <strong>{manualStage}</strong> credential to{" "}
                   <span className="mono-addr">{manualAddr}</span> on-chain.
@@ -196,7 +204,7 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
 
             <div className="flex gap-8">
               <button type="submit" className="btn btn-primary" disabled={txLoading} style={{ flex: 1 }}>
-                {txLoading ? "Writing to the record…" : confirming ? "✅ Confirm & Issue" : "📤 Issue"}
+                {txLoading ? "Writing to the record…" : confirming ? <><CheckCircle2 size={16} /> Confirm & Issue</> : <><Send size={16} /> Issue</>}
               </button>
               {confirming && (
                 <button type="button" className="btn btn-ghost" onClick={() => setConfirming(false)}>
@@ -210,6 +218,7 @@ export default function PipelineActionPanel({ activeStudent, onDeselect, onIssue
               </p>
             )}
           </form>
+          <CorrectCredentialPanel studentAddress={manualAddr} onCorrected={onIssued} />
         </div>
       )}
     </>

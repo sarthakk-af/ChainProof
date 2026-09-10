@@ -5,11 +5,15 @@ import {
   credentialIssuerRead,
   placementTrackerRead,
 } from "./chain.js";
+import { deployment } from "./config.js";
 import {
   getLastSyncedBlock,
   setLastSyncedBlock,
+  getDeploymentFingerprint,
+  resetMirrorForNewDeployment,
   upsertActor,
   upsertCredential,
+  markCredentialSuperseded,
   upsertVisit,
 } from "./db.js";
 
@@ -30,23 +34,17 @@ async function syncActor(address, blockNumber) {
     college: actor.college === ethers.ZeroAddress ? null : actor.college,
     registeredAtBlock: blockNumber,
     updatedAtBlock: blockNumber,
+    rejectionCount: Number(actor.rejectionCount),
   });
 }
 
 // CredentialIssued and VisitAnnounced are append-only logs — no follow-up
-// chain read needed, the event args are the full record.
-//
-// NOTE: CredentialIssuer.sol's `issueCorrection` (added for the append-only
-// correction feature) emits this same event with two extra trailing fields
-// (isCorrection, supersedesId) that this positional destructure doesn't read.
-// The backend doesn't expose a route to call `issueCorrection` yet (deferred
-// scope), so this can't happen through normal app usage today — but if it's
-// ever triggered directly on-chain, the credential still gets indexed here,
-// just without the correction relationship or the original's `superseded`
-// flag being captured. Revisit this (and the `credentials` table schema)
-// when corrections are exposed through the API.
+// chain read needed, the event args are the full record. This same event
+// covers both a fresh issueCredential and a follow-up issueCorrection —
+// isCorrection/supersedesId tell them apart, and when it's a correction the
+// original row is flagged superseded here too (never edited or removed).
 function syncCredentialIssued(args, log) {
-  const [student, issuer, id, ipfsHash, credType, timestamp] = args;
+  const [student, issuer, id, ipfsHash, credType, timestamp, isCorrection, supersedesId] = args;
   upsertCredential({
     id: Number(id),
     studentAddress: student,
@@ -55,7 +53,10 @@ function syncCredentialIssued(args, log) {
     credType: Number(credType),
     timestamp: Number(timestamp),
     blockNumber: log.blockNumber,
+    isCorrection: isCorrection ? 1 : 0,
+    supersedesId: isCorrection ? Number(supersedesId) : null,
   });
+  if (isCorrection) markCredentialSuperseded(Number(supersedesId));
 }
 
 function syncVisitAnnounced(args, log) {
@@ -95,6 +96,28 @@ const WATCHERS = [
   { contract: credentialIssuerRead, eventName: "CredentialIssued", handle: syncCredentialIssued },
   { contract: placementTrackerRead, eventName: "VisitAnnounced", handle: syncVisitAnnounced },
 ];
+
+/**
+ * A restarted local Hardhat node redeploys to the same deterministic
+ * addresses but wipes all on-chain history — `deployment.deployedAt` is
+ * unique per actual deploy run, so it's what actually distinguishes "same
+ * chain, keep resuming" from "fresh chain, the mirror is now stale."
+ * Wiping on mismatch trades a slower first backfill after every restart for
+ * never silently losing or misattributing data — the right trade for a
+ * local dev/demo deployment.
+ */
+function resetIfRedeployed() {
+  const currentFingerprint = deployment.deployedAt;
+  const storedFingerprint = getDeploymentFingerprint();
+  if (storedFingerprint === currentFingerprint) return;
+
+  if (storedFingerprint) {
+    console.log(
+      `[indexer] detected a new deployment (was ${storedFingerprint}, now ${currentFingerprint}) — resetting the mirror DB`
+    );
+  }
+  resetMirrorForNewDeployment(currentFingerprint);
+}
 
 /** Catch up on every relevant event since the last time the indexer ran. */
 export async function backfill() {
@@ -144,6 +167,7 @@ export function startLiveSync() {
 }
 
 export async function startIndexer() {
+  resetIfRedeployed();
   await backfill();
   startLiveSync();
 }

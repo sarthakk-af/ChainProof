@@ -1,10 +1,12 @@
+import { FileText, Star, Mic, Trophy, X } from "lucide-react";
+
 /** Shared between CredentialTimeline and ProofGenerator (both display credType). */
 export const CRED_TYPE_META = {
-  General: { label: "General", icon: "📄", cls: "cred-general", badgeCls: "badge-college" },
-  Shortlist: { label: "Shortlisted", icon: "⭐", cls: "cred-shortlist", badgeCls: "badge-warning" },
-  Interview: { label: "Interviewed", icon: "🎙️", cls: "cred-interview", badgeCls: "badge-student" },
-  Offer: { label: "Offer", icon: "🎉", cls: "cred-offer", badgeCls: "badge-success" },
-  Rejection: { label: "Rejection", icon: "❌", cls: "cred-rejection", badgeCls: "badge-danger" },
+  General: { label: "General", cls: "cred-general", badgeCls: "badge-college", Icon: FileText },
+  Shortlist: { label: "Shortlisted", cls: "cred-shortlist", badgeCls: "badge-warning", Icon: Star },
+  Interview: { label: "Interviewed", cls: "cred-interview", badgeCls: "badge-student", Icon: Mic },
+  Offer: { label: "Offer", cls: "cred-offer", badgeCls: "badge-success", Icon: Trophy },
+  Rejection: { label: "Rejection", cls: "cred-rejection", badgeCls: "badge-danger", Icon: X },
 };
 
 export { formatTimestamp } from "./format.js";

@@ -8,6 +8,7 @@
  */
 
 import React from "react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 
 export class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -27,14 +28,14 @@ export class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <div className="page-container animate-fade-in-up text-center" style={{ maxWidth: 480, marginTop: 100 }}>
-          <div style={{ fontSize: "3rem", marginBottom: 16 }}>⚠️</div>
+          <AlertTriangle size={40} style={{ color: "var(--accent-danger)", marginBottom: 16 }} />
           <h2 style={{ marginBottom: 12 }}>Something went wrong</h2>
           <p style={{ marginBottom: 24 }}>
             This screen hit an unexpected error. Reloading usually fixes it — if it keeps
             happening, that's worth reporting.
           </p>
           <button className="btn btn-primary" onClick={() => window.location.reload()}>
-            🔄 Reload
+            <RefreshCw size={16} /> Reload
           </button>
         </div>
       );

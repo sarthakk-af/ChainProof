@@ -22,6 +22,7 @@ import CollegeDashboard   from "./components/CollegeDashboard.jsx";
 import CompanyDashboard   from "./components/CompanyDashboard.jsx";
 import LandingPage        from "./components/LandingPage.jsx";
 import ProjectExplainer   from "./components/ProjectExplainer.jsx";
+import PrivacyPage        from "./components/PrivacyPage.jsx";
 import ProfilePage        from "./components/ProfilePage.jsx";
 import PendingApproval    from "./components/PendingApproval.jsx";
 import AdminPanel         from "./components/AdminPanel.jsx";
@@ -45,6 +46,7 @@ function AppShell() {
         </div>
       );
     }
+    if (window.location.pathname === "/privacy") return <PrivacyPage />;
     if (status !== "authenticated") return <LandingPage />;
     if (window.location.pathname === "/profile") return <ProfilePage />;
     if (!actor) return <Registration />;

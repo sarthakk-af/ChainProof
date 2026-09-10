@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { FileText, CheckCircle2, AlertCircle, AlertTriangle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { api } from "../../utils/api.js";
 import { uploadToIPFS, buildCredentialMetadata } from "../../utils/ipfsService.js";
+import { getIdempotencyKey } from "../../utils/idempotency.js";
+import CorrectCredentialPanel from "../shared/CorrectCredentialPanel.jsx";
 
 const CRED_TYPES = [
   { value: "General", label: "General / Certificate" },
@@ -22,6 +25,7 @@ export default function IssueCredentialForm({ onIssued, presetAddress }) {
   const [issueError, setIssueError] = useState("");
   const [issueSuccess, setIssueSuccess] = useState("");
   const [confirming, setConfirming] = useState(false);
+  const idempotencyRef = useRef(null);
 
   // Clicking a student in the registry above fills this in — still fully
   // editable by hand afterward, this is just a convenience, not a lock.
@@ -65,21 +69,30 @@ export default function IssueCredentialForm({ onIssued, presetAddress }) {
       });
       const ipfsHash = await uploadToIPFS(payload);
 
-      await api.post("/credentials/issue", { studentAddress: studentAddr, ipfsHash, credType });
+      // Same key on a retry of this exact action (server crashed or the
+      // response was lost after the tx actually succeeded) so it returns the
+      // original result instead of issuing a second credential.
+      const idempotencyKey = getIdempotencyKey(
+        idempotencyRef,
+        JSON.stringify({ studentAddr, credType, credTitle, credDesc })
+      );
+      await api.post("/credentials/issue", { studentAddress: studentAddr, ipfsHash, credType, idempotencyKey });
 
-      setIssueSuccess("✅ Credential issued successfully!");
+      idempotencyRef.current = null; // done — a future identical action should get its own fresh key
+      setIssueSuccess("Credential issued successfully.");
       setStudentAddr("");
       setCredTitle("");
       setCredDesc("");
       onIssued?.();
     } catch (err) {
-      setIssueError("❌ " + (err.message || "Transaction failed."));
+      setIssueError(err.message || "Transaction failed.");
     } finally {
       setIssuing(false);
     }
   };
 
   return (
+    <div className="flex flex-col gap-16">
     <form className="glass-card p-24 flex flex-col gap-16" onSubmit={handleIssue}>
       <div className="form-group">
         <label htmlFor="col-student-addr">Student Wallet Address</label>
@@ -124,12 +137,22 @@ export default function IssueCredentialForm({ onIssued, presetAddress }) {
         />
       </div>
 
-      {issueError && <div className="alert alert-danger"><span>❌</span><span>{issueError}</span></div>}
-      {issueSuccess && <div className="alert alert-success"><span>✅</span><span>{issueSuccess}</span></div>}
+      {issueError && (
+        <div className="alert alert-danger" role="alert">
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{issueError}</span>
+        </div>
+      )}
+      {issueSuccess && (
+        <div className="alert alert-success" role="status">
+          <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{issueSuccess}</span>
+        </div>
+      )}
 
       {confirming && (
-        <div className="alert alert-warning">
-          <span>⚠</span>
+        <div className="alert alert-warning" role="alert">
+          <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>
             This will permanently issue a <strong>{CRED_TYPES.find((t) => t.value === credType)?.label}</strong>{" "}
             credential to <span className="mono-addr">{studentAddr}</span> on-chain. It cannot be edited or deleted.
@@ -142,9 +165,9 @@ export default function IssueCredentialForm({ onIssued, presetAddress }) {
           {issuing ? (
             <><div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Writing to the record…</>
           ) : confirming ? (
-            "✅ Confirm & Issue"
+            <><CheckCircle2 size={16} /> Confirm & Issue</>
           ) : (
-            "📜 Issue Credential"
+            <><FileText size={16} /> Issue Credential</>
           )}
         </button>
         {confirming && (
@@ -159,5 +182,7 @@ export default function IssueCredentialForm({ onIssued, presetAddress }) {
         </p>
       )}
     </form>
+    <CorrectCredentialPanel studentAddress={studentAddr} onCorrected={onIssued} />
+    </div>
   );
 }

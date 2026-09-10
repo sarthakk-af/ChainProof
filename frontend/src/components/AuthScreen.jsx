@@ -10,31 +10,100 @@
  * two-step onboarding.
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { Eye, EyeOff, LogIn, UserPlus, Mail, Check, AlertCircle, Info, ArrowLeft, ArrowRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
+import { api } from "../utils/api.js";
+
+// Mirrors backend/src/auth.js's validatePassword — client-side is UX only,
+// the server re-checks the exact same rule regardless of what this says.
+const PASSWORD_MIN_LENGTH = 8;
+function passwordMeetsRule(pw) {
+  return pw.length >= PASSWORD_MIN_LENGTH && /\d/.test(pw);
+}
+function passwordStrength(pw) {
+  if (!pw) return { label: "", pct: 0, cls: "" };
+  let score = 0;
+  if (pw.length >= PASSWORD_MIN_LENGTH) score++;
+  if (pw.length >= 12) score++;
+  if (/\d/.test(pw)) score++;
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 1) return { label: "Weak", pct: 25, cls: "danger" };
+  if (score <= 3) return { label: "Okay", pct: 60, cls: "warning" };
+  return { label: "Strong", pct: 100, cls: "success" };
+}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function AuthScreen({ initialMode = "login" }) {
   const { signup, login, forgotPassword } = useAuth();
 
   const [mode, setMode] = useState(initialMode); // "login" | "signup" | "forgot"
   const [email, setEmail] = useState("");
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [emailAvailability, setEmailAvailability] = useState(null); // null | "checking" | "taken" | "available"
   const [password, setPassword] = useState("");
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirmTouched, setConfirmTouched] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [infoMessage, setInfoMessage] = useState("");
   // Only true for the one error we can confidently attribute to a specific
   // field (email already registered) — ambiguous errors like "invalid email
   // or password" stay as a general banner rather than falsely blaming one field.
-  const emailError = Boolean(error) && mode === "signup" && error.toLowerCase().includes("email");
+  const emailServerError = Boolean(error) && mode === "signup" && error.toLowerCase().includes("email");
+
+  const emailFormatValid = email === "" || EMAIL_RE.test(email);
+  const passwordValid = mode !== "signup" || passwordMeetsRule(password);
+  const confirmValid = mode !== "signup" || confirmPassword === "" || confirmPassword === password;
+  const strength = passwordStrength(password);
+
+  // Debounced "is this email already registered" check — signup only.
+  // Doesn't fire until the address at least looks like an email, so it's not
+  // pinging the backend on every single keystroke of a half-typed address.
+  const checkTimer = useRef(null);
+  useEffect(() => {
+    if (mode !== "signup" || !EMAIL_RE.test(email)) {
+      setEmailAvailability(null);
+      return;
+    }
+    setEmailAvailability("checking");
+    clearTimeout(checkTimer.current);
+    checkTimer.current = setTimeout(async () => {
+      try {
+        const { available } = await api.get(`/auth/check-email?email=${encodeURIComponent(email)}`);
+        setEmailAvailability(available ? "available" : "taken");
+      } catch {
+        setEmailAvailability(null); // couldn't check — say nothing rather than guess
+      }
+    }, 500);
+    return () => clearTimeout(checkTimer.current);
+  }, [email, mode]);
 
   const switchMode = (next) => {
     setMode(next);
     setError("");
     setInfoMessage("");
+    setPasswordTouched(false);
+    setConfirmTouched(false);
+    setConfirmPassword("");
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    // Checks its own in-flight state directly rather than relying only on
+    // the submit button's disabled attribute — see the same guard pattern
+    // used for every on-chain write elsewhere in this app.
+    if (loading) return;
+
+    if (mode === "signup" && (!passwordMeetsRule(password) || confirmPassword !== password)) {
+      setPasswordTouched(true);
+      setConfirmTouched(true);
+      return;
+    }
+
     setLoading(true);
     setError("");
     setInfoMessage("");
@@ -54,9 +123,13 @@ export default function AuthScreen({ initialMode = "login" }) {
     }
   };
 
+  const submitDisabled =
+    loading ||
+    (mode === "signup" && (!passwordMeetsRule(password) || confirmPassword !== password || !EMAIL_RE.test(email)));
+
   return (
     <div id="get-started" className="page-container" style={{ maxWidth: 480, paddingTop: 0 }}>
-      <form className="glass-card p-32 animate-pulse-glow flex flex-col gap-16" onSubmit={handleSubmit}>
+      <form className="glass-card p-32 animate-pulse-glow flex flex-col gap-16" onSubmit={handleSubmit} noValidate>
         {mode === "signup" && (
           <div className="flex items-center gap-8" style={{ marginBottom: -4 }}>
             <span className="badge badge-student">Step 1 of 2</span>
@@ -87,29 +160,132 @@ export default function AuthScreen({ initialMode = "login" }) {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => { setEmail(e.target.value); setError(""); }}
+            onBlur={() => setEmailTouched(true)}
             autoComplete="email"
             required
-            style={emailError ? { borderColor: "var(--accent-danger)" } : undefined}
-            aria-invalid={emailError ? "true" : undefined}
+            aria-invalid={emailServerError || (emailTouched && !emailFormatValid) ? "true" : undefined}
+            aria-describedby="auth-email-msg"
+            style={
+              emailServerError || (emailTouched && !emailFormatValid)
+                ? { borderColor: "var(--accent-danger)" }
+                : mode === "signup" && emailAvailability === "available"
+                ? { borderColor: "var(--accent-success)" }
+                : undefined
+            }
           />
-          {emailError && (
-            <span style={{ fontSize: "0.78rem", color: "var(--accent-danger)" }}>{error}</span>
-          )}
+          <span id="auth-email-msg" aria-live="polite" style={{ fontSize: "0.78rem" }}>
+            {emailServerError ? (
+              <span style={{ color: "var(--accent-danger)" }}>{error}</span>
+            ) : emailTouched && !emailFormatValid ? (
+              <span style={{ color: "var(--accent-danger)" }}>Enter a valid email address.</span>
+            ) : mode === "signup" && emailAvailability === "checking" ? (
+              <span style={{ color: "var(--text-muted)" }}>Checking availability…</span>
+            ) : mode === "signup" && emailAvailability === "taken" ? (
+              <span style={{ color: "var(--accent-danger)" }}>An account with this email already exists.</span>
+            ) : mode === "signup" && emailAvailability === "available" ? (
+              <span style={{ color: "var(--accent-success)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <Check size={13} /> Available
+              </span>
+            ) : null}
+          </span>
         </div>
 
         {mode !== "forgot" && (
           <div className="form-group">
             <label htmlFor="auth-password">Password</label>
+            {mode === "signup" && (
+              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0 0 6px" }}>
+                At least {PASSWORD_MIN_LENGTH} characters, including a number.
+              </p>
+            )}
+            <div style={{ position: "relative" }}>
+              <input
+                id="auth-password"
+                type={showPassword ? "text" : "password"}
+                placeholder={mode === "signup" ? `At least ${PASSWORD_MIN_LENGTH} characters` : "••••••••"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                onBlur={() => setPasswordTouched(true)}
+                autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                minLength={mode === "signup" ? PASSWORD_MIN_LENGTH : undefined}
+                required
+                aria-invalid={mode === "signup" && passwordTouched && !passwordValid ? "true" : undefined}
+                aria-describedby="auth-password-msg"
+                style={{
+                  paddingRight: 40,
+                  borderColor:
+                    mode === "signup" && passwordTouched && !passwordValid ? "var(--accent-danger)" : undefined,
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+                className="btn btn-ghost btn-sm"
+                style={{
+                  position: "absolute",
+                  right: 6,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  padding: 6,
+                }}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+            {mode === "signup" && password && (
+              <div style={{ marginTop: 6 }}>
+                <div style={{ height: 4, borderRadius: 2, background: "var(--border-card)", overflow: "hidden" }}>
+                  <div
+                    style={{
+                      height: "100%",
+                      width: `${strength.pct}%`,
+                      background: `var(--accent-${strength.cls})`,
+                      transition: "var(--transition)",
+                    }}
+                  />
+                </div>
+                <span
+                  id="auth-password-msg"
+                  aria-live="polite"
+                  style={{ fontSize: "0.72rem", color: `var(--accent-${strength.cls})` }}
+                >
+                  {strength.label}
+                  {passwordTouched && !passwordValid ? ` — needs ${PASSWORD_MIN_LENGTH}+ characters and a number` : ""}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {mode === "signup" && (
+          <div className="form-group">
+            <label htmlFor="auth-confirm-password">Confirm Password</label>
             <input
-              id="auth-password"
-              type="password"
-              placeholder={mode === "signup" ? "At least 6 characters" : "••••••••"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={mode === "signup" ? "new-password" : "current-password"}
-              minLength={6}
+              id="auth-confirm-password"
+              type={showPassword ? "text" : "password"}
+              placeholder="Re-enter your password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              onBlur={() => setConfirmTouched(true)}
+              autoComplete="new-password"
               required
+              aria-invalid={confirmTouched && !confirmValid ? "true" : undefined}
+              aria-describedby="auth-confirm-msg"
+              style={{
+                borderColor: confirmTouched && !confirmValid ? "var(--accent-danger)" : undefined,
+              }}
             />
+            <span id="auth-confirm-msg" aria-live="polite" style={{ fontSize: "0.78rem" }}>
+              {confirmTouched && confirmPassword && confirmPassword === password ? (
+                <span style={{ color: "var(--accent-success)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Check size={13} /> Passwords match
+                </span>
+              ) : confirmTouched && !confirmValid ? (
+                <span style={{ color: "var(--accent-danger)" }}>Passwords don't match.</span>
+              ) : null}
+            </span>
           </div>
         )}
 
@@ -124,45 +300,45 @@ export default function AuthScreen({ initialMode = "login" }) {
           </button>
         )}
 
-        {error && !emailError && (
-          <div className="alert alert-danger">
-            <span>❌</span>
+        {error && !emailServerError && (
+          <div className="alert alert-danger" role="alert">
+            <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
             <span>{error}</span>
           </div>
         )}
 
         {infoMessage && (
-          <div className="alert alert-info">
-            <span>📧</span>
+          <div className="alert alert-info" role="status">
+            <Info size={16} style={{ flexShrink: 0, marginTop: 2 }} />
             <span>{infoMessage}</span>
           </div>
         )}
 
-        <button id="auth-submit-btn" type="submit" className="btn btn-primary btn-lg" disabled={loading}>
+        <button id="auth-submit-btn" type="submit" className="btn btn-primary btn-lg" disabled={submitDisabled}>
           {loading ? (
             <>
               <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
               {mode === "signup" ? "Creating account…" : mode === "forgot" ? "Sending…" : "Signing in…"}
             </>
           ) : mode === "signup" ? (
-            "✅ Create Account"
+            <><UserPlus size={16} /> Create Account</>
           ) : mode === "forgot" ? (
-            "📧 Send Reset Link"
+            <><Mail size={16} /> Send Reset Link</>
           ) : (
-            "🔐 Sign In"
+            <><LogIn size={16} /> Sign In</>
           )}
         </button>
 
         {mode === "forgot" && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => switchMode("login")}>
-            ← Back to sign in
+            <ArrowLeft size={14} /> Back to sign in
           </button>
         )}
       </form>
 
       <div className="text-center" style={{ marginTop: 24 }}>
-        <a href="/public" style={{ fontSize: "0.85rem" }}>
-          📊 View Public Placement Dashboard — no sign-in required →
+        <a href="/public" style={{ fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: 6 }}>
+          View Public Placement Dashboard — no sign-in required <ArrowRight size={14} />
         </a>
       </div>
     </div>

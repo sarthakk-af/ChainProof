@@ -1,4 +1,5 @@
 import React from "react";
+import { Users } from "lucide-react";
 import { shortAddr } from "../../utils/format.js";
 import { STAGE_BADGE } from "../../utils/credentialMeta.js";
 
@@ -28,7 +29,7 @@ export default function CandidateTable({ students, loading, activeAddress, onSel
   if (students.length === 0) {
     return (
       <div className="empty-state glass-card">
-        <div className="empty-state-icon">👥</div>
+        <Users size={48} className="empty-state-icon" />
         <h3>No Students Found</h3>
         <p style={{ fontSize: "0.85rem" }}>
           No students have registered yet. Try refreshing after a student registers.
