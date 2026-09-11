@@ -5,6 +5,7 @@ import { placementTrackerAsSigner, placementTrackerRead, ROLE, STATUS } from "..
 import { findEventInReceipt, syncVisitAnnounced } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
 import { withIdempotency, IdempotencyPendingError } from "../idempotency.js";
+import { byteLength, MAX_COMPANY_NAME_BYTES, MAX_IPFS_HASH_BYTES } from "../limits.js";
 import { logger } from "../logger.js";
 
 export const visitsRouter = Router();
@@ -18,11 +19,11 @@ visitsRouter.post("/announce", async (req, res) => {
   // hostile paste can't bloat every future read of this visit record forever.
   const trimmedCompanyName = String(companyName).trim();
   const trimmedIpfsHash = String(ipfsHash).trim();
-  if (!trimmedCompanyName || trimmedCompanyName.length > 150) {
-    return res.status(400).json({ error: "companyName must be 1-150 characters" });
+  if (!trimmedCompanyName || byteLength(trimmedCompanyName) > MAX_COMPANY_NAME_BYTES) {
+    return res.status(400).json({ error: `companyName must be 1-${MAX_COMPANY_NAME_BYTES} bytes` });
   }
-  if (!trimmedIpfsHash || trimmedIpfsHash.length > 200) {
-    return res.status(400).json({ error: "ipfsHash must be 1-200 characters" });
+  if (!trimmedIpfsHash || byteLength(trimmedIpfsHash) > MAX_IPFS_HASH_BYTES) {
+    return res.status(400).json({ error: `ipfsHash must be 1-${MAX_IPFS_HASH_BYTES} bytes` });
   }
   const visitDateNum = Number(visitDate);
   if (!Number.isFinite(visitDateNum) || visitDateNum <= 0 || !Number.isInteger(visitDateNum)) {

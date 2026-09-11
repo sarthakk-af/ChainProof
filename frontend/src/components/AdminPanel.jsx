@@ -1,10 +1,15 @@
 /**
  * AdminPanel.jsx — Platform-admin verification queue.
  *
- * Separate from the normal user auth flow entirely: this talks to the
- * /admin/* API built in Phase 2, which uses its own shared-secret header
- * (x-admin-key) rather than a per-user JWT. Visit /admin directly to reach
- * this page (see App.jsx's plain pathname check).
+ * Separate from the normal user auth flow entirely: admins log in with their
+ * own username/password (see backend's /admin/auth/login) to get a
+ * short-lived admin session token, rather than everyone sharing one static
+ * key — that's what lets every approve/reject decision be attributed to an
+ * actual person (see the "Recent Decisions" log below). The shared
+ * ADMIN_API_KEY still exists, but only to bootstrap a new admin account
+ * (backend's POST /admin/admins) — it can't approve or reject anything
+ * itself. Visit /admin directly to reach this page (see App.jsx's plain
+ * pathname check).
  */
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -19,11 +24,15 @@ import {
   ExternalLink,
   CheckCircle2,
   XCircle,
+  IdCard,
+  LogIn,
+  LogOut,
+  UserCircle2,
 } from "lucide-react";
 import { shortAddr } from "../utils/format.js";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
-const ADMIN_KEY_STORAGE = "chainproof_admin_key";
+const SESSION_STORAGE_KEY = "chainproof_admin_session"; // { token, username }
 
 const STATUS_BADGE = {
   Pending: "badge-warning",
@@ -31,9 +40,21 @@ const STATUS_BADGE = {
   Rejected: "badge-danger",
 };
 
+function loadSession() {
+  try {
+    return JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
+
 export default function AdminPanel() {
-  const [adminKey, setAdminKey] = useState(() => sessionStorage.getItem(ADMIN_KEY_STORAGE) || "");
-  const [keyInput, setKeyInput] = useState("");
+  const [session, setSession] = useState(loadSession);
+  const [loginUsername, setLoginUsername] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
+
   const [statusFilter, setStatusFilter] = useState("Pending");
   const [actors, setActors] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -46,21 +67,54 @@ export default function AdminPanel() {
   const [actionLog, setActionLog] = useState([]);
   const [logLoading, setLogLoading] = useState(false);
 
+  const clearSession = useCallback(() => {
+    sessionStorage.removeItem(SESSION_STORAGE_KEY);
+    setSession(null);
+  }, []);
+
   const adminFetch = useCallback(
     async (path, options = {}) => {
       const res = await fetch(`${BASE_URL}${path}`, {
         ...options,
-        headers: { "x-admin-key": adminKey, "Content-Type": "application/json", ...options.headers },
+        headers: {
+          Authorization: `Bearer ${session?.token}`,
+          "Content-Type": "application/json",
+          ...options.headers,
+        },
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `Request failed: ${res.status}`);
       return data;
     },
-    [adminKey]
+    [session]
   );
 
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    if (loginLoading) return;
+    setLoginLoading(true);
+    setLoginError("");
+    try {
+      const res = await fetch(`${BASE_URL}/admin/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: loginUsername.trim(), password: loginPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Login failed");
+      const newSession = { token: data.token, username: data.username };
+      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
+      setSession(newSession);
+      setLoginPassword("");
+    } catch (err) {
+      setLoginError(err.message || "Login failed");
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
   const fetchActors = useCallback(async () => {
-    if (!adminKey) return;
+    if (!session) return;
     setLoading(true);
     setError("");
     try {
@@ -69,19 +123,18 @@ export default function AdminPanel() {
       setActors(list);
     } catch (err) {
       setError(err.message);
-      if (err.message.toLowerCase().includes("unauthorized")) {
-        sessionStorage.removeItem(ADMIN_KEY_STORAGE);
-        setAdminKey("");
+      if (err.message.toLowerCase().includes("session")) {
+        clearSession();
       }
     } finally {
       setLoading(false);
     }
-  }, [adminKey, statusFilter, adminFetch]);
+  }, [session, statusFilter, adminFetch, clearSession]);
 
   useEffect(() => { fetchActors(); }, [fetchActors]);
 
   const fetchLog = useCallback(async () => {
-    if (!adminKey) return;
+    if (!session) return;
     setLogLoading(true);
     try {
       const { actions } = await adminFetch("/admin/actions?limit=50");
@@ -91,15 +144,9 @@ export default function AdminPanel() {
     } finally {
       setLogLoading(false);
     }
-  }, [adminKey, adminFetch]);
+  }, [session, adminFetch]);
 
   useEffect(() => { if (showLog) fetchLog(); }, [showLog, fetchLog]);
-
-  const handleKeySubmit = (e) => {
-    e.preventDefault();
-    sessionStorage.setItem(ADMIN_KEY_STORAGE, keyInput);
-    setAdminKey(keyInput);
-  };
 
   const handleAction = async (address, action, reason) => {
     // See frontend's IssueCredentialForm.jsx handleIssue for why this checks
@@ -123,24 +170,51 @@ export default function AdminPanel() {
     }
   };
 
-  if (!adminKey) {
+  if (!session) {
     return (
       <div className="page-container animate-fade-in-up" style={{ maxWidth: 480, marginTop: 100 }}>
         <div className="section-eyebrow">Platform Admin</div>
-        <h2 style={{ marginBottom: 20 }}>Enter Admin Key</h2>
-        <form className="glass-card p-32 flex flex-col gap-16" onSubmit={handleKeySubmit}>
+        <h2 style={{ marginBottom: 20 }}>Admin Sign In</h2>
+        <form className="glass-card p-32 flex flex-col gap-16" onSubmit={handleLogin} noValidate>
           <div className="form-group">
-            <label htmlFor="admin-key">Admin API Key</label>
+            <label htmlFor="admin-username">Username</label>
             <input
-              id="admin-key"
-              type="password"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              placeholder="ADMIN_API_KEY from backend/.env"
+              id="admin-username"
+              type="text"
+              value={loginUsername}
+              onChange={(e) => setLoginUsername(e.target.value)}
+              autoComplete="username"
               required
             />
           </div>
-          <button type="submit" className="btn btn-primary btn-lg">Continue</button>
+          <div className="form-group">
+            <label htmlFor="admin-password">Password</label>
+            <input
+              id="admin-password"
+              type="password"
+              value={loginPassword}
+              onChange={(e) => setLoginPassword(e.target.value)}
+              autoComplete="current-password"
+              required
+            />
+          </div>
+          {loginError && (
+            <div className="alert alert-danger" role="alert">
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>{loginError}</span>
+            </div>
+          )}
+          <button type="submit" className="btn btn-primary btn-lg" disabled={loginLoading}>
+            {loginLoading ? (
+              <><div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Signing in…</>
+            ) : (
+              <><LogIn size={16} /> Sign In</>
+            )}
+          </button>
+          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: 0 }}>
+            No account yet? Ask whoever holds the platform's shared bootstrap key to create one via
+            <code style={{ margin: "0 4px" }}>POST /admin/admins</code>.
+          </p>
         </form>
       </div>
     );
@@ -148,13 +222,29 @@ export default function AdminPanel() {
 
   return (
     <div className="page-container animate-fade-in-up">
-      <div className="section-eyebrow">Platform Admin</div>
-      <h2 style={{ marginBottom: 4 }}>Institution Verification Queue</h2>
+      <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 12 }}>
+        <div>
+          <div className="section-eyebrow">Platform Admin</div>
+          <h2 style={{ marginBottom: 4 }}>Institution Verification Queue</h2>
+        </div>
+        <div className="flex items-center gap-8">
+          <span
+            className="badge badge-none"
+            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+            title="Every decision below is attributed to this account"
+          >
+            <UserCircle2 size={13} /> {session.username}
+          </span>
+          <button className="btn btn-ghost btn-sm" onClick={clearSession}>
+            <LogOut size={14} /> Sign Out
+          </button>
+        </div>
+      </div>
       <p style={{ marginBottom: 24 }}>
         Approve or reject Colleges and Companies before they can act on the platform.
       </p>
 
-      <div className="flex items-center gap-8" style={{ marginBottom: 20 }}>
+      <div className="flex items-center gap-8" style={{ marginBottom: 20, flexWrap: "wrap" }}>
         {["Pending", "Active", "Rejected", "All"].map((s) => (
           <button
             key={s}
@@ -182,7 +272,8 @@ export default function AdminPanel() {
             Recent Verification Decisions
           </div>
           <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: -4, marginBottom: 12 }}>
-            A permanent record of every approve/reject decision — who was affected, when, and why.
+            A permanent record of every approve/reject decision — who decided it, who was affected,
+            when, and why.
           </p>
           {logLoading ? (
             <div className="flex justify-center" style={{ padding: 16 }}>
@@ -207,6 +298,9 @@ export default function AdminPanel() {
                   <strong>{a.actor_name || shortAddr(a.actor_address)}</strong>{" "}
                   <span style={{ color: "var(--text-muted)" }}>
                     — {new Date(a.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                    {a.admin_username && (
+                      <> · by <strong style={{ color: "var(--text-secondary)" }}>{a.admin_username}</strong></>
+                    )}
                   </span>
                   {a.reason && (
                     <p style={{ margin: "4px 0 0", color: "var(--text-secondary)" }}>Reason: "{a.reason}"</p>
@@ -260,12 +354,55 @@ export default function AdminPanel() {
                         <AlertTriangle size={12} /> Previously rejected {a.rejectionCount}x
                       </span>
                     )}
+                    {a.sharesNameWithAnother && (
+                      <span
+                        className="badge badge-warning"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                        title="Another registration uses this exact name. Not necessarily wrong — many real institutions share a name — but check the registration numbers differ before approving."
+                      >
+                        <AlertTriangle size={12} /> Name shared with another registration
+                      </span>
+                    )}
                   </div>
                   <span className="mono-addr" style={{ fontSize: "0.75rem" }}>{shortAddr(a.address, { head: 8, tail: 6 })}</span>
+                  {a.role !== "Student" && (
+                    a.registrationNumber ? (
+                      <p style={{ fontSize: "0.78rem", marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                        <IdCard size={12} />
+                        <span className="mono-addr" style={{ fontSize: "0.75rem" }}>{a.registrationNumber}</span>
+                        <span style={{ color: "var(--text-muted)" }}>
+                          — {a.role === "Company" ? "look this CIN up on the MCA registry" : "look this ID up with the accrediting body"}
+                        </span>
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: 6 }}>
+                        No registration number on file.
+                      </p>
+                    )
+                  )}
                   {a.website ? (
-                    <p style={{ fontSize: "0.78rem", marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
+                    <p style={{ fontSize: "0.78rem", marginTop: 6, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
                       <ExternalLink size={12} />
                       <a href={a.website} target="_blank" rel="noopener noreferrer">{a.website}</a>
+                      {a.websiteReachable === true ? (
+                        <span
+                          className="badge badge-success"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: "0.68rem" }}
+                          title="A live request to this address got a response when the account registered"
+                        >
+                          <CheckCircle2 size={11} /> Site responded
+                        </span>
+                      ) : a.websiteReachable === false ? (
+                        <span
+                          className="badge badge-danger"
+                          style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: "0.68rem" }}
+                          title="A live request to this address failed or timed out when the account registered — doesn't necessarily mean it's fake, but worth a manual look"
+                        >
+                          <XCircle size={11} /> Could not reach this site
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>checking…</span>
+                      )}
                     </p>
                   ) : a.role !== "Student" ? (
                     <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: 6 }}>

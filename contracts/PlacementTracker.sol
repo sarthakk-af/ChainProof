@@ -52,6 +52,29 @@ contract PlacementTracker {
     /// @notice Thrown when the registry address provided is the zero address.
     error InvalidRegistryAddress();
 
+    /// @notice Thrown when `_companyName` is empty or exceeds `MAX_COMPANY_NAME_LENGTH` bytes.
+    error InvalidCompanyNameLength(uint256 length);
+
+    /// @notice Thrown when `_ipfsHash` is empty or exceeds `MAX_IPFS_HASH_LENGTH` bytes.
+    error InvalidIpfsHashLength(uint256 length);
+
+    /// @notice Thrown when `_visitDate` is zero, which is never a real date.
+    error InvalidVisitDate();
+
+    // =========================================================================
+    // CONSTANTS
+    // =========================================================================
+
+    /**
+     * @notice Byte-length bounds on the strings stored with every announcement.
+     * @dev    Mirrors the backend's own limits — but the backend can be
+     *         bypassed by calling this contract directly on a public chain,
+     *         so the bounds have to be enforced at this layer to actually mean
+     *         anything. Byte length, not character count (see ActorRegistry).
+     */
+    uint256 public constant MAX_COMPANY_NAME_LENGTH = 150;
+    uint256 public constant MAX_IPFS_HASH_LENGTH = 200;
+
     // =========================================================================
     // STATE VARIABLES
     // =========================================================================
@@ -124,6 +147,17 @@ contract PlacementTracker {
         ActorRegistry.Role role = actorRegistry.getActorRole(msg.sender);
         if (role != ActorRegistry.Role.College || !actorRegistry.isActive(msg.sender)) {
             revert NotActiveCollege(msg.sender);
+        }
+        uint256 nameLength = bytes(_companyName).length;
+        if (nameLength == 0 || nameLength > MAX_COMPANY_NAME_LENGTH) {
+            revert InvalidCompanyNameLength(nameLength);
+        }
+        uint256 hashLength = bytes(_ipfsHash).length;
+        if (hashLength == 0 || hashLength > MAX_IPFS_HASH_LENGTH) {
+            revert InvalidIpfsHashLength(hashLength);
+        }
+        if (_visitDate == 0) {
+            revert InvalidVisitDate();
         }
 
         // --- EFFECTS ---

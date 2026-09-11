@@ -95,8 +95,25 @@ contract CredentialIssuer {
     /// @notice Thrown when the caller didn't issue the credential they're trying to correct.
     error NotOriginalIssuer(address caller, uint256 credentialId);
 
+    /// @notice Thrown when `_ipfsHash` is empty or longer than `MAX_IPFS_HASH_LENGTH` bytes.
+    error InvalidIpfsHashLength(uint256 length);
+
     /// @notice Thrown when trying to correct a credential that's already been superseded once.
     error CredentialAlreadySuperseded(uint256 credentialId);
+
+    // =========================================================================
+    // CONSTANTS
+    // =========================================================================
+
+    /**
+     * @notice Byte-length bound on the IPFS hash stored with every credential.
+     * @dev    Real CIDs are well under this (a CIDv0 is 46 characters, CIDv1
+     *         base32 is 59). The cap exists because the backend's own limit
+     *         can be bypassed by calling this contract directly — without it,
+     *         a caller could push an arbitrarily long string into permanent
+     *         storage that every future read of this student's history pays for.
+     */
+    uint256 public constant MAX_IPFS_HASH_LENGTH = 200;
 
     // =========================================================================
     // STATE VARIABLES
@@ -210,6 +227,7 @@ contract CredentialIssuer {
         // --- CHECKS ---
         _checkIsActiveIssuer(msg.sender);
         _checkRecipientIsStudent(_student);
+        _checkIpfsHash(_ipfsHash);
 
         // --- EFFECTS ---
         uint256 credentialId = nextCredentialId;
@@ -263,6 +281,7 @@ contract CredentialIssuer {
         // --- CHECKS ---
         _checkIsActiveIssuer(msg.sender);
         _checkRecipientIsStudent(_student);
+        _checkIpfsHash(_ipfsHash);
 
         Credential[] storage creds = studentCredentials[_student];
         uint256 originalIndex = type(uint256).max;
@@ -331,6 +350,14 @@ contract CredentialIssuer {
     function _checkRecipientIsStudent(address _student) internal view {
         if (actorRegistry.getActorRole(_student) != ActorRegistry.Role.Student) {
             revert RecipientNotStudent(_student);
+        }
+    }
+
+    /// @notice Reverts unless `_ipfsHash` is non-empty and within `MAX_IPFS_HASH_LENGTH` bytes.
+    function _checkIpfsHash(string calldata _ipfsHash) internal pure {
+        uint256 length = bytes(_ipfsHash).length;
+        if (length == 0 || length > MAX_IPFS_HASH_LENGTH) {
+            revert InvalidIpfsHashLength(length);
         }
     }
 

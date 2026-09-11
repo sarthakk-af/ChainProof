@@ -99,6 +99,30 @@ contract ActorRegistry {
     /// @notice Thrown when the zero address is passed where a real address is required.
     error ZeroAddress();
 
+    /// @notice Thrown when `_name` is empty or longer than `MAX_NAME_LENGTH` bytes.
+    error InvalidNameLength(uint256 length);
+
+    /// @notice Thrown when `_metadata` is longer than `MAX_METADATA_LENGTH` bytes.
+    error MetadataTooLong(uint256 length);
+
+    // =========================================================================
+    // CONSTANTS
+    // =========================================================================
+
+    /**
+     * @notice Byte-length bounds on the strings this contract stores forever.
+     * @dev    The backend enforces these same limits before it ever submits a
+     *         transaction, but a public chain means anyone can call `register`
+     *         directly and skip that layer entirely — so the bounds have to
+     *         exist here too, or "validated" only means "validated if you
+     *         happened to use our frontend." Measured in bytes, not
+     *         characters: a name in a multi-byte script (Devanagari, Tamil,
+     *         etc.) uses ~3 bytes per character, so the backend measures byte
+     *         length too rather than letting a name pass there and revert here.
+     */
+    uint256 public constant MAX_NAME_LENGTH = 100;
+    uint256 public constant MAX_METADATA_LENGTH = 200;
+
     // =========================================================================
     // STATE VARIABLES
     // =========================================================================
@@ -219,6 +243,15 @@ contract ActorRegistry {
         // Prevent registering with the `None` role (role value 0)
         if (_role == Role.None) {
             revert InvalidRole(uint8(_role));
+        }
+        // Bound what gets written to storage permanently — see MAX_NAME_LENGTH.
+        uint256 nameLength = bytes(_name).length;
+        if (nameLength == 0 || nameLength > MAX_NAME_LENGTH) {
+            revert InvalidNameLength(nameLength);
+        }
+        uint256 metadataLength = bytes(_metadata).length;
+        if (metadataLength > MAX_METADATA_LENGTH) {
+            revert MetadataTooLong(metadataLength);
         }
 
         address collegeRef = address(0);

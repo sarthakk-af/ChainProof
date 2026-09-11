@@ -58,13 +58,12 @@ export function AuthProvider({ children }) {
     [refreshActor]
   );
 
-  const signup = useCallback(
-    async (email, password) => {
-      const { token } = await api.post("/auth/signup", { email, password });
-      await applySession(token);
-    },
-    [applySession]
-  );
+  // No session yet — the account can't be used until the emailed code comes
+  // back through verifyEmailOtp. Returns the raw response so the caller
+  // (AuthScreen) knows to show the "enter your code" step.
+  const signup = useCallback(async (email, password) => {
+    return api.post("/auth/signup", { email, password });
+  }, []);
 
   const login = useCallback(
     async (email, password) => {
@@ -73,6 +72,18 @@ export function AuthProvider({ children }) {
     },
     [applySession]
   );
+
+  const verifyEmailOtp = useCallback(
+    async (email, otp) => {
+      const { token } = await api.post("/auth/verify-email", { email, otp });
+      await applySession(token);
+    },
+    [applySession]
+  );
+
+  const resendOtp = useCallback(async (email) => {
+    return api.post("/auth/resend-otp", { email });
+  }, []);
 
   const logout = useCallback(async () => {
     // Best-effort — invalidates the token server-side (see backend's
@@ -97,8 +108,15 @@ export function AuthProvider({ children }) {
     return api.post("/auth/reset-password", { token, newPassword });
   }, []);
 
-  const registerActor = useCallback(async ({ role, name, collegeAddress, website }) => {
-    const { actor: newActor } = await api.post("/me/register", { role, name, collegeAddress, website });
+  const registerActor = useCallback(async ({ role, name, collegeAddress, joinCode, website, registrationNumber }) => {
+    const { actor: newActor } = await api.post("/me/register", {
+      role,
+      name,
+      collegeAddress,
+      joinCode,
+      website,
+      registrationNumber,
+    });
     setActor(newActor);
   }, []);
 
@@ -108,6 +126,8 @@ export function AuthProvider({ children }) {
     actor,
     signup,
     login,
+    verifyEmailOtp,
+    resendOtp,
     logout,
     forgotPassword,
     resetPassword,

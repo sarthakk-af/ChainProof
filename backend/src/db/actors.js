@@ -33,6 +33,44 @@ export function clearRejectionReason(address) {
   db.prepare("UPDATE actors SET rejection_reason = NULL WHERE address = ?").run(address);
 }
 
+/**
+ * Records whether the website given at registration actually responded to a
+ * live request — off-chain-only evidence for the admin queue, computed once
+ * right after registration (see routes/me.js). Deliberately not touched by
+ * upsertActor's generic chain-event sync, same reasoning as rejection_reason:
+ * it has no on-chain equivalent, so a passive "re-mirror the chain" pass has
+ * no authority to overwrite it.
+ */
+export function setWebsiteReachable(address, reachable) {
+  db.prepare("UPDATE actors SET website_reachable = ? WHERE address = ?").run(
+    reachable === null ? null : reachable ? 1 : 0,
+    address
+  );
+}
+
+/**
+ * The code a College hands to its own students so a registration actually
+ * proves *some* real-world contact with that institution, rather than just
+ * picking a name off a public dropdown — see routes/me.js's /register and
+ * routes/colleges.js's join-code endpoints. Off-chain only: it's an access
+ * control detail the college manages, not a durable identity fact worth
+ * spending gas to record permanently.
+ */
+export function setJoinCode(address, code) {
+  db.prepare("UPDATE actors SET join_code = ? WHERE address = ?").run(code, address);
+}
+
+/**
+ * A College/Company's self-reported accreditation/registration ID — the one
+ * concrete, externally-checkable thing an admin has to weigh a Pending
+ * institution against, beyond a name and a website (see routes/me.js's
+ * /register and registrationNumber.js). Off-chain only: it's input to a
+ * one-time approval decision, not a durable fact worth writing on-chain.
+ */
+export function setRegistrationNumber(address, value) {
+  db.prepare("UPDATE actors SET registration_number = ? WHERE address = ?").run(value, address);
+}
+
 export function getActor(address) {
   return db.prepare("SELECT * FROM actors WHERE address = ?").get(address);
 }

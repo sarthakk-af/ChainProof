@@ -22,7 +22,10 @@ db.exec(`
     registered_at_block INTEGER NOT NULL,
     updated_at_block INTEGER NOT NULL,
     rejection_reason TEXT,
-    rejection_count INTEGER NOT NULL DEFAULT 0
+    rejection_count INTEGER NOT NULL DEFAULT 0,
+    website_reachable INTEGER,
+    join_code TEXT,
+    registration_number TEXT
   );
 
   -- Every dashboard load and public-stats query filters actors by role/status
@@ -46,6 +49,18 @@ db.exec(`
     wallet_address TEXT UNIQUE NOT NULL,
     encrypted_private_key TEXT NOT NULL,
     token_version INTEGER NOT NULL DEFAULT 0,
+    email_verified INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+
+  -- A signup isn't usable (can't log in, see routes/auth.js's /login) until
+  -- the OTP emailed here is entered back — see routes/auth.js's /verify-email.
+  -- Only one row per user at a time: a fresh OTP replaces whatever came before.
+  CREATE TABLE IF NOT EXISTS email_otps (
+    user_id INTEGER PRIMARY KEY,
+    otp_hash TEXT NOT NULL,
+    expires_at INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   );
 
@@ -71,12 +86,42 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_credentials_student ON credentials(student_address);
 
+  -- Claims the real-world identifier (CIN / accreditation ID) an institution
+  -- registers under, so two different accounts can't both claim to be the
+  -- same legal entity. Separate from actors.registration_number rather than a
+  -- UNIQUE column on it, because the actor row doesn't exist until *after*
+  -- the on-chain write — the claim has to be taken before that write so a
+  -- duplicate is rejected without anything permanent having happened. See
+  -- routes/me.js's /register.
+  --
+  -- Deliberately NOT applied to the display name: plenty of genuinely
+  -- different institutions share one ("Government Polytechnic" many times
+  -- over), so a shared name is flagged for the admin to look at, not blocked.
+  CREATE TABLE IF NOT EXISTS registration_number_claims (
+    registration_number TEXT PRIMARY KEY,
+    address TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_reg_claims_address ON registration_number_claims(address);
+
+  -- Named admin accounts — replaces relying solely on one shared secret for
+  -- every approval decision (see routes/admin.js's /auth/login and
+  -- /admins). The shared ADMIN_API_KEY still exists, but only to bootstrap
+  -- these accounts — actual approve/reject actions require a real admin
+  -- session tied to one of these rows, so a decision can be attributed to
+  -- an actual person, not just "someone with the key."
+  CREATE TABLE IF NOT EXISTS admins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
   -- Every verification decision (approve/reject) is logged here, permanently,
   -- in the same spirit as the on-chain records — the goal is "someone can
   -- always answer who decided what and when," not just "the app enforced
-  -- some rule." There's a single shared admin key rather than per-admin
-  -- accounts, so this can't attribute a decision to one specific person, but
-  -- it does mean not one verification decision goes unrecorded.
+  -- some rule." admin_username records exactly which admin account made the
+  -- call (nullable only for decisions logged before named admins existed).
   CREATE TABLE IF NOT EXISTS admin_actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     actor_address TEXT NOT NULL,
@@ -84,6 +129,7 @@ db.exec(`
     action TEXT NOT NULL,
     reason TEXT,
     tx_hash TEXT,
+    admin_username TEXT,
     created_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions(created_at);
@@ -106,6 +152,9 @@ const userColumns = db.prepare("PRAGMA table_info(users)").all().map((c) => c.na
 if (!userColumns.includes("token_version")) {
   db.exec("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0");
 }
+if (!userColumns.includes("email_verified")) {
+  db.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0");
+}
 
 // Same pattern for a database file created before rejection_reason existed.
 const actorColumns = db.prepare("PRAGMA table_info(actors)").all().map((c) => c.name);
@@ -117,6 +166,20 @@ if (!actorColumns.includes("metadata")) {
 }
 if (!actorColumns.includes("rejection_count")) {
   db.exec("ALTER TABLE actors ADD COLUMN rejection_count INTEGER NOT NULL DEFAULT 0");
+}
+if (!actorColumns.includes("website_reachable")) {
+  db.exec("ALTER TABLE actors ADD COLUMN website_reachable INTEGER");
+}
+if (!actorColumns.includes("join_code")) {
+  db.exec("ALTER TABLE actors ADD COLUMN join_code TEXT");
+}
+if (!actorColumns.includes("registration_number")) {
+  db.exec("ALTER TABLE actors ADD COLUMN registration_number TEXT");
+}
+
+const adminActionColumns = db.prepare("PRAGMA table_info(admin_actions)").all().map((c) => c.name);
+if (!adminActionColumns.includes("admin_username")) {
+  db.exec("ALTER TABLE admin_actions ADD COLUMN admin_username TEXT");
 }
 
 const indexerStateColumns = db.prepare("PRAGMA table_info(indexer_state)").all().map((c) => c.name);

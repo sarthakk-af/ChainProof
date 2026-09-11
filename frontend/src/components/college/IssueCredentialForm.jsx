@@ -18,7 +18,10 @@ export default function IssueCredentialForm({ onIssued, presetAddress }) {
   const { user, actor } = useAuth();
 
   const [studentAddr, setStudentAddr] = useState("");
-  const [credType, setCredType] = useState("Offer");
+  // Defaults to the least consequential type — "Offer" flips a student to
+  // Placed, so it shouldn't be the type a college issues by just not
+  // touching the dropdown.
+  const [credType, setCredType] = useState("General");
   const [credTitle, setCredTitle] = useState("");
   const [credDesc, setCredDesc] = useState("");
   const [issuing, setIssuing] = useState(false);

@@ -22,6 +22,10 @@ export function setPasswordHash(userId, passwordHash) {
   db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(passwordHash, userId);
 }
 
+export function setEmailVerified(userId) {
+  db.prepare("UPDATE users SET email_verified = 1 WHERE id = ?").run(userId);
+}
+
 /**
  * Invalidates every previously-issued token for this user (see userAuth.js,
  * which rejects any token whose embedded version doesn't match this one).

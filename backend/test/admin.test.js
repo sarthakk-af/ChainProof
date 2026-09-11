@@ -6,9 +6,11 @@ import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
 
 /**
- * Covers what's testable without a live chain connection: auth, the DB-backed
- * listing/filtering logic, and every route branch that returns before it would
- * need to send a real transaction (actor-not-found, actor-not-Pending).
+ * Covers what's testable without a live chain connection: auth (both the
+ * bootstrap shared-secret and the real per-admin session it exists to set
+ * up), the DB-backed listing/filtering logic, and every route branch that
+ * returns before it would need to send a real transaction (actor-not-found,
+ * actor-not-Pending).
  *
  * The actual on-chain approve/reject happy path is exercised by the manual
  * verification steps in the Phase 2 plan against a real local Hardhat node —
@@ -53,7 +55,9 @@ const collegeAddr = ethers.Wallet.createRandom().address;
 const companyAddr = ethers.Wallet.createRandom().address;
 const studentAddr = ethers.Wallet.createRandom().address;
 
-before(() => {
+let sessionToken;
+
+before(async () => {
   upsertActor({
     address: collegeAddr,
     role: ROLE.College,
@@ -81,6 +85,17 @@ before(() => {
     registeredAtBlock: 3,
     updatedAtBlock: 3,
   });
+
+  // Bootstrap one named admin with the shared secret, then log in for real —
+  // this is the exact two-step flow a real deployment goes through once.
+  await request(app)
+    .post("/admin/admins")
+    .set("x-admin-key", ADMIN_HEADER)
+    .send({ username: "test-admin", password: "AdminPass123" });
+  const loginRes = await request(app)
+    .post("/admin/auth/login")
+    .send({ username: "test-admin", password: "AdminPass123" });
+  sessionToken = loginRes.body.token;
 });
 
 after(() => {
@@ -88,18 +103,69 @@ after(() => {
   cleanupDbFiles();
 });
 
-test("rejects requests with no admin key", async () => {
+test("bootstrapping an admin account requires the shared secret", async () => {
+  const res = await request(app)
+    .post("/admin/admins")
+    .send({ username: "someone-else", password: "AdminPass123" });
+  assert.equal(res.status, 401);
+});
+
+test("bootstrapping rejects a weak password", async () => {
+  const res = await request(app)
+    .post("/admin/admins")
+    .set("x-admin-key", ADMIN_HEADER)
+    .send({ username: "weak-pw-admin", password: "short" });
+  assert.equal(res.status, 400);
+});
+
+test("bootstrapping rejects a duplicate username", async () => {
+  const res = await request(app)
+    .post("/admin/admins")
+    .set("x-admin-key", ADMIN_HEADER)
+    .send({ username: "test-admin", password: "AdminPass123" });
+  assert.equal(res.status, 409);
+});
+
+test("admin login rejects a wrong password", async () => {
+  const res = await request(app)
+    .post("/admin/auth/login")
+    .send({ username: "test-admin", password: "WrongPassword1" });
+  assert.equal(res.status, 401);
+});
+
+test("admin login rejects an unknown username", async () => {
+  const res = await request(app)
+    .post("/admin/auth/login")
+    .send({ username: "nobody", password: "AdminPass123" });
+  assert.equal(res.status, 401);
+});
+
+test("admin login succeeds and returns a usable session token", async () => {
+  const res = await request(app)
+    .post("/admin/auth/login")
+    .send({ username: "test-admin", password: "AdminPass123" });
+  assert.equal(res.status, 200);
+  assert.equal(res.body.username, "test-admin");
+  assert.ok(res.body.token);
+});
+
+test("rejects queue requests with no session token", async () => {
   const res = await request(app).get("/admin/actors");
   assert.equal(res.status, 401);
 });
 
-test("rejects requests with a wrong admin key", async () => {
-  const res = await request(app).get("/admin/actors").set("x-admin-key", "wrong");
+test("rejects queue requests with the shared secret alone (no session)", async () => {
+  const res = await request(app).get("/admin/actors").set("x-admin-key", ADMIN_HEADER);
+  assert.equal(res.status, 401);
+});
+
+test("rejects queue requests with a garbage session token", async () => {
+  const res = await request(app).get("/admin/actors").set("Authorization", "Bearer garbage");
   assert.equal(res.status, 401);
 });
 
 test("lists all indexed actors", async () => {
-  const res = await request(app).get("/admin/actors").set("x-admin-key", ADMIN_HEADER);
+  const res = await request(app).get("/admin/actors").set("Authorization", `Bearer ${sessionToken}`);
   assert.equal(res.status, 200);
   assert.equal(res.body.actors.length, 3);
 });
@@ -107,7 +173,7 @@ test("lists all indexed actors", async () => {
 test("filters actors by status", async () => {
   const res = await request(app)
     .get("/admin/actors?status=Pending")
-    .set("x-admin-key", ADMIN_HEADER);
+    .set("Authorization", `Bearer ${sessionToken}`);
   assert.equal(res.status, 200);
   assert.equal(res.body.actors.length, 1);
   assert.equal(res.body.actors[0].address, collegeAddr);
@@ -116,7 +182,7 @@ test("filters actors by status", async () => {
 test("filters actors by role", async () => {
   const res = await request(app)
     .get("/admin/actors?role=Student")
-    .set("x-admin-key", ADMIN_HEADER);
+    .set("Authorization", `Bearer ${sessionToken}`);
   assert.equal(res.status, 200);
   assert.equal(res.body.actors.length, 1);
   assert.equal(res.body.actors[0].college, collegeAddr);
@@ -125,14 +191,14 @@ test("filters actors by role", async () => {
 test("rejects an invalid status filter value", async () => {
   const res = await request(app)
     .get("/admin/actors?status=NotARealStatus")
-    .set("x-admin-key", ADMIN_HEADER);
+    .set("Authorization", `Bearer ${sessionToken}`);
   assert.equal(res.status, 400);
 });
 
 test("returns actor detail by address", async () => {
   const res = await request(app)
     .get(`/admin/actors/${collegeAddr}`)
-    .set("x-admin-key", ADMIN_HEADER);
+    .set("Authorization", `Bearer ${sessionToken}`);
   assert.equal(res.status, 200);
   assert.equal(res.body.actor.status, "Pending");
   assert.equal(res.body.actor.role, "College");
@@ -141,27 +207,27 @@ test("returns actor detail by address", async () => {
 test("returns 404 for an unindexed actor address", async () => {
   const res = await request(app)
     .get(`/admin/actors/${ethers.Wallet.createRandom().address}`)
-    .set("x-admin-key", ADMIN_HEADER);
+    .set("Authorization", `Bearer ${sessionToken}`);
   assert.equal(res.status, 404);
 });
 
 test("approve returns 404 for an actor that was never indexed", async () => {
   const res = await request(app)
     .post(`/admin/actors/${ethers.Wallet.createRandom().address}/approve`)
-    .set("x-admin-key", ADMIN_HEADER);
+    .set("Authorization", `Bearer ${sessionToken}`);
   assert.equal(res.status, 404);
 });
 
 test("approve returns 409 for an actor that is already Active", async () => {
   const res = await request(app)
     .post(`/admin/actors/${companyAddr}/approve`)
-    .set("x-admin-key", ADMIN_HEADER);
+    .set("Authorization", `Bearer ${sessionToken}`);
   assert.equal(res.status, 409);
 });
 
 test("reject returns 409 for an actor that is already Active", async () => {
   const res = await request(app)
     .post(`/admin/actors/${companyAddr}/reject`)
-    .set("x-admin-key", ADMIN_HEADER);
+    .set("Authorization", `Bearer ${sessionToken}`);
   assert.equal(res.status, 409);
 });

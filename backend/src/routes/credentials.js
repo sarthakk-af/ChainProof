@@ -6,6 +6,7 @@ import { credentialIssuerAsSigner, credentialIssuerRead, ROLE, STATUS, CRED_TYPE
 import { findEventInReceipt, syncCredentialIssued } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
 import { withIdempotency, IdempotencyPendingError } from "../idempotency.js";
+import { byteLength, MAX_IPFS_HASH_BYTES } from "../limits.js";
 import { logger } from "../logger.js";
 
 export const credentialsRouter = Router();
@@ -15,7 +16,7 @@ export const credentialsRouter = Router();
 // CIDs and the app's local mock hashes both comfortably fit well under this.
 function validIpfsHash(hash) {
   const trimmed = String(hash || "").trim();
-  return trimmed.length > 0 && trimmed.length <= 200 ? trimmed : null;
+  return trimmed.length > 0 && byteLength(trimmed) <= MAX_IPFS_HASH_BYTES ? trimmed : null;
 }
 
 credentialsRouter.post("/issue", async (req, res) => {
@@ -24,7 +25,7 @@ credentialsRouter.post("/issue", async (req, res) => {
   const ipfsHash = validIpfsHash(req.body?.ipfsHash);
   if (!ethers.isAddress(studentAddress) || !ipfsHash || credTypeNumber === undefined) {
     return res.status(400).json({
-      error: "a valid studentAddress, ipfsHash (1-200 chars), and a valid credType are required",
+      error: `a valid studentAddress, ipfsHash (1-${MAX_IPFS_HASH_BYTES} bytes), and a valid credType are required`,
     });
   }
 
@@ -95,7 +96,7 @@ credentialsRouter.post("/:id/correct", async (req, res) => {
   }
   if (!ethers.isAddress(studentAddress) || !ipfsHash || credTypeNumber === undefined) {
     return res.status(400).json({
-      error: "a valid studentAddress, ipfsHash (1-200 chars), and a valid credType are required",
+      error: `a valid studentAddress, ipfsHash (1-${MAX_IPFS_HASH_BYTES} bytes), and a valid credType are required`,
     });
   }
 

@@ -23,6 +23,7 @@ import StudentList from "./shared/StudentList.jsx";
 import IssueCredentialForm from "./college/IssueCredentialForm.jsx";
 import VisitAnnouncementForm from "./college/VisitAnnouncementForm.jsx";
 import VisitsFeed from "./college/VisitsFeed.jsx";
+import JoinCodePanel from "./college/JoinCodePanel.jsx";
 
 export default function CollegeDashboard() {
   const { user, actor } = useAuth();
@@ -90,6 +91,11 @@ export default function CollegeDashboard() {
 
         {/* ── Rail: actions ── */}
         <div className="rail">
+          <div>
+            <p className="rail-title">Student Invite Code</p>
+            <JoinCodePanel />
+          </div>
+
           <p className="rail-title">Registered Students ({collegeStudents.students.length})</p>
           <div>
             <p style={{ fontSize: "0.8rem", marginBottom: 10 }}>

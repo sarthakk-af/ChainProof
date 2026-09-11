@@ -33,7 +33,7 @@ process.env.WALLET_ENCRYPTION_KEY =
   "236d277256c4ac74368580b5be214189ace6dff26eb4e5efe448dbf1c2a1158c";
 process.env.DB_PATH = TEST_DB_PATH;
 
-const { db, createUser, upsertActor } = await import("../src/db.js");
+const { db, createUser, upsertActor, claimRegistrationNumber } = await import("../src/db.js");
 const { createApp } = await import("../src/app.js");
 const { signToken } = await import("../src/auth.js");
 const { ROLE, STATUS } = await import("../src/chain.js");
@@ -141,7 +141,7 @@ test("POST /me/register rejects an already-registered account", async () => {
   const res = await request(app)
     .post("/me/register")
     .set("Authorization", authHeader(registeredUser))
-    .send({ role: "Company", name: "Anything" });
+    .send({ role: "Company", name: "Anything", registrationNumber: "L12345MH2020PLC123456" });
   assert.equal(res.status, 409);
 });
 
@@ -149,6 +149,43 @@ test("GET /me shows Rejected status for a rejected actor", async () => {
   const res = await request(app).get("/me").set("Authorization", authHeader(rejectedUser));
   assert.equal(res.status, 200);
   assert.equal(res.body.actor.status, "Rejected");
+});
+
+test("POST /me/register rejects a Company without a CIN", async () => {
+  const res = await request(app)
+    .post("/me/register")
+    .set("Authorization", authHeader(plainUser))
+    .send({ role: "Company", name: "No CIN Ltd" });
+  assert.equal(res.status, 400);
+});
+
+test("POST /me/register rejects a malformed CIN", async () => {
+  const res = await request(app)
+    .post("/me/register")
+    .set("Authorization", authHeader(plainUser))
+    .send({ role: "Company", name: "Bad CIN Ltd", registrationNumber: "12345" });
+  assert.equal(res.status, 400);
+});
+
+test("POST /me/register rejects a CIN already claimed by another address", async () => {
+  const taken = "L55555MH2019PLC987654";
+  assert.equal(claimRegistrationNumber(taken, ethers.Wallet.createRandom().address), true);
+
+  const res = await request(app)
+    .post("/me/register")
+    .set("Authorization", authHeader(plainUser))
+    .send({ role: "Company", name: "Different Name Ltd", registrationNumber: taken });
+  assert.equal(res.status, 409);
+  assert.match(res.body.error, /already registered to another account/);
+});
+
+test("claimRegistrationNumber is idempotent for the same address", () => {
+  const cin = "L11111MH2018PLC111111";
+  const address = ethers.Wallet.createRandom().address;
+  assert.equal(claimRegistrationNumber(cin, address), true);
+  // A resubmission under the same identifier must not lock its own owner out.
+  assert.equal(claimRegistrationNumber(cin, address), true);
+  assert.equal(claimRegistrationNumber(cin, ethers.Wallet.createRandom().address), false);
 });
 
 // NOTE: "a Rejected account can resubmit past this 409 check" isn't covered

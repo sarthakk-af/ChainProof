@@ -174,7 +174,13 @@ export default function PublicDashboard() {
                     <div className="progress-bar-fill" style={{ width: `${Math.min(c.percentage, 100)}%` }} />
                   </div>
                   <div className="flex items-center justify-between" style={{ marginTop: 6 }}>
-                    <span className="mono-addr" style={{ fontSize: "0.7rem" }}>{shortAddr(c.address)}</span>
+                    <span
+                      className="mono-addr"
+                      style={{ fontSize: "0.7rem" }}
+                      title={c.registrationNumber ? "Registration / accreditation ID" : c.address}
+                    >
+                      {c.registrationNumber || shortAddr(c.address)}
+                    </span>
                     <span style={{ fontSize: "0.75rem", color: "var(--accent-primary)", display: "inline-flex", alignItems: "center", gap: 4 }}>
                       {c.placed} / {c.registered} placed — view records <ArrowRight size={12} />
                     </span>

@@ -339,6 +339,61 @@ describe("ChainProof — Full Test Suite", function () {
       });
     });
 
+    describe("On-Chain Input Bounds", function () {
+      // The backend enforces these same limits, but anyone can call the
+      // contract directly on a public chain — so these tests exist to prove
+      // the guarantee holds without the backend in front of it.
+      it("should revert with InvalidNameLength for an empty name", async function () {
+        await expect(
+          actorRegistry.connect(stranger).register(Role.Company, "", "", ZERO_ADDRESS)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "InvalidNameLength")
+          .withArgs(0);
+      });
+
+      it("should revert with InvalidNameLength for a name over MAX_NAME_LENGTH", async function () {
+        const tooLong = "A".repeat(101);
+        await expect(
+          actorRegistry.connect(stranger).register(Role.Company, tooLong, "", ZERO_ADDRESS)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "InvalidNameLength")
+          .withArgs(101);
+      });
+
+      it("should accept a name exactly at MAX_NAME_LENGTH", async function () {
+        const exact = "A".repeat(100);
+        await actorRegistry.connect(stranger).register(Role.Company, exact, "", ZERO_ADDRESS);
+        const actor = await actorRegistry.getActor(stranger.address);
+        expect(actor.name).to.equal(exact);
+      });
+
+      it("should measure the name in bytes, not characters (multi-byte scripts)", async function () {
+        // 40 Devanagari characters = 120 UTF-8 bytes, so this is over the
+        // limit even though it's well under 100 "characters" — the backend
+        // measures byte length for exactly this reason.
+        const devanagari = "अ".repeat(40);
+        await expect(
+          actorRegistry.connect(stranger).register(Role.Company, devanagari, "", ZERO_ADDRESS)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "InvalidNameLength")
+          .withArgs(120);
+      });
+
+      it("should revert with MetadataTooLong for metadata over MAX_METADATA_LENGTH", async function () {
+        const tooLong = "x".repeat(201);
+        await expect(
+          actorRegistry.connect(stranger).register(Role.Company, "Valid Name", tooLong, ZERO_ADDRESS)
+        )
+          .to.be.revertedWithCustomError(actorRegistry, "MetadataTooLong")
+          .withArgs(201);
+      });
+
+      it("should expose the bounds as public constants", async function () {
+        expect(await actorRegistry.MAX_NAME_LENGTH()).to.equal(100);
+        expect(await actorRegistry.MAX_METADATA_LENGTH()).to.equal(200);
+      });
+    });
+
     describe("Resubmission After Rejection", function () {
       it("should let a rejected Company resubmit and re-enter Pending", async function () {
         await actorRegistry.connect(company1).register(Role.Company, "Google", "", ZERO_ADDRESS);
@@ -438,6 +493,38 @@ describe("ChainProof — Full Test Suite", function () {
         await expect(
           CredentialIssuer.deploy(ZERO_ADDRESS)
         ).to.be.revertedWithCustomError(CredentialIssuer, "InvalidRegistryAddress");
+      });
+    });
+
+    describe("Credential Issuance — On-Chain Input Bounds", function () {
+      it("should revert with InvalidIpfsHashLength for an empty hash", async function () {
+        await expect(
+          credentialIssuer.connect(college1).issueCredential(student1.address, "", CredentialType.General)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "InvalidIpfsHashLength")
+          .withArgs(0);
+      });
+
+      it("should revert with InvalidIpfsHashLength for a hash over the cap", async function () {
+        await expect(
+          credentialIssuer
+            .connect(college1)
+            .issueCredential(student1.address, "Q".repeat(201), CredentialType.General)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "InvalidIpfsHashLength")
+          .withArgs(201);
+      });
+
+      it("should enforce the same hash bound on issueCorrection", async function () {
+        await credentialIssuer
+          .connect(college1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+
+        await expect(
+          credentialIssuer.connect(college1).issueCorrection(student1.address, 0, "", CredentialType.Rejection)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "InvalidIpfsHashLength")
+          .withArgs(0);
       });
     });
 
@@ -903,6 +990,38 @@ describe("ChainProof — Full Test Suite", function () {
       it("should start with zero nextVisitId and no visits for any college", async function () {
         expect(await placementTracker.nextVisitId()).to.equal(0);
         expect(await placementTracker.getCollegeVisitCount(college1.address)).to.equal(0);
+      });
+    });
+
+    describe("Announcing Visits — On-Chain Input Bounds", function () {
+      it("should revert with InvalidCompanyNameLength for an empty company name", async function () {
+        await expect(
+          placementTracker.connect(college1).announceVisit("", SAMPLE_IPFS_HASH, 1735689600)
+        )
+          .to.be.revertedWithCustomError(placementTracker, "InvalidCompanyNameLength")
+          .withArgs(0);
+      });
+
+      it("should revert with InvalidCompanyNameLength over the cap", async function () {
+        await expect(
+          placementTracker.connect(college1).announceVisit("C".repeat(151), SAMPLE_IPFS_HASH, 1735689600)
+        )
+          .to.be.revertedWithCustomError(placementTracker, "InvalidCompanyNameLength")
+          .withArgs(151);
+      });
+
+      it("should revert with InvalidIpfsHashLength for an empty hash", async function () {
+        await expect(
+          placementTracker.connect(college1).announceVisit("Microsoft India", "", 1735689600)
+        )
+          .to.be.revertedWithCustomError(placementTracker, "InvalidIpfsHashLength")
+          .withArgs(0);
+      });
+
+      it("should revert with InvalidVisitDate for a zero date", async function () {
+        await expect(
+          placementTracker.connect(college1).announceVisit("Microsoft India", SAMPLE_IPFS_HASH, 0)
+        ).to.be.revertedWithCustomError(placementTracker, "InvalidVisitDate");
       });
     });
 

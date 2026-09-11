@@ -1,11 +1,24 @@
 import { Router } from "express";
 import { ethers } from "ethers";
-import { getActor, getUserById, clearRejectionReason } from "../db.js";
+import {
+  getActor,
+  getUserById,
+  clearRejectionReason,
+  setWebsiteReachable,
+  setJoinCode,
+  setRegistrationNumber,
+  claimRegistrationNumber,
+  releaseClaimsForAddress,
+} from "../db.js";
+import { generateJoinCode, normalizeJoinCode } from "../joinCode.js";
 import { getUserSigner } from "../wallets.js";
 import { actorRegistryAsSigner, ROLE, STATUS } from "../chain.js";
 import { syncActor } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
 import { serializeActor } from "../serializers.js";
+import { validateWebsiteFormat, checkWebsiteReachable } from "../websiteCheck.js";
+import { validateRegistrationNumber } from "../registrationNumber.js";
+import { byteLength, MAX_NAME_BYTES, MAX_METADATA_BYTES } from "../limits.js";
 import { logger } from "../logger.js";
 
 export const meRouter = Router();
@@ -20,8 +33,34 @@ meRouter.get("/", (req, res) => {
   });
 });
 
+function requireActiveCollege(req, res) {
+  const actor = getActor(req.user.address);
+  if (!actor || actor.role !== ROLE.College || actor.status !== STATUS.Active) {
+    res.status(403).json({ error: "Only an active College can manage a student invite code." });
+    return null;
+  }
+  return actor;
+}
+
+// The code this college hands to its own students — see /register below for
+// why a Student can't just pick any college off the list without one.
+meRouter.get("/join-code", (req, res) => {
+  const actor = requireActiveCollege(req, res);
+  if (!actor) return;
+  res.json({ joinCode: actor.join_code });
+});
+
+meRouter.post("/join-code/regenerate", (req, res) => {
+  const actor = requireActiveCollege(req, res);
+  if (!actor) return;
+  const joinCode = generateJoinCode();
+  setJoinCode(req.user.address, joinCode);
+  logger.info("join_code_regenerated", { address: req.user.address });
+  res.json({ joinCode });
+});
+
 meRouter.post("/register", async (req, res) => {
-  const { role, name, collegeAddress, website } = req.body || {};
+  const { role, name, collegeAddress, website, joinCode, registrationNumber } = req.body || {};
   const roleNumber = ROLE[role];
   if (roleNumber === undefined || roleNumber === ROLE.None) {
     return res.status(400).json({
@@ -32,12 +71,47 @@ meRouter.post("/register", async (req, res) => {
     return res.status(400).json({ error: "name is required" });
   }
   // This gets written permanently on-chain — capped so a careless or hostile
-  // paste can't bloat every future read of this actor's record forever.
-  if (name.trim().length > 100) {
-    return res.status(400).json({ error: "name must be 100 characters or fewer" });
+  // paste can't bloat every future read of this actor's record forever. The
+  // contract enforces the same bound (see limits.js for why it's measured in
+  // bytes); this check just gets there first with a readable message.
+  if (byteLength(name.trim()) > MAX_NAME_BYTES) {
+    return res.status(400).json({ error: `name must be ${MAX_NAME_BYTES} bytes or fewer` });
   }
-  if (roleNumber === ROLE.Student && !ethers.isAddress(collegeAddress)) {
-    return res.status(400).json({ error: "A valid collegeAddress is required for Student registration" });
+  if (roleNumber === ROLE.Student) {
+    if (!ethers.isAddress(collegeAddress)) {
+      return res.status(400).json({ error: "A valid collegeAddress is required for Student registration" });
+    }
+    // Picking a name off a public list proves nothing on its own — this is
+    // what actually ties a Student's registration to some real contact with
+    // that institution, since only the college itself can hand this out.
+    const targetCollege = getActor(collegeAddress);
+    if (!targetCollege || targetCollege.role !== ROLE.College || targetCollege.status !== STATUS.Active) {
+      return res.status(400).json({ error: "That college isn't currently verified and active." });
+    }
+    if (!joinCode || normalizeJoinCode(joinCode) !== normalizeJoinCode(targetCollege.join_code)) {
+      return res.status(400).json({
+        error: "That invite code doesn't match this college — ask them for the correct one.",
+      });
+    }
+  }
+  const websiteCheck = validateWebsiteFormat(website);
+  if (websiteCheck.error) {
+    return res.status(400).json({ error: websiteCheck.error });
+  }
+  // Reject rather than silently truncate — cutting a URL mid-string would
+  // leave a broken link on-chain forever instead of just a shorter one.
+  if (byteLength(websiteCheck.value) > MAX_METADATA_BYTES) {
+    return res.status(400).json({ error: `Website URL must be ${MAX_METADATA_BYTES} bytes or fewer` });
+  }
+  const normalizedWebsite = websiteCheck.value;
+
+  let normalizedRegistrationNumber = "";
+  if (roleNumber === ROLE.College || roleNumber === ROLE.Company) {
+    const regCheck = validateRegistrationNumber(role, registrationNumber);
+    if (regCheck.error) {
+      return res.status(400).json({ error: regCheck.error });
+    }
+    normalizedRegistrationNumber = regCheck.value;
   }
 
   // A Rejected actor may resubmit — the contract itself allows this (see
@@ -48,6 +122,22 @@ meRouter.post("/register", async (req, res) => {
     return res.status(409).json({ error: "This account is already registered on-chain" });
   }
 
+  // Claim the real-world identifier *before* writing to the chain, so a
+  // duplicate is refused while nothing permanent has happened yet. A
+  // resubmission by this same address is free to change its number, so any
+  // claim it previously held is dropped first.
+  if (normalizedRegistrationNumber) {
+    releaseClaimsForAddress(req.user.address);
+    if (!claimRegistrationNumber(normalizedRegistrationNumber, req.user.address)) {
+      return res.status(409).json({
+        error:
+          role === "Company"
+            ? "That CIN is already registered to another account. A company can only be registered once."
+            : "That registration ID is already registered to another account.",
+      });
+    }
+  }
+
   try {
     await withWalletLock(req.user.address, async (nonce) => {
       const signer = getUserSigner(req.user.id);
@@ -55,7 +145,7 @@ meRouter.post("/register", async (req, res) => {
       const tx = await registry.register(
         roleNumber,
         name.trim(),
-        typeof website === "string" ? website.trim().slice(0, 200) : "",
+        normalizedWebsite,
         roleNumber === ROLE.Student ? collegeAddress : "0x0000000000000000000000000000000000000000",
         { nonce }
       );
@@ -65,9 +155,30 @@ meRouter.post("/register", async (req, res) => {
       // past rejection belonged to that earlier attempt, not this one.
       clearRejectionReason(req.user.address);
     });
+    if (normalizedRegistrationNumber) {
+      setRegistrationNumber(req.user.address, normalizedRegistrationNumber);
+    }
     logger.info("actor_registered", { address: req.user.address, role, name: name.trim() });
     res.status(201).json({ actor: serializeActor(getActor(req.user.address)) });
+
+    // Fire-and-forget: a live HTTP probe can take a few seconds, and the
+    // student/college/company submitting the form shouldn't have to wait on
+    // it — this is evidence for the *admin* queue, not a gate on the
+    // registration itself. Runs after the response is already sent.
+    if (normalizedWebsite) {
+      checkWebsiteReachable(normalizedWebsite)
+        .then((reachable) => setWebsiteReachable(req.user.address, reachable))
+        .catch(() => {});
+    } else {
+      setWebsiteReachable(req.user.address, null);
+    }
   } catch (err) {
+    // Nothing made it on-chain, so don't leave this identifier locked up —
+    // otherwise a failed attempt would permanently block the real owner from
+    // ever registering under their own CIN.
+    if (normalizedRegistrationNumber) {
+      releaseClaimsForAddress(req.user.address);
+    }
     const reason = err.reason || err.shortMessage || err.message;
     logger.error("registration_failed", { address: req.user.address, role, reason });
     res.status(400).json({ error: `On-chain registration failed: ${reason}` });

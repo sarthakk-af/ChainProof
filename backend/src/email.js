@@ -45,3 +45,14 @@ export function buildPasswordResetEmail(token) {
     `,
   };
 }
+
+export function buildOtpEmail(otp) {
+  return {
+    subject: `${otp} is your ChainProof verification code`,
+    html: `
+      <p>Use this code to verify your ChainProof account:</p>
+      <p style="font-size:28px;font-weight:700;letter-spacing:6px;">${otp}</p>
+      <p>This code expires in 10 minutes. If you didn't try to sign up, you can ignore this email.</p>
+    `,
+  };
+}

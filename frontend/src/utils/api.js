@@ -28,7 +28,12 @@ async function request(path, { method = "GET", body, headers = {} } = {}) {
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(data.error || `Request failed: ${res.status}`);
+    const err = new Error(data.error || `Request failed: ${res.status}`);
+    // Some routes (e.g. /auth/login when the account isn't verified yet)
+    // carry extra fields on an error response that the caller needs to act
+    // on — attach the whole body rather than just the message string.
+    Object.assign(err, data);
+    throw err;
   }
   return data;
 }

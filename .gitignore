@@ -6,6 +6,9 @@
 .env.local
 .env.production
 
+# Raw private keys generated for testnet/deployment use (NEVER commit these)
+*.key
+
 # Hardhat build artifacts & cache
 cache/
 artifacts/

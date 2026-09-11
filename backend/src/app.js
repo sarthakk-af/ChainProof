@@ -10,7 +10,6 @@ import { studentsRouter } from "./routes/students.js";
 import { publicRouter } from "./routes/public.js";
 import { credentialsRouter } from "./routes/credentials.js";
 import { visitsRouter } from "./routes/visits.js";
-import { adminAuth } from "./middleware/adminAuth.js";
 import { userAuth } from "./middleware/userAuth.js";
 
 /**
@@ -53,8 +52,11 @@ export function createApp() {
   app.use("/credentials", userAuth, credentialsRouter);
   app.use("/visits", userAuth, visitsRouter);
 
-  // Platform-admin verification queue — separate shared-secret auth (Phase 2).
-  app.use("/admin", adminAuth, adminRouter);
+  // Platform-admin verification queue — auth is applied per-route inside
+  // adminRouter itself: the shared secret only bootstraps new admin
+  // accounts, while the actual queue actions require a per-admin session
+  // (see middleware/adminSessionAuth.js and routes/admin.js).
+  app.use("/admin", adminRouter);
 
   // Safety net: catches anything a route's own try/catch missed, so one bad
   // request returns a clean 500 instead of taking the whole process down.

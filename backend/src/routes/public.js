@@ -42,6 +42,10 @@ publicRouter.get("/colleges", (_req, res) => {
     return {
       address: c.address,
       name: c.name,
+      // Two colleges can share a display name — this is the identifier that
+      // tells a visitor which one they're actually looking at, and it's meant
+      // to be looked up independently anyway.
+      registrationNumber: c.registration_number || null,
       registered,
       placed,
       percentage: pct(placed, registered),

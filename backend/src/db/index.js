@@ -9,17 +9,28 @@ export {
   getDeploymentFingerprint,
   resetMirrorForNewDeployment,
 } from "./connection.js";
-export { upsertActor, updateActorStatus, getActor, listActors, clearRejectionReason } from "./actors.js";
+export {
+  upsertActor,
+  updateActorStatus,
+  getActor,
+  listActors,
+  clearRejectionReason,
+  setWebsiteReachable,
+  setJoinCode,
+  setRegistrationNumber,
+} from "./actors.js";
 export {
   createUser,
   getUserByEmail,
   getUserById,
   setPasswordHash,
+  setEmailVerified,
   bumpTokenVersion,
   createPasswordReset,
   getPasswordReset,
   invalidateAllPasswordResetsForUser,
 } from "./users.js";
+export { setEmailOtp, getEmailOtp, incrementOtpAttempts, deleteEmailOtp } from "./emailOtps.js";
 export {
   upsertCredential,
   markCredentialSuperseded,
@@ -29,3 +40,10 @@ export {
 export { upsertVisit, getVisitsForCollege, getRecentVisits } from "./visits.js";
 export { getPerCollegePlacementStats, countPlacedStudentsGlobal, getCollegeRecords } from "./publicStats.js";
 export { logAdminAction, listAdminActions } from "./adminActions.js";
+export { createAdmin, getAdminByUsername, getAdminById, listAdmins } from "./admins.js";
+export {
+  getRegistrationNumberClaim,
+  claimRegistrationNumber,
+  releaseClaimsForAddress,
+  findDuplicateNames,
+} from "./registrationClaims.js";
