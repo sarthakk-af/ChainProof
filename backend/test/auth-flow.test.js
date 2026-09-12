@@ -148,6 +148,25 @@ test("a full reset cycle changes the password and invalidates old tokens", async
   assert.equal(reused.status, 400);
 });
 
+test("signup refuses non-string credentials instead of crashing", async () => {
+  // The live hostile-input suite can't prove this: signup is rate-limited per
+  // IP, so by the time it reaches these the limiter answers with a 429 and the
+  // validation is never exercised. Covered here, where nothing is in the way.
+  const wrongTypes = [12345, null, true, ["a"], { evil: true }, [["deep"]], {}];
+  for (const value of wrongTypes) {
+    const res = await request(app).post("/auth/signup").send({ email: value, password: value });
+    assert.equal(res.status, 400, `expected 400 for ${JSON.stringify(value)}, got ${res.status}`);
+    assert.ok(res.body.error, "a refusal must say why");
+  }
+});
+
+test("login refuses non-string credentials", async () => {
+  for (const value of [12345, null, true, ["a"], { evil: true }]) {
+    const res = await request(app).post("/auth/login").send({ email: value, password: value });
+    assert.ok(res.status >= 400 && res.status < 500, `expected a client error, got ${res.status}`);
+  }
+});
+
 test("completing a reset also verifies the email", async () => {
   // Someone who forgets their password before ever entering the OTP has still
   // proved they control the inbox — by opening a link sent to it. Leaving them

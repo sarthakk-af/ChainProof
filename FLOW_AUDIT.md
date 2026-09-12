@@ -314,6 +314,110 @@ an on-chain failure rather than "someone got there first".
 Sections below are in the order the work was done, worst-known-first, not in
 journey order.
 
+### Secrets and deployment credentials (one real bug)
+
+Prompted by the code being pushed to GitHub — the first time any of this left
+the machine.
+
+**Nothing leaked.** No `.env` or `.key` file is tracked, in the working tree or
+in any commit in the repository's history. The Brevo API key appears zero times
+across all history. `JWT_SECRET` and `WALLET_ENCRYPTION_KEY` in the real `.env`
+are distinct from the values hard-coded in the test files — worth checking,
+since sharing them would have published the key that encrypts every custodial
+wallet. The `0xac0974…` key that does appear in test files is Hardhat's
+published account #0: public by design, and useless anywhere else.
+
+**But nothing stopped a real network being started with development keys.**
+`VERIFIER_PRIVATE_KEY` and `TREASURY_PRIVATE_KEY` are Hardhat defaults, which is
+correct locally and catastrophic anywhere else. The verifier decides which
+colleges and companies are legitimate; the treasury funds every user's wallet.
+Both keys are derived from a mnemonic printed in Hardhat's own documentation,
+so anyone in the world holds them. Pointing `RPC_URL` at Amoy with the current
+`.env` would have started cleanly, looked entirely normal, and handed control of
+the platform to strangers — and the deployment step is precisely what is still
+pending.
+
+`config.js` now refuses to start against a non-local RPC when it finds a
+well-known development key, a weak or placeholder `JWT_SECRET`, or a malformed
+`WALLET_ENCRYPTION_KEY`, and prints the commands to generate replacements. It
+derives all 20 default Hardhat accounts rather than checking only the first, so
+account #5 is no safer than account #0.
+
+Verified both directions, because a false positive here would be equally
+damaging — it would teach you to switch the check off: the real `.env` against
+Amoy is refused with a specific reason per problem, freshly generated
+credentials against Amoy are accepted, and local development with Hardhat keys
+is untouched. Seven tests in `test/config-guard.test.js`, run in child
+processes since the check happens at import time.
+
+Two things checked and found already correct: the frontend contains no
+`dangerouslySetInnerHTML`, `innerHTML`, `eval` or `new Function`, so React
+escapes every rendered value and the stored `<script>` payloads from the
+hostile-input pass display as text; and CORS is pinned to a single origin
+rather than `*`, so a page on another domain cannot read an authenticated
+response.
+
+### Hostile input — a deliberate attack pass (one real bug)
+
+The flow sections above all ask "who is allowed to do what?". This one asks a
+blunter question: what happens when the input is garbage, forged, malformed,
+the wrong type, or aimed at a URL that shouldn't answer. 145 checks, in
+`backend/test/attacks/hostile-input.mjs`.
+
+The rule for reading it: **a 4xx is a pass** — the server understood and
+refused. A 500, a hang or a crash is a failure, even on absurd input, because
+an unhandled exception is where real vulnerabilities start. The server's health
+is re-checked after every section.
+
+**Malformed JSON returned HTTP 500.** `{"broken`, `not json`, a bare `42`, a
+lone quote, `NaN` — all answered "Internal server error", and a 2MB body did
+too. Three things wrong with that: a *client's* mistake was reported as a
+*server* fault, so monitoring can't tell a genuine outage from someone posting
+junk; every such request wrote a full stack trace to the log, meaning anyone
+could flood it at will just by sending `{`; and a body that exceeded the size
+limit never got the 413 that would tell a caller why. The error handler now
+recognises body-parser failures (`entity.parse.failed` → 400,
+`entity.too.large` → 413, `encoding.unsupported` → 415), logs them at warn with
+no stack, and keeps the 500-with-stack path for faults that really are ours.
+
+Everything else held:
+
+- **Forged tokens.** `alg=none`, a token signed with an invented secret, a real
+  token with one signature character flipped, a payload edited to point at
+  another user, an expired token, and eight kinds of junk — all 401. Odd
+  `Authorization` header shapes too.
+- **URLs that shouldn't answer.** Every guarded route refused without a session.
+  Nine path-traversal and encoding variants (`/public/../admin/actors`,
+  `..%2f`, `%2e%2e`, a null byte, doubled slashes, upper-case `/ADMIN/`) reached
+  nothing. `.env`, `package.json`, `src/config.js`, the SQLite file and
+  `node_modules` are not served.
+- **Injection.** SQL, XSS, template (`{{7*7}}`), Log4Shell-style
+  (`${jndi:...}`), path traversal, null bytes and shell metacharacters, in
+  registration fields, the login form and URL parameters — all rejected by
+  validation, with the users table intact afterwards. Queries are parameterised
+  throughout, so the SQL payloads were only ever going to be stored as text.
+- **Type confusion.** Numbers, `null`, booleans, arrays, objects and nested
+  arrays where strings belong — 400 every time, no crash. Numeric extremes for
+  a timestamp (`NaN`, `Infinity`, `1e308`, `MAX_SAFE_INTEGER + 1`, negatives,
+  fractions) all refused.
+- **Prototype pollution.** `__proto__`, `constructor.prototype`, and a raw
+  `__proto__` body — `Object.prototype` untouched.
+- **Unicode and control characters.** Null bytes, CRLF header-injection
+  attempts, right-to-left override, zero-width joiners, 200 combining marks,
+  emoji, and Devanagari over the byte limit — all handled, none 500.
+- **No internal leakage.** No stack trace, file path, SQLite error or bcrypt
+  hash appears in any error response.
+
+Two notes on the method, because they affected whether the results meant
+anything. Early runs showed dozens of `status 0` results that looked like
+dropped connections; they were the harness's fault — `fetch` refuses a body on
+a GET, so those requests never left the client. And many checks initially
+"passed" with a **429**: the rate limiter answered before the validation under
+test ever ran, which is a refusal but not evidence. Both were fixed — a fresh
+account per payload so the per-user limiter can't mask a result, and signup's
+type handling moved to `test/auth-flow.test.js` where nothing is in the way,
+rather than left as a check that proved nothing.
+
 ### Flow 6 — the forged proof (fixed)
 
 **This was the most serious bug in the project.** The student dashboard's

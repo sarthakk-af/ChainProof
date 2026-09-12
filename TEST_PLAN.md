@@ -669,22 +669,25 @@ Run these before any demo — they take under a minute combined:
 
 ```
 cd D:\Blockchain          && npx hardhat test   # 100 contract tests
-cd D:\Blockchain\backend  && npm test           # 93 API tests
+cd D:\Blockchain\backend  && npm test           # 102 API tests
 cd D:\Blockchain\frontend && npm test           # 7 proof-integrity tests
 cd D:\Blockchain\frontend && npm run build      # must build clean
 ```
 
-Then, with the stack running, the six live attack suites — the ones that
+Then, with the stack running, the seven live attack suites — the ones that
 actually try to break things rather than confirm they work:
 
 ```
 cd D:\Blockchain\backend  && npm run test:attacks
 ```
 
-That replays every attack from the flow audit: forging a proof, a college
-declaring its own students placed, reading the student roster without
-logging in, racing two approvals, reusing an idempotency key. Each prints
-PASS or FAIL per check. See `backend/test/attacks/README.md`.
+That replays every attack from the flow audit — forging a proof, a college
+declaring its own students placed, reading the student roster without logging
+in, racing two approvals, reusing an idempotency key — plus a hostile-input
+pass: forged `alg=none` tokens, SQL and XSS payloads, path traversal at the
+admin routes, prototype pollution, malformed and oversized bodies. Roughly 280
+checks in total, each printing PASS or FAIL. See
+`backend/test/attacks/README.md`.
 
 ---
 

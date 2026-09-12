@@ -24,6 +24,7 @@ const SUITES = [
   ["flow4-attack.mjs", "Flow 4 — a college's placement cell"],
   ["flow5-attack.mjs", "Flow 5 — a company hiring"],
   ["flow7-attack.mjs", "Flow 7 — the public surface"],
+  ["hostile-input.mjs", "Hostile input — forged tokens, injection, garbage, bad URLs"],
 ];
 
 function run(file) {

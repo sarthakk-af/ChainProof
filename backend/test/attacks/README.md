@@ -25,6 +25,7 @@ someone with the full stack running, which defeats the point of it.
 | `flow4-attack.mjs` | A college's placement cell — join codes, issuance boundaries, self-issued placements |
 | `flow5-attack.mjs` | A company hiring — idempotency, correction authority, the two-offer case |
 | `flow7-attack.mjs` | The public surface — what a stranger can and cannot read |
+| `hostile-input.mjs` | Forged tokens, injection, garbage types, malformed bodies, URLs that shouldn't answer |
 
 Each prints `PASS` / `FAIL` per check and exits non-zero if anything fails.
 Findings and reasoning behind each check are in `FLOW_AUDIT.md` §5.
@@ -37,6 +38,11 @@ Findings and reasoning behind each check are in `FLOW_AUDIT.md` §5.
 
 The runner checks the backend is reachable first and tells you what to start
 if it isn't.
+
+**Signup is rate-limited per IP** (10 per 15 minutes), and the full journey
+suite needs three real signups. If you have been hammering `/auth/signup`,
+restart the backend to clear the in-memory counter before running. The journey
+suite says so explicitly rather than failing in a confusing way.
 
 ## A note on what they leave behind
 

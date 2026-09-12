@@ -42,6 +42,18 @@ async function call(method, path, { token, body } = {}) {
 /** Sign up, verify the email through the real OTP endpoint, and log in. */
 async function onboard(label, email) {
   const signup = await call("POST", "/auth/signup", { body: { email, password: PW } });
+  if (signup.status === 429) {
+    console.error(
+      `
+  Signup is rate-limited (10 per 15 minutes per IP) and the budget is spent.
+` +
+        `  This journey needs three real signups. Wait ~15 minutes and re-run, or
+` +
+        `  restart the backend to clear the in-memory counter.
+`
+    );
+    process.exit(1);
+  }
   check(`${label}: signup accepted`, signup.status === 201 || signup.status === 200, `status ${signup.status}`);
   check(`${label}: signup returns no session token`, !signup.data?.token);
 

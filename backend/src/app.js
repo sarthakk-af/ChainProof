@@ -61,16 +61,40 @@ export function createApp() {
   app.use("/admin", adminRouter);
 
   // Safety net: catches anything a route's own try/catch missed, so one bad
-  // request returns a clean 500 instead of taking the whole process down.
+  // request returns a clean error instead of taking the whole process down.
   // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, _next) => {
+    if (res.headersSent) return;
+
+    // express.json() throws for a body it can't parse or one that's too big.
+    // Those are the *client's* mistake, and reporting them as 500s did real
+    // damage: monitoring couldn't tell a genuine outage from someone posting
+    // junk, and every malformed request wrote a full stack trace to the log —
+    // so anyone could flood it at will, just by sending "{".
+    const clientBodyErrors = {
+      "entity.parse.failed": [400, "Malformed JSON in request body."],
+      "entity.too.large": [413, "Request body is too large."],
+      "encoding.unsupported": [415, "Unsupported content encoding."],
+      "request.aborted": [400, "Request aborted."],
+    };
+    const known = clientBodyErrors[err.type];
+    if (known || err instanceof SyntaxError) {
+      const [status, message] = known || [400, "Malformed JSON in request body."];
+      logger.warn("bad_request_body", {
+        method: req.method,
+        path: req.originalUrl,
+        type: err.type || "syntax_error",
+      });
+      return res.status(status).json({ error: message });
+    }
+
+    // Anything else really is ours — keep the stack.
     logger.error("unhandled_route_error", {
       method: req.method,
       path: req.originalUrl,
       message: err.message,
       stack: err.stack,
     });
-    if (res.headersSent) return;
     res.status(500).json({ error: "Internal server error" });
   });
 
