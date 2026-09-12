@@ -148,6 +148,59 @@ test("a full reset cycle changes the password and invalidates old tokens", async
   assert.equal(reused.status, 400);
 });
 
+test("completing a reset also verifies the email", async () => {
+  // Someone who forgets their password before ever entering the OTP has still
+  // proved they control the inbox — by opening a link sent to it. Leaving them
+  // unverified strands them: the password works, login still refuses, and the
+  // original code has long since expired.
+  const { generateResetToken, hashPassword } = await import("../src/auth.js");
+  const { createPasswordReset } = await import("../src/db.js");
+
+  const unverified = createUser({
+    email: "neververified@example.com",
+    passwordHash: await hashPassword("originalpassword"),
+    walletAddress: ethers.Wallet.createRandom().address,
+    encryptedPrivateKey: "iv:tag:ct",
+  });
+  assert.equal(getUserByEmail("neververified@example.com").email_verified, 0);
+
+  const { token, tokenHash, expiresAt } = generateResetToken();
+  createPasswordReset({ tokenHash, userId: unverified.id, expiresAt });
+
+  const res = await request(app)
+    .post("/auth/reset-password")
+    .send({ token, newPassword: "brandnewpassword1" });
+  assert.equal(res.status, 200);
+
+  assert.equal(getUserByEmail("neververified@example.com").email_verified, 1);
+});
+
+test("an expired reset token is refused", async () => {
+  const { generateResetToken, hashPassword } = await import("../src/auth.js");
+  const { createPasswordReset } = await import("../src/db.js");
+
+  const staleUser = createUser({
+    email: "staletoken@example.com",
+    passwordHash: await hashPassword("originalpassword"),
+    walletAddress: ethers.Wallet.createRandom().address,
+    encryptedPrivateKey: "iv:tag:ct",
+  });
+
+  const { token, tokenHash } = generateResetToken();
+  // Backdate it past its lifetime rather than waiting an hour.
+  createPasswordReset({ tokenHash, userId: staleUser.id, expiresAt: Date.now() - 1000 });
+
+  const res = await request(app)
+    .post("/auth/reset-password")
+    .send({ token, newPassword: "brandnewpassword1" });
+  assert.equal(res.status, 400);
+  assert.match(res.body.error, /invalid or has expired/i);
+
+  // And the password must be untouched.
+  const unchanged = getUserByEmail("staletoken@example.com");
+  assert.equal(await verifyPassword("originalpassword", unchanged.password_hash), true);
+});
+
 test("resetting a password invalidates every other outstanding reset token for that user", async () => {
   // Simulates clicking "forgot password" twice (e.g. the first email was
   // slow) — using the second link shouldn't leave the first one still valid.

@@ -14,6 +14,17 @@ const CRED_TYPES = [
   { value: "Rejection", label: "Rejection" },
 ];
 
+/**
+ * An Offer is the record that marks a student placed, and placement figures
+ * are what colleges are held accountable for on the public dashboard — so only
+ * the employer can create one. Enforced in CredentialIssuer.sol and again in
+ * the backend; filtered here so a college is never offered a choice that will
+ * be refused. See FLOW_AUDIT.md, Flow 4.
+ */
+function typesFor(role) {
+  return role === "Company" ? CRED_TYPES : CRED_TYPES.filter((t) => t.value !== "Offer");
+}
+
 export default function IssueCredentialForm({ onIssued, presetAddress }) {
   const { user, actor } = useAuth();
 
@@ -113,10 +124,17 @@ export default function IssueCredentialForm({ onIssued, presetAddress }) {
       <div className="form-group">
         <label htmlFor="col-cred-type">Credential Type</label>
         <select id="col-cred-type" value={credType} onChange={(e) => { setCredType(e.target.value); setConfirming(false); }}>
-          {CRED_TYPES.map((t) => (
+          {typesFor(actor?.role).map((t) => (
             <option key={t.value} value={t.value}>{t.label}</option>
           ))}
         </select>
+        {actor?.role !== "Company" && (
+          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4 }}>
+            Offer letters are issued by the company making the offer — that's what keeps
+            your placement percentage something you can point to rather than something
+            you assert.
+          </p>
+        )}
       </div>
 
       <div className="form-group">

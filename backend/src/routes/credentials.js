@@ -5,27 +5,30 @@ import { getUserSigner } from "../wallets.js";
 import { credentialIssuerAsSigner, credentialIssuerRead, ROLE, STATUS, CRED_TYPE } from "../chain.js";
 import { findEventInReceipt, syncCredentialIssued } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
-import { withIdempotency, IdempotencyPendingError } from "../idempotency.js";
+import {
+  withIdempotency,
+  fingerprintPayload,
+  IdempotencyPendingError,
+  IdempotencyKeyConflictError,
+} from "../idempotency.js";
 import { byteLength, MAX_IPFS_HASH_BYTES } from "../limits.js";
+import { validateIpfsHash } from "../ipfsHash.js";
 import { logger } from "../logger.js";
+import { issueLimiter } from "../middleware/chainWriteLimiter.js";
 
 export const credentialsRouter = Router();
 
-// Written permanently on-chain either way — capped so a careless or hostile
-// paste can't bloat every future read of this credential forever. Real IPFS
-// CIDs and the app's local mock hashes both comfortably fit well under this.
-function validIpfsHash(hash) {
-  const trimmed = String(hash || "").trim();
-  return trimmed.length > 0 && byteLength(trimmed) <= MAX_IPFS_HASH_BYTES ? trimmed : null;
-}
-
-credentialsRouter.post("/issue", async (req, res) => {
+credentialsRouter.post("/issue", issueLimiter, async (req, res) => {
   const { studentAddress, credType, idempotencyKey } = req.body || {};
   const credTypeNumber = CRED_TYPE[credType];
-  const ipfsHash = validIpfsHash(req.body?.ipfsHash);
-  if (!ethers.isAddress(studentAddress) || !ipfsHash || credTypeNumber === undefined) {
+  const hashCheck = validateIpfsHash(req.body?.ipfsHash);
+  if (hashCheck.error) {
+    return res.status(400).json({ error: hashCheck.error });
+  }
+  const ipfsHash = hashCheck.value;
+  if (!ethers.isAddress(studentAddress) || credTypeNumber === undefined) {
     return res.status(400).json({
-      error: `a valid studentAddress, ipfsHash (1-${MAX_IPFS_HASH_BYTES} bytes), and a valid credType are required`,
+      error: "a valid studentAddress and credType are required",
     });
   }
 
@@ -50,8 +53,37 @@ credentialsRouter.post("/issue", async (req, res) => {
     });
   }
 
+  // A College's authority extends to its own students and no further. A
+  // Company's doesn't work that way — it recruits across institutions, so it
+  // may issue to any registered student.
+  //
+  // Without this, any approved college could write records onto students
+  // enrolled elsewhere: vouching for people it has no relationship with, and
+  // moving another institution's public placement figures, which are grouped
+  // by the student's own college.
+  if (
+    caller.role === ROLE.College &&
+    (recipient.college || "").toLowerCase() !== req.user.address.toLowerCase()
+  ) {
+    return res.status(403).json({
+      error: "A college can only issue credentials to its own students.",
+    });
+  }
+
+  // Only the employer can truthfully say it made an offer. The contract
+  // enforces this too (OnlyCompanyCanIssueOffer) — this check exists so the
+  // refusal arrives as a sentence rather than a decoded revert.
+  if (credTypeNumber === CRED_TYPE.Offer && caller.role !== ROLE.Company) {
+    return res.status(403).json({
+      error:
+        "Only a company can issue an Offer — it's the record that marks a student placed. " +
+        "A college can issue General, Shortlist, Interview or Rejection credentials.",
+    });
+  }
+
   try {
-    const receipt = await withIdempotency(req.user.id, idempotencyKey, () =>
+    const fingerprint = fingerprintPayload(["issue", studentAddress, credTypeNumber, ipfsHash]);
+    const receipt = await withIdempotency(req.user.id, idempotencyKey, fingerprint, () =>
       withWalletLock(req.user.address, async (nonce) => {
         const signer = getUserSigner(req.user.id);
         const issuer = credentialIssuerAsSigner(signer);
@@ -73,7 +105,7 @@ credentialsRouter.post("/issue", async (req, res) => {
     });
     res.status(201).json({ txHash: receipt.hash });
   } catch (err) {
-    if (err instanceof IdempotencyPendingError) {
+    if (err instanceof IdempotencyPendingError || err instanceof IdempotencyKeyConflictError) {
       return res.status(409).json({ error: err.message });
     }
     const reason = err.reason || err.shortMessage || err.message;
@@ -86,17 +118,21 @@ credentialsRouter.post("/issue", async (req, res) => {
 // only flagged superseded, with this new row explicitly linked to it. See
 // CredentialIssuer.sol's issueCorrection for why (a rescinded offer, a typo'd
 // grade — the history stays visible instead of quietly disappearing).
-credentialsRouter.post("/:id/correct", async (req, res) => {
+credentialsRouter.post("/:id/correct", issueLimiter, async (req, res) => {
   const originalId = Number(req.params.id);
   const { studentAddress, credType, idempotencyKey } = req.body || {};
   const credTypeNumber = CRED_TYPE[credType];
-  const ipfsHash = validIpfsHash(req.body?.ipfsHash);
   if (!Number.isInteger(originalId) || originalId < 0) {
     return res.status(400).json({ error: "Invalid credential id" });
   }
-  if (!ethers.isAddress(studentAddress) || !ipfsHash || credTypeNumber === undefined) {
+  const hashCheck = validateIpfsHash(req.body?.ipfsHash);
+  if (hashCheck.error) {
+    return res.status(400).json({ error: hashCheck.error });
+  }
+  const ipfsHash = hashCheck.value;
+  if (!ethers.isAddress(studentAddress) || credTypeNumber === undefined) {
     return res.status(400).json({
-      error: `a valid studentAddress, ipfsHash (1-${MAX_IPFS_HASH_BYTES} bytes), and a valid credType are required`,
+      error: "a valid studentAddress and credType are required",
     });
   }
 
@@ -121,15 +157,32 @@ credentialsRouter.post("/:id/correct", async (req, res) => {
   if (original.issuer_address.toLowerCase() !== req.user.address.toLowerCase()) {
     return res.status(403).json({ error: "Only the original issuer can correct this credential." });
   }
+  // Correcting something *into* an Offer would otherwise route around the rule
+  // above — the contract blocks it either way.
+  if (credTypeNumber === CRED_TYPE.Offer && caller.role !== ROLE.Company) {
+    return res.status(403).json({
+      error: "Only a company can issue an Offer, including by correction.",
+    });
+  }
   if (original.superseded) {
     return res.status(409).json({
       error: "This credential has already been corrected once — correct the newer version instead.",
     });
   }
 
+  // Sentinel for "someone corrected this while we were queued" — thrown from
+  // inside the lock and mapped to a 409 below.
+  const ALREADY_CORRECTED = Symbol("already-corrected");
+
   try {
-    const receipt = await withIdempotency(req.user.id, idempotencyKey, () =>
+    const fingerprint = fingerprintPayload(["correct", originalId, studentAddress, credTypeNumber, ipfsHash]);
+    const receipt = await withIdempotency(req.user.id, idempotencyKey, fingerprint, () =>
       withWalletLock(req.user.address, async (nonce) => {
+        // Re-read under the lock: the superseded check above runs before
+        // queuing, so two corrections fired together both pass it and the
+        // loser pays gas to revert with an error ethers cannot even name.
+        const latest = getCredentialsForStudent(studentAddress).find((c) => c.id === originalId);
+        if (!latest || latest.superseded) throw ALREADY_CORRECTED;
         const signer = getUserSigner(req.user.id);
         const issuer = credentialIssuerAsSigner(signer);
         const tx = await issuer.issueCorrection(studentAddress, originalId, ipfsHash, credTypeNumber, { nonce });
@@ -148,7 +201,12 @@ credentialsRouter.post("/:id/correct", async (req, res) => {
     });
     res.status(201).json({ txHash: receipt.hash });
   } catch (err) {
-    if (err instanceof IdempotencyPendingError) {
+    if (err === ALREADY_CORRECTED) {
+      return res.status(409).json({
+        error: "This credential has already been corrected once — correct the newer version instead.",
+      });
+    }
+    if (err instanceof IdempotencyPendingError || err instanceof IdempotencyKeyConflictError) {
       return res.status(409).json({ error: err.message });
     }
     const reason = err.reason || err.shortMessage || err.message;

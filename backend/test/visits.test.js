@@ -114,7 +114,7 @@ test("rejects a still-Pending College", async () => {
   const res = await request(app)
     .post("/visits/announce")
     .set("Authorization", authHeader(pendingCollegeUser))
-    .send({ companyName: "Microsoft", ipfsHash: "Qm1", visitDate: 1735689600 });
+    .send({ companyName: "Microsoft", ipfsHash: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", visitDate: 1735689600 });
   assert.equal(res.status, 403);
 });
 
@@ -122,6 +122,6 @@ test("rejects a Company trying to announce a visit", async () => {
   const res = await request(app)
     .post("/visits/announce")
     .set("Authorization", authHeader(companyUser))
-    .send({ companyName: "Microsoft", ipfsHash: "Qm1", visitDate: 1735689600 });
+    .send({ companyName: "Microsoft", ipfsHash: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", visitDate: 1735689600 });
   assert.equal(res.status, 403);
 });

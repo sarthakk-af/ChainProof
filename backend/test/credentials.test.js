@@ -47,6 +47,7 @@ function authHeader(user) {
 }
 
 let activeCompanyUser, pendingCompanyUser, studentUser;
+let collegeUser, otherCollegeUser, ownStudentUser, foreignStudentUser;
 const validStudentAddress = ethers.Wallet.createRandom().address;
 
 before(() => {
@@ -97,6 +98,88 @@ before(() => {
     registeredAtBlock: 1,
     updatedAtBlock: 1,
   });
+
+  // Two colleges and one student each, to pin the authority boundary.
+  const mkCollege = (email, name) => {
+    const u = createUser({
+      email,
+      passwordHash: "hash",
+      walletAddress: ethers.Wallet.createRandom().address,
+      encryptedPrivateKey: "iv:tag:ct",
+    });
+    upsertActor({
+      address: u.wallet_address,
+      role: ROLE.College,
+      status: STATUS.Active,
+      name,
+      college: null,
+      registeredAtBlock: 1,
+      updatedAtBlock: 1,
+    });
+    return u;
+  };
+  const mkStudent = (email, name, collegeAddress) => {
+    const u = createUser({
+      email,
+      passwordHash: "hash",
+      walletAddress: ethers.Wallet.createRandom().address,
+      encryptedPrivateKey: "iv:tag:ct",
+    });
+    upsertActor({
+      address: u.wallet_address,
+      role: ROLE.Student,
+      status: STATUS.Active,
+      name,
+      college: collegeAddress,
+      registeredAtBlock: 1,
+      updatedAtBlock: 1,
+    });
+    return u;
+  };
+
+  collegeUser = mkCollege("college-a@example.com", "College A");
+  otherCollegeUser = mkCollege("college-b@example.com", "College B");
+  ownStudentUser = mkStudent("own-student@example.com", "Own Student", collegeUser.wallet_address);
+  foreignStudentUser = mkStudent("foreign-student@example.com", "Foreign Student", otherCollegeUser.wallet_address);
+});
+
+const GOOD_CID = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG";
+
+test("a college cannot issue to another college's student", async () => {
+  // A college's authority stops at its own students. Without this, any
+  // approved college could write records onto people it has no relationship
+  // with — and move another institution's public placement figures, which are
+  // grouped by the student's own college.
+  const res = await request(app)
+    .post("/credentials/issue")
+    .set("Authorization", authHeader(collegeUser))
+    .send({ studentAddress: foreignStudentUser.wallet_address, ipfsHash: GOOD_CID, credType: "General" });
+  assert.equal(res.status, 403);
+  assert.match(res.body.error, /its own students/i);
+});
+
+test("a college cannot issue an Offer, even to its own student", async () => {
+  // An Offer is the record that marks a student placed, and placement
+  // percentages are exactly what colleges are held accountable for here. A
+  // college issuing its own Offers is the self-reported statistic this project
+  // exists to replace. The contract enforces it too.
+  const res = await request(app)
+    .post("/credentials/issue")
+    .set("Authorization", authHeader(collegeUser))
+    .send({ studentAddress: ownStudentUser.wallet_address, ipfsHash: GOOD_CID, credType: "Offer" });
+  assert.equal(res.status, 403);
+  assert.match(res.body.error, /only a company can issue an offer/i);
+});
+
+test("a company may still issue an Offer to any student", async () => {
+  // Companies recruit across institutions, so the college boundary doesn't
+  // apply to them — and only they can create the record that means "placed".
+  const res = await request(app)
+    .post("/credentials/issue")
+    .set("Authorization", authHeader(activeCompanyUser))
+    .send({ studentAddress: foreignStudentUser.wallet_address, ipfsHash: GOOD_CID, credType: "Offer" });
+  // Reaches the chain-writing stage rather than being refused on authority.
+  assert.notEqual(res.status, 403);
 });
 
 after(() => {
@@ -108,7 +191,7 @@ test("rejects an invalid studentAddress", async () => {
   const res = await request(app)
     .post("/credentials/issue")
     .set("Authorization", authHeader(activeCompanyUser))
-    .send({ studentAddress: "not-an-address", ipfsHash: "Qm1", credType: "Offer" });
+    .send({ studentAddress: "not-an-address", ipfsHash: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", credType: "Offer" });
   assert.equal(res.status, 400);
 });
 
@@ -120,11 +203,39 @@ test("rejects a missing ipfsHash", async () => {
   assert.equal(res.status, 400);
 });
 
+test("rejects an ipfsHash that isn't a real CID", async () => {
+  // This value goes on-chain permanently. A record pointing at a hash that
+  // resolves nowhere looks verifiable without being verifiable, which is
+  // worse than having no record at all.
+  for (const junk of ["Qm1", "hello world", "not-a-hash", "QmTooShort", "0".repeat(46)]) {
+    const res = await request(app)
+      .post("/credentials/issue")
+      .set("Authorization", authHeader(activeCompanyUser))
+      .send({ studentAddress: validStudentAddress, ipfsHash: junk, credType: "Offer" });
+    assert.equal(res.status, 400, `expected rejection for ${junk}`);
+    assert.match(res.body.error, /IPFS hash/i);
+  }
+});
+
+test("rejects a CIDv0 containing characters base58 excludes", async () => {
+  // 0, O, I and l are deliberately absent from base58 because they're the
+  // ones people misread — a hash containing them was mistyped or invented.
+  const res = await request(app)
+    .post("/credentials/issue")
+    .set("Authorization", authHeader(activeCompanyUser))
+    .send({
+      studentAddress: validStudentAddress,
+      ipfsHash: "QmO0IlAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPb",
+      credType: "Offer",
+    });
+  assert.equal(res.status, 400);
+});
+
 test("rejects an invalid credType", async () => {
   const res = await request(app)
     .post("/credentials/issue")
     .set("Authorization", authHeader(activeCompanyUser))
-    .send({ studentAddress: validStudentAddress, ipfsHash: "Qm1", credType: "NotAType" });
+    .send({ studentAddress: validStudentAddress, ipfsHash: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", credType: "NotAType" });
   assert.equal(res.status, 400);
 });
 
@@ -132,7 +243,7 @@ test("rejects a caller that is a still-Pending Company", async () => {
   const res = await request(app)
     .post("/credentials/issue")
     .set("Authorization", authHeader(pendingCompanyUser))
-    .send({ studentAddress: validStudentAddress, ipfsHash: "Qm1", credType: "Offer" });
+    .send({ studentAddress: validStudentAddress, ipfsHash: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", credType: "Offer" });
   assert.equal(res.status, 403);
 });
 
@@ -140,7 +251,7 @@ test("rejects a caller that is a Student, not an issuer", async () => {
   const res = await request(app)
     .post("/credentials/issue")
     .set("Authorization", authHeader(studentUser))
-    .send({ studentAddress: validStudentAddress, ipfsHash: "Qm1", credType: "Offer" });
+    .send({ studentAddress: validStudentAddress, ipfsHash: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", credType: "Offer" });
   assert.equal(res.status, 403);
 });
 
@@ -154,6 +265,6 @@ test("rejects an unregistered caller", async () => {
   const res = await request(app)
     .post("/credentials/issue")
     .set("Authorization", authHeader(unregistered))
-    .send({ studentAddress: validStudentAddress, ipfsHash: "Qm1", credType: "Offer" });
+    .send({ studentAddress: validStudentAddress, ipfsHash: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG", credType: "Offer" });
   assert.equal(res.status, 403);
 });

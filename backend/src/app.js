@@ -44,7 +44,9 @@ export function createApp() {
   // Public — no auth (signup/login themselves, and public read endpoints).
   app.use("/auth", authRouter);
   app.use("/colleges", collegesRouter);
-  app.use("/students", studentsRouter);
+  // Personal data about identifiable students — never anonymous. See
+  // routes/students.js for who may see what.
+  app.use("/students", userAuth, studentsRouter);
   app.use("/public", publicRouter);
 
   // Custodial-account actions — require a user's own JWT.

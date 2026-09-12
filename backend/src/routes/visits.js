@@ -4,13 +4,20 @@ import { getUserSigner } from "../wallets.js";
 import { placementTrackerAsSigner, placementTrackerRead, ROLE, STATUS } from "../chain.js";
 import { findEventInReceipt, syncVisitAnnounced } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
-import { withIdempotency, IdempotencyPendingError } from "../idempotency.js";
+import {
+  withIdempotency,
+  fingerprintPayload,
+  IdempotencyPendingError,
+  IdempotencyKeyConflictError,
+} from "../idempotency.js";
 import { byteLength, MAX_COMPANY_NAME_BYTES, MAX_IPFS_HASH_BYTES } from "../limits.js";
+import { validateIpfsHash } from "../ipfsHash.js";
 import { logger } from "../logger.js";
+import { announceLimiter } from "../middleware/chainWriteLimiter.js";
 
 export const visitsRouter = Router();
 
-visitsRouter.post("/announce", async (req, res) => {
+visitsRouter.post("/announce", announceLimiter, async (req, res) => {
   const { companyName, ipfsHash, visitDate, idempotencyKey } = req.body || {};
   if (!companyName || !ipfsHash || !visitDate) {
     return res.status(400).json({ error: "companyName, ipfsHash, and visitDate are required" });
@@ -18,13 +25,14 @@ visitsRouter.post("/announce", async (req, res) => {
   // Both strings get written permanently on-chain — capped so a careless or
   // hostile paste can't bloat every future read of this visit record forever.
   const trimmedCompanyName = String(companyName).trim();
-  const trimmedIpfsHash = String(ipfsHash).trim();
   if (!trimmedCompanyName || byteLength(trimmedCompanyName) > MAX_COMPANY_NAME_BYTES) {
     return res.status(400).json({ error: `companyName must be 1-${MAX_COMPANY_NAME_BYTES} bytes` });
   }
-  if (!trimmedIpfsHash || byteLength(trimmedIpfsHash) > MAX_IPFS_HASH_BYTES) {
-    return res.status(400).json({ error: `ipfsHash must be 1-${MAX_IPFS_HASH_BYTES} bytes` });
+  const hashCheck = validateIpfsHash(ipfsHash);
+  if (hashCheck.error) {
+    return res.status(400).json({ error: hashCheck.error });
   }
+  const trimmedIpfsHash = hashCheck.value;
   const visitDateNum = Number(visitDate);
   if (!Number.isFinite(visitDateNum) || visitDateNum <= 0 || !Number.isInteger(visitDateNum)) {
     return res.status(400).json({ error: "visitDate must be a valid unix timestamp" });
@@ -37,7 +45,8 @@ visitsRouter.post("/announce", async (req, res) => {
   }
 
   try {
-    const receipt = await withIdempotency(req.user.id, idempotencyKey, () =>
+    const fingerprint = fingerprintPayload(["visit", trimmedCompanyName, visitDateNum, trimmedIpfsHash]);
+    const receipt = await withIdempotency(req.user.id, idempotencyKey, fingerprint, () =>
       withWalletLock(req.user.address, async (nonce) => {
         const signer = getUserSigner(req.user.id);
         const tracker = placementTrackerAsSigner(signer);
@@ -52,7 +61,7 @@ visitsRouter.post("/announce", async (req, res) => {
     logger.info("visit_announced", { college: req.user.address, companyName: trimmedCompanyName });
     res.status(201).json({ txHash: receipt.hash });
   } catch (err) {
-    if (err instanceof IdempotencyPendingError) {
+    if (err instanceof IdempotencyPendingError || err instanceof IdempotencyKeyConflictError) {
       return res.status(409).json({ error: err.message });
     }
     const reason = err.reason || err.shortMessage || err.message;

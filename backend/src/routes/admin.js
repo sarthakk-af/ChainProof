@@ -111,11 +111,25 @@ async function handleVerifierAction(req, res, { contractMethod, expectedResultin
     });
   }
 
+  // Sentinel for "another admin decided this while we were queued" — thrown
+  // from inside the lock and mapped back to a 409, so it isn't reported as an
+  // on-chain failure.
+  const ALREADY_DECIDED = Symbol("already-decided");
+
   try {
     // The verifier is one shared signer across every admin action, same as
     // the treasury signer — needs the same explicit nonce handling (see
     // txQueue.js) to avoid two approvals close together colliding.
     const receipt = await withWalletLock(verifierSigner.address, async (nonce) => {
+      // Re-read under the lock. The Pending check above runs before queuing,
+      // so two admins clicking at the same instant both pass it, both reach
+      // the chain, and the loser's transaction reverts — correct end state,
+      // but gas spent and a misleading "on-chain transaction failed" shown to
+      // someone whose only mistake was being second.
+      const current = getActor(address);
+      if (!current || current.status !== STATUS.Pending) {
+        throw ALREADY_DECIDED;
+      }
       const tx = await actorRegistryAsVerifier[contractMethod](address, { nonce });
       return tx.wait();
     });
@@ -138,6 +152,14 @@ async function handleVerifierAction(req, res, { contractMethod, expectedResultin
     });
     res.json({ actor: serializeActor(getActor(address)), txHash: receipt.hash });
   } catch (err) {
+    if (err === ALREADY_DECIDED) {
+      const now = getActor(address);
+      return res.status(409).json({
+        error: `Another admin already decided this one (current status: ${
+          now ? STATUS_NAMES[now.status] : "unknown"
+        }).`,
+      });
+    }
     const reason = err.reason || err.shortMessage || err.message;
     logger.error("verifier_action_failed", { address, event, reason });
     res.status(502).json({ error: `On-chain transaction failed: ${reason}` });

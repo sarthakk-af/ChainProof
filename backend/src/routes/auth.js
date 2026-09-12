@@ -324,6 +324,12 @@ authRouter.post("/reset-password", resetPasswordLimiter, async (req, res) => {
   invalidateAllPasswordResetsForUser(reset.user_id);
   // A reset should kick out anyone still using the old password/session.
   bumpTokenVersion(reset.user_id);
+  // Completing a reset means this person opened a link delivered to that
+  // inbox — which is at least as strong a proof of control as typing back a
+  // code from the same inbox. Without this, someone who forgets their
+  // password before ever verifying resets it successfully and is then still
+  // refused at login, hunting for an OTP that has almost certainly expired.
+  setEmailVerified(reset.user_id);
 
   const user = getUserById(reset.user_id);
   logger.info("password_reset_completed", { email: user.email });

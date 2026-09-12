@@ -16,13 +16,41 @@
  * without touching the chain again.
  */
 
-const store = new Map(); // `${userId}:${key}` -> { status: "pending" | "done", result, expiresAt }
+import crypto from "node:crypto";
+
+const store = new Map(); // `${userId}:${key}` -> { status, result, fingerprint, expiresAt }
 const TTL_MS = 15 * 60 * 1000;
+
+/**
+ * Stable fingerprint of the request this key stands for.
+ *
+ * A key on its own says "this is a retry"; it doesn't say a retry *of what*.
+ * Without binding the two, a client that reuses a key with different inputs
+ * gets the earlier call's receipt back and a 201 — told its request
+ * succeeded while nothing at all was written. A silent false success is the
+ * worst possible failure here, because the caller has no reason to check.
+ */
+export function fingerprintPayload(parts) {
+  return crypto
+    .createHash("sha256")
+    .update(JSON.stringify(parts))
+    .digest("hex");
+}
 
 function evictExpired() {
   const now = Date.now();
   for (const [k, entry] of store) {
     if (entry.expiresAt < now) store.delete(k);
+  }
+}
+
+export class IdempotencyKeyConflictError extends Error {
+  constructor() {
+    super(
+      "That idempotency key was already used for a different request. " +
+        "Use a fresh key when the details change."
+    );
+    this.name = "IdempotencyKeyConflictError";
   }
 }
 
@@ -34,24 +62,29 @@ export class IdempotencyPendingError extends Error {
 }
 
 /**
- * Runs `fn` at most once per (userId, idempotencyKey). No key means the
- * caller didn't opt in — `fn` just runs normally, no memoization.
+ * Runs `fn` at most once per (userId, idempotencyKey, fingerprint). No key
+ * means the caller didn't opt in — `fn` just runs normally, no memoization.
+ * Reusing a key with a different fingerprint raises
+ * IdempotencyKeyConflictError instead of replaying the earlier result.
  */
-export async function withIdempotency(userId, idempotencyKey, fn) {
+export async function withIdempotency(userId, idempotencyKey, fingerprint, fn) {
   if (!idempotencyKey) return fn();
 
   evictExpired();
   const storeKey = `${userId}:${idempotencyKey}`;
   const existing = store.get(storeKey);
   if (existing) {
+    // Same key, different request — a client bug, not a retry. Say so rather
+    // than handing back an unrelated receipt.
+    if (existing.fingerprint !== fingerprint) throw new IdempotencyKeyConflictError();
     if (existing.status === "pending") throw new IdempotencyPendingError();
     return existing.result;
   }
 
-  store.set(storeKey, { status: "pending", expiresAt: Date.now() + TTL_MS });
+  store.set(storeKey, { status: "pending", fingerprint, expiresAt: Date.now() + TTL_MS });
   try {
     const result = await fn();
-    store.set(storeKey, { status: "done", result, expiresAt: Date.now() + TTL_MS });
+    store.set(storeKey, { status: "done", result, fingerprint, expiresAt: Date.now() + TTL_MS });
     return result;
   } catch (err) {
     // Nothing succeeded on-chain, so free the slot — a genuine retry (e.g.

@@ -43,6 +43,14 @@ export function serializeCredential(row) {
     isCorrection: Boolean(row.is_correction),
     supersedesId: row.supersedes_id,
     superseded: Boolean(row.superseded),
+    // Present only where the query joined the issuer (see
+    // getCredentialsForStudent) — a shareable proof has to name who issued a
+    // credential, since a recruiter can't tell anything from a hex address.
+    issuerName: row.issuer_name || null,
+    issuerRole:
+      row.issuer_role !== null && row.issuer_role !== undefined
+        ? ROLE_NAMES[row.issuer_role]
+        : null,
   };
 }
 

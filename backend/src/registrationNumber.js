@@ -17,8 +17,31 @@
 // number = 21 characters total. e.g. L12345MH2020PLC123456
 const CIN_RE = /^[LU][0-9]{5}[A-Z]{2}[0-9]{4}[A-Z]{3}[0-9]{6}$/;
 
+/**
+ * Canonical form of a registration identifier.
+ *
+ * Uniqueness is enforced on this value (see db/registrationClaims.js), so any
+ * two spellings a human would call the same identifier have to collapse to
+ * one string — otherwise "EDU/MH/2024/0142" and "EDU / MH / 2024 / 0142" are
+ * two claimable identities for a single institution, and the uniqueness
+ * guarantee is decorative.
+ */
+export function normalizeRegistrationNumber(rawValue) {
+  if (typeof rawValue !== "string") return "";
+  return rawValue
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, " ")
+    // Spaces sitting either side of a separator carry no meaning.
+    .replace(/\s*([/\-.])\s*/g, "$1");
+}
+
 export function validateRegistrationNumber(role, rawValue) {
-  const value = typeof rawValue === "string" ? rawValue.trim().toUpperCase() : "";
+  // Uppercased and whitespace-collapsed before anything else, because this
+  // value is what uniqueness is enforced on (see db/registrationClaims.js).
+  // "EDU/MH/2024/0142" and "EDU / MH / 2024 / 0142" name the same institution,
+  // so they must not be claimable as two.
+  const value = normalizeRegistrationNumber(rawValue);
 
   if (role === "Company") {
     if (!value) {

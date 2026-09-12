@@ -31,7 +31,7 @@ export function claimRegistrationNumber(registrationNumber, address) {
   try {
     db.prepare(
       "INSERT INTO registration_number_claims (registration_number, address, created_at) VALUES (?, ?, ?)"
-    ).run(registrationNumber, address, Date.now());
+    ).run(registrationNumber, address.toLowerCase(), Date.now());
     return true;
   } catch {
     // Lost a race to a concurrent insert — the PRIMARY KEY did its job.
@@ -39,9 +39,19 @@ export function claimRegistrationNumber(registrationNumber, address) {
   }
 }
 
-/** Releases whatever claim this address holds — used when a registration fails partway. */
+/**
+ * Releases whatever claim this address holds — used when a registration fails
+ * partway.
+ *
+ * Matched case-insensitively to stay consistent with the ownership test in
+ * claimRegistrationNumber above. Ethereum addresses are checksummed mixed
+ * case, so a caller passing a differently-cased form of the same address
+ * would otherwise release nothing here while still counting as the owner
+ * there — leaving the identifier claimed by an address that can never free
+ * it, and unrecoverable without direct database access.
+ */
 export function releaseClaimsForAddress(address) {
-  db.prepare("DELETE FROM registration_number_claims WHERE address = ?").run(address);
+  db.prepare("DELETE FROM registration_number_claims WHERE LOWER(address) = LOWER(?)").run(address);
 }
 
 /**

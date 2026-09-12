@@ -1,17 +1,36 @@
 import { db } from "./connection.js";
 
+/**
+ * Email addresses are matched case-insensitively, and stored lowercased.
+ *
+ * Mail domains don't distinguish case in practice, so Sarthak@Gmail.com and
+ * sarthak@gmail.com are one inbox and must be one account. Without this they
+ * were two: two custodial wallets, two gas drips from the treasury, and a user
+ * who signed up with one capitalisation and typed another at login got
+ * "invalid credentials" with no way to work out why — /forgot-password would
+ * also silently fail for them, since it deliberately never reveals whether an
+ * address is registered.
+ *
+ * Normalising here rather than at each route means every lookup path —
+ * signup, login, OTP, resend, reset, check-email — gets it for free and can't
+ * drift apart later.
+ */
+export function normalizeEmail(email) {
+  return String(email ?? "").trim().toLowerCase();
+}
+
 export function createUser({ email, passwordHash, walletAddress, encryptedPrivateKey }) {
   const result = db
     .prepare(
       `INSERT INTO users (email, password_hash, wallet_address, encrypted_private_key, created_at)
        VALUES (?, ?, ?, ?, ?)`
     )
-    .run(email, passwordHash, walletAddress, encryptedPrivateKey, Date.now());
+    .run(normalizeEmail(email), passwordHash, walletAddress, encryptedPrivateKey, Date.now());
   return getUserById(result.lastInsertRowid);
 }
 
 export function getUserByEmail(email) {
-  return db.prepare("SELECT * FROM users WHERE email = ?").get(email);
+  return db.prepare("SELECT * FROM users WHERE email = ?").get(normalizeEmail(email));
 }
 
 export function getUserById(id) {

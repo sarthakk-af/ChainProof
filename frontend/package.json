@@ -1,12 +1,13 @@
 {
   "name": "chainproof-frontend",
   "version": "1.0.0",
-  "description": "ChainProof — Decentralized Placement Tracking System Frontend",
+  "description": "ChainProof \u2014 Decentralized Placement Tracking System Frontend",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "node --test test/*.test.js",
     "preview": "vite preview",
     "lint": "eslint src --ext .js,.jsx"
   },

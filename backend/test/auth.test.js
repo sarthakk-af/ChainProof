@@ -38,7 +38,7 @@ process.env.WALLET_ENCRYPTION_KEY =
 process.env.DB_PATH = TEST_DB_PATH;
 
 const { db, createUser, getUserByEmail } = await import("../src/db.js");
-const { hashPassword, verifyPassword, signToken, verifyToken } = await import("../src/auth.js");
+const { hashPassword, verifyPassword, signToken, verifyToken, signAdminToken } = await import("../src/auth.js");
 const { encrypt, decrypt } = await import("../src/crypto.js");
 const { userAuth } = await import("../src/middleware/userAuth.js");
 const { default: request } = await import("supertest");
@@ -92,6 +92,65 @@ test("createUser + getUserByEmail round-trip, duplicate email rejected", () => {
       encryptedPrivateKey: "iv:tag:ciphertext2",
     })
   );
+});
+
+test("an email differing only by case is the same account", () => {
+  // Mail domains don't distinguish case, so Sarthak@Gmail.com and
+  // sarthak@gmail.com are one inbox. Treating them as two accounts meant two
+  // custodial wallets funded from the treasury for one person, and a user who
+  // signed up with one capitalisation and typed another at login was simply
+  // told "invalid credentials" with no way to find out why.
+  const user = createUser({
+    email: "MixedCase@Example.com",
+    passwordHash: "hashed",
+    walletAddress: "0x3333333333333333333333333333333333333333",
+    encryptedPrivateKey: "iv:tag:ciphertext",
+  });
+  assert.equal(user.email, "mixedcase@example.com", "stored lowercased");
+
+  for (const variant of [
+    "mixedcase@example.com",
+    "MixedCase@Example.com",
+    "MIXEDCASE@EXAMPLE.COM",
+    "  MixedCase@Example.com  ",
+  ]) {
+    assert.equal(getUserByEmail(variant)?.id, user.id, `lookup failed for ${variant}`);
+  }
+
+  // And a second signup under a different capitalisation must be refused.
+  assert.throws(() =>
+    createUser({
+      email: "MIXEDCASE@example.com",
+      passwordHash: "other-hash",
+      walletAddress: "0x4444444444444444444444444444444444444444",
+      encryptedPrivateKey: "iv:tag:ciphertext2",
+    })
+  );
+});
+
+test("userAuth middleware rejects an admin token", async () => {
+  // Both token types are signed with the same secret. An admin token's `sub`
+  // is an admins-table id — a small autoincrement integer that usually also
+  // names a real, unrelated row in the users table. The tokenVersion check
+  // happens to catch this today (an admin token carries none, and undefined
+  // never equals a number), but that's an accident, not a rule: refusing on
+  // type is what stops a later change to that check quietly turning an admin
+  // session into someone else's user session.
+  const victim = createUser({
+    email: "victim@example.com",
+    passwordHash: "hashed",
+    walletAddress: "0x5555555555555555555555555555555555555555",
+    encryptedPrivateKey: "iv:tag:ciphertext",
+  });
+
+  const app = express();
+  app.get("/protected", userAuth, (req, res) => res.json({ ok: true, user: req.user }));
+
+  // Deliberately point the admin token's sub at a real user id.
+  const adminToken = signAdminToken({ adminId: victim.id, username: "sarthak" });
+  const res = await request(app).get("/protected").set("Authorization", `Bearer ${adminToken}`);
+  assert.equal(res.status, 401);
+  assert.match(res.body.error, /admin sessions/i);
 });
 
 test("userAuth middleware rejects a missing token", async () => {

@@ -33,7 +33,8 @@ process.env.WALLET_ENCRYPTION_KEY =
   "236d277256c4ac74368580b5be214189ace6dff26eb4e5efe448dbf1c2a1158c";
 process.env.DB_PATH = TEST_DB_PATH;
 
-const { db, createUser, upsertActor, claimRegistrationNumber } = await import("../src/db.js");
+const { db, createUser, upsertActor, claimRegistrationNumber, releaseClaimsForAddress, getRegistrationNumberClaim } = await import("../src/db.js");
+const { validateRegistrationNumber } = await import("../src/registrationNumber.js");
 const { createApp } = await import("../src/app.js");
 const { signToken } = await import("../src/auth.js");
 const { ROLE, STATUS } = await import("../src/chain.js");
@@ -186,6 +187,45 @@ test("claimRegistrationNumber is idempotent for the same address", () => {
   // A resubmission under the same identifier must not lock its own owner out.
   assert.equal(claimRegistrationNumber(cin, address), true);
   assert.equal(claimRegistrationNumber(cin, ethers.Wallet.createRandom().address), false);
+});
+
+test("spellings of one registration ID collapse to a single claim", () => {
+  // Uniqueness is enforced on this value, so if spacing produced different
+  // strings, one institution could hold several identities and the guarantee
+  // would be decorative.
+  const variants = [
+    "EDU/MH/2024/0142",
+    "  edu / mh / 2024 / 0142  ",
+    "EDU  /  MH/2024 / 0142",
+  ];
+  const canonical = variants.map((v) => validateRegistrationNumber("College", v).value);
+  assert.equal(new Set(canonical).size, 1, `expected one canonical form, got ${canonical}`);
+  assert.equal(canonical[0], "EDU/MH/2024/0142");
+
+  const owner = ethers.Wallet.createRandom().address;
+  assert.equal(claimRegistrationNumber(canonical[0], owner), true);
+  // A second account trying any other spelling must lose.
+  const other = ethers.Wallet.createRandom().address;
+  for (const v of variants) {
+    const normalized = validateRegistrationNumber("College", v).value;
+    assert.equal(claimRegistrationNumber(normalized, other), false, `${v} slipped through`);
+  }
+});
+
+test("a claim can be released using any casing of the owning address", () => {
+  // claimRegistrationNumber compares addresses case-insensitively. If release
+  // matched exactly, a differently-cased caller would count as the owner but
+  // free nothing — locking the identifier permanently, with no way back short
+  // of direct database access.
+  const cin = "L77777MH2017PLC777777";
+  const address = ethers.Wallet.createRandom().address; // checksummed, mixed case
+  assert.equal(claimRegistrationNumber(cin, address), true);
+
+  releaseClaimsForAddress(address.toLowerCase());
+  assert.equal(getRegistrationNumberClaim(cin), undefined, "claim should have been released");
+
+  // And the identifier is genuinely free again for someone else.
+  assert.equal(claimRegistrationNumber(cin, ethers.Wallet.createRandom().address), true);
 });
 
 // NOTE: "a Rejected account can resubmit past this 409 check" isn't covered

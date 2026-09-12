@@ -101,6 +101,14 @@ contract CredentialIssuer {
     /// @notice Thrown when trying to correct a credential that's already been superseded once.
     error CredentialAlreadySuperseded(uint256 credentialId);
 
+    /// @notice Thrown when a College tries to create an Offer credential.
+    /// @dev    An Offer is the record that marks a student placed, and placement
+    ///         percentages are exactly what this platform holds Colleges
+    ///         accountable for. Letting a College create that record itself would
+    ///         reproduce the self-reported statistic the project exists to
+    ///         replace — only the employer can truthfully assert it made an offer.
+    error OnlyCompanyCanIssueOffer(address caller);
+
     // =========================================================================
     // CONSTANTS
     // =========================================================================
@@ -227,6 +235,7 @@ contract CredentialIssuer {
         // --- CHECKS ---
         _checkIsActiveIssuer(msg.sender);
         _checkRecipientIsStudent(_student);
+        _checkMayIssueOfferType(msg.sender, _credType);
         _checkIpfsHash(_ipfsHash);
 
         // --- EFFECTS ---
@@ -281,6 +290,7 @@ contract CredentialIssuer {
         // --- CHECKS ---
         _checkIsActiveIssuer(msg.sender);
         _checkRecipientIsStudent(_student);
+        _checkMayIssueOfferType(msg.sender, _newCredType);
         _checkIpfsHash(_ipfsHash);
 
         Credential[] storage creds = studentCredentials[_student];
@@ -343,6 +353,16 @@ contract CredentialIssuer {
         bool roleValid = role == ActorRegistry.Role.College || role == ActorRegistry.Role.Company;
         if (!roleValid || !actorRegistry.isActive(_caller)) {
             revert NotAuthorizedIssuer(_caller);
+        }
+    }
+
+    /// @notice Reverts if anyone other than a Company creates an Offer credential.
+    function _checkMayIssueOfferType(address _caller, CredentialType _credType) internal view {
+        if (
+            _credType == CredentialType.Offer &&
+            actorRegistry.getActorRole(_caller) != ActorRegistry.Role.Company
+        ) {
+            revert OnlyCompanyCanIssueOffer(_caller);
         }
     }
 

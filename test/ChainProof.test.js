@@ -516,12 +516,15 @@ describe("ChainProof — Full Test Suite", function () {
       });
 
       it("should enforce the same hash bound on issueCorrection", async function () {
+        // Issued by a Company: only a Company may create an Offer (see
+        // _checkMayIssueOfferType), so a College signer here would revert for
+        // that reason instead of the hash bound this test is about.
         await credentialIssuer
-          .connect(college1)
+          .connect(company1)
           .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
 
         await expect(
-          credentialIssuer.connect(college1).issueCorrection(student1.address, 0, "", CredentialType.Rejection)
+          credentialIssuer.connect(company1).issueCorrection(student1.address, 0, "", CredentialType.Rejection)
         )
           .to.be.revertedWithCustomError(credentialIssuer, "InvalidIpfsHashLength")
           .withArgs(0);
@@ -535,6 +538,59 @@ describe("ChainProof — Full Test Suite", function () {
             .connect(college1)
             .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.General)
         ).to.not.be.reverted;
+      });
+
+      it("should NOT let a College issue an Offer", async function () {
+        // An Offer is the record that marks a student placed, and placement
+        // percentages are what Colleges are held accountable for here. A
+        // College issuing its own Offers is the self-reported statistic this
+        // project exists to replace.
+        await expect(
+          credentialIssuer
+            .connect(college1)
+            .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "OnlyCompanyCanIssueOffer")
+          .withArgs(college1.address);
+      });
+
+      it("should NOT let a College correct a credential into an Offer", async function () {
+        // The correction path would otherwise be a way around the rule above.
+        await credentialIssuer
+          .connect(college1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Shortlist);
+
+        await expect(
+          credentialIssuer
+            .connect(college1)
+            .issueCorrection(student1.address, 0, SAMPLE_IPFS_HASH_2, CredentialType.Offer)
+        )
+          .to.be.revertedWithCustomError(credentialIssuer, "OnlyCompanyCanIssueOffer")
+          .withArgs(college1.address);
+      });
+
+      it("should leave a College free to issue every other credential type", async function () {
+        for (const type of [
+          CredentialType.General,
+          CredentialType.Shortlist,
+          CredentialType.Interview,
+          CredentialType.Rejection,
+        ]) {
+          await expect(
+            credentialIssuer
+              .connect(college1)
+              .issueCredential(student1.address, SAMPLE_IPFS_HASH, type)
+          ).to.not.be.reverted;
+        }
+        // And none of them marks the student placed.
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.false;
+      });
+
+      it("should still allow a Company to issue an Offer, placing the student", async function () {
+        await credentialIssuer
+          .connect(company1)
+          .issueCredential(student1.address, SAMPLE_IPFS_HASH, CredentialType.Offer);
+        expect(await credentialIssuer.isPlaced(student1.address)).to.be.true;
       });
 
       it("should allow an Active Company to issue a Shortlist credential", async function () {

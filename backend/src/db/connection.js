@@ -187,6 +187,44 @@ if (!indexerStateColumns.includes("deployment_fingerprint")) {
   db.exec("ALTER TABLE indexer_state ADD COLUMN deployment_fingerprint TEXT");
 }
 
+// Emails are stored lowercased (see db/users.js's normalizeEmail). Rows
+// created before that rule existed may carry mixed case, which would make them
+// unreachable once every lookup normalises. Lowercase them in place.
+//
+// A row is skipped rather than rewritten where doing so would collide with an
+// existing account — two real accounts differing only by case are a genuine
+// data problem, and silently deleting one of them (each owns a funded
+// custodial wallet) would be far worse than leaving it visible. It's logged
+// loudly instead so a human decides.
+const mixedCaseEmails = db
+  .prepare("SELECT id, email FROM users WHERE email <> lower(email)")
+  .all();
+if (mixedCaseEmails.length > 0) {
+  const findConflict = db.prepare(
+    "SELECT id FROM users WHERE email = ? AND id <> ?"
+  );
+  const rename = db.prepare("UPDATE users SET email = ? WHERE id = ?");
+  const collisions = [];
+  const migrate = db.transaction(() => {
+    for (const row of mixedCaseEmails) {
+      const lowered = row.email.trim().toLowerCase();
+      if (findConflict.get(lowered, row.id)) {
+        collisions.push(row.email);
+        continue;
+      }
+      rename.run(lowered, row.id);
+    }
+  });
+  migrate();
+  if (collisions.length > 0) {
+    console.warn(
+      `[db] ${collisions.length} account(s) could not be lowercased because another ` +
+        `account already uses that address. These need to be merged by hand: ` +
+        collisions.join(", ")
+    );
+  }
+}
+
 const credentialColumns = db.prepare("PRAGMA table_info(credentials)").all().map((c) => c.name);
 if (!credentialColumns.includes("is_correction")) {
   db.exec("ALTER TABLE credentials ADD COLUMN is_correction INTEGER NOT NULL DEFAULT 0");

@@ -16,14 +16,30 @@ const LOCAL_KEY    = "chainproof_ipfs_store";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-/** Simple deterministic hash for local mock storage */
+// The base58btc alphabet a real CIDv0 uses — note it omits 0, O, I and l, the
+// characters people misread when copying a hash by hand.
+const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+/**
+ * Deterministic stand-in hash for when no IPFS credentials are configured.
+ *
+ * Shaped like a genuine CIDv0 (Qm + 44 base58 characters) on purpose: the
+ * backend now validates that an ipfsHash really is a CID before writing it
+ * on-chain, and a fallback that produced something unparseable would mean the
+ * app worked with Pinata configured and broke without it — the exact kind of
+ * divergence that only shows up in front of an audience.
+ */
 function mockHash(payload) {
-  const str = JSON.stringify(payload) + Date.now();
+  const str = JSON.stringify(payload) + Date.now() + Math.random();
   let hash = 5381;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) + hash) ^ str.charCodeAt(i);
+  let out = "";
+  for (let i = 0; i < 44; i++) {
+    for (let j = 0; j < str.length; j++) {
+      hash = ((hash << 5) + hash) ^ (str.charCodeAt(j) + i);
+    }
+    out += BASE58[Math.abs(hash) % BASE58.length];
   }
-  return "QmMock" + Math.abs(hash).toString(16).padStart(40, "0").slice(0, 40);
+  return "Qm" + out;
 }
 
 /** Persist to localStorage under a fake content-addressed key */

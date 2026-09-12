@@ -1,32 +1,30 @@
 import React, { useState } from "react";
-import { ShieldCheck, KeyRound, Copy, Check } from "lucide-react";
+import { ShieldCheck, KeyRound, Copy, Check, AlertTriangle } from "lucide-react";
 import { localRetrieve } from "../../utils/ipfsService.js";
+import { DEPLOYMENT } from "../../contracts/deployment.js";
 import { CRED_TYPE_META, formatTimestamp } from "../../utils/credentialMeta.js";
+import { buildProofDocument } from "../../utils/proofDocument.js";
 
 export default function ProofGenerator({ credentials, visibility, studentAddress, studentName }) {
   const [proof, setProof] = useState(null);
+  const [forcedCount, setForcedCount] = useState(0);
   const [copied, setCopied] = useState(false);
 
   const generateProof = () => {
-    const proofDoc = {
-      schema: "chainproof-proof-v1",
+    // The document logic lives in utils/proofDocument.js, with no imports, so
+    // its tests exercise the real function instead of a copy of it.
+    const doc = buildProofDocument({
+      credentials,
+      visibility,
       studentAddress,
       studentName,
-      generatedAt: new Date().toISOString(),
-      credentials: credentials
-        .filter((c) => visibility[c.id] !== false)
-        .map((c) => ({
-          id: String(c.id),
-          type: CRED_TYPE_META[c.credType]?.label,
-          ipfsHash: c.ipfsHash,
-          issuer: c.issuerAddress,
-          issuedAt: formatTimestamp(c.timestamp),
-          metadata: localRetrieve(c.ipfsHash),
-        })),
-      verificationNote:
-        "Verify on-chain at the ActorRegistry/CredentialIssuer contract addresses. Credentials are immutable.",
-    };
-    setProof(JSON.stringify(proofDoc, null, 2));
+      deployment: DEPLOYMENT,
+      lookupMetadata: localRetrieve,
+      labelFor: (credType) => CRED_TYPE_META[credType]?.label,
+      formatTime: formatTimestamp,
+    });
+    setForcedCount(doc.credentials.filter((c) => c.includedAutomatically).length);
+    setProof(JSON.stringify(doc, null, 2));
   };
 
   const copyProof = () => {
@@ -39,14 +37,15 @@ export default function ProofGenerator({ credentials, visibility, studentAddress
   return (
     <div className="glass-card p-24 flex flex-col gap-16">
       <p style={{ fontSize: "0.88rem", margin: 0 }}>
-        Generate a shareable JSON proof of your selected credentials. Toggle visibility
-        switches on credentials you want to include or exclude.
+        Generate a shareable proof of your selected credentials. Use the visibility
+        toggles to choose what to include.
       </p>
       <div className="alert alert-info" style={{ fontSize: "0.82rem" }}>
         <ShieldCheck size={16} style={{ flexShrink: 0, marginTop: 2 }} />
         <span>
-          Each credential's <code>ipfsHash</code> can be independently verified against the
-          on-chain record. The blockchain timestamp is cryptographically immutable.
+          The proof tells a recruiter exactly how to check each credential against the
+          blockchain and IPFS themselves. You can leave credentials out — but if you
+          include one that was later corrected, the correction comes with it.
         </span>
       </div>
 
@@ -56,11 +55,22 @@ export default function ProofGenerator({ credentials, visibility, studentAddress
         onClick={generateProof}
         disabled={credentials.length === 0}
       >
-        <KeyRound size={16} /> Generate Proof JSON
+        <KeyRound size={16} /> Generate Proof
       </button>
 
       {proof && (
         <div className="animate-fade-in-up flex flex-col gap-8">
+          {forcedCount > 0 && (
+            <div className="alert alert-warning" style={{ fontSize: "0.82rem" }} role="status">
+              <AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>
+                {forcedCount === 1
+                  ? "A correction was added automatically, because it applies to a credential you included."
+                  : forcedCount +
+                    " corrections were added automatically, because they apply to credentials you included."}
+              </span>
+            </div>
+          )}
           <div className="flex items-center justify-between">
             <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Proof Document</span>
             <button id="copy-proof-btn" className="btn btn-ghost btn-sm" onClick={copyProof}>

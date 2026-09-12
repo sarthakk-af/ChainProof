@@ -272,4 +272,341 @@ undermines everything built on it after.
 
 ---
 
+## 5. The flow audit
+
+The ledger above was organised by *entity*. Re-walking the system by **journey**
+found things an entity-by-entity read cannot, because the worst gaps live in the
+handoffs between roles rather than inside any one of them.
+
+All eight are complete. Each was attacked directly over HTTP, bypassing the
+UI's own validation, and every finding below was reproduced live before being
+fixed and re-proved after.
+
+| # | Flow | What came out of it |
+|---|---|---|
+| 1 | Becoming a user | 2 fixed — one inbox became two accounts; a reset left you locked out |
+| 2 | Claiming an identity | Held. 3 hardened — gas burned on a race, ID spellings, an unreleasable claim |
+| 3 | Getting verified | Held. 2 hardened — gas burned on a race, an accidental token separation |
+| 4 | A college's placement cell | **2 real bugs** — a college could declare its own students placed |
+| 5 | A company hiring | **2 real bugs** — a false success, and the race a third time |
+| 6 | A student's credentials | **1 critical** — a rescinded offer could be presented as valid |
+| 7 | The public surface | **1 privacy leak** — the student roster was served to anonymous callers |
+| 0 | The foundation | 2 fixed — no throttle on gas spending; IPFS hashes never validated |
+
+Read in that order the shape is clear: **the flows that had been demoed most
+held up, and the ones nobody had reason to click through were where the real
+problems lived.** The three worst findings — the forged proof, the self-issued
+placement, the public roster — were all in paths that work perfectly when used
+as intended and were never exercised any other way.
+
+One pattern recurred often enough to be worth stating as a rule rather than
+three separate fixes:
+
+> **Any check-then-write against shared state must repeat its check inside the
+> lock that serialises the write.** The pre-lock check exists for fast, friendly
+> rejection; only the in-lock one is authoritative.
+
+It appeared in registration, in approval, and in correction. In every case the
+end state was already correct — the contracts refused the duplicate — but the
+loser reached the chain and paid gas to revert, and was shown a message about
+an on-chain failure rather than "someone got there first".
+
+Sections below are in the order the work was done, worst-known-first, not in
+journey order.
+
+### Flow 6 — the forged proof (fixed)
+
+**This was the most serious bug in the project.** The student dashboard's
+timeline correctly displayed `superseded` and `isCorrection`, but
+`ProofGenerator` read neither. Combined with its per-credential visibility
+toggles, a student could disclose a rescinded job offer, untick the correction
+that rescinded it, and generate a document headed "cryptographically
+verifiable proof" of a job they did not have.
+
+Every guarantee upstream — immutable records, append-only corrections, an
+admin-verified issuer — was defeated at the last step, by the share button.
+
+The fix draws the line where it belongs. **Choosing what to disclose is
+legitimate**; nobody should have to hand over their whole history to show one
+offer letter. **Misrepresenting what you do disclose is not.** So a credential
+may be omitted entirely, but never shown without its current status: any
+correction superseding a disclosed credential is pulled in automatically and
+can't be toggled off. It walks the whole chain, not one link — a correction can
+itself be corrected, and stopping at the first hop would show a superseded
+record without showing what replaced it. (That second bug was caught by the
+test written for the first one, before it shipped.)
+
+Two supporting problems surfaced in the same pass:
+
+- The proof said "verify on-chain at the ActorRegistry/CredentialIssuer
+  contract addresses" — **without naming them.** A recruiter was told to verify
+  and given no way to. It now carries the network, chain id, all three contract
+  addresses, a gateway URL per credential, and six numbered steps ending in the
+  only sentence that matters: *the chain is authoritative, this document is
+  not.*
+- Credentials identified their issuer only as a hex address. They now carry the
+  issuer's registered name and role, joined in `getCredentialsForStudent`.
+
+Locked in by `frontend/test/proofGenerator.test.js` — the project's first
+frontend tests, 7 of them, written as the specification for the guarantee.
+
+### Flow 7 — the public surface (one privacy leak)
+
+24 checks. The carefully-designed part held perfectly; the leak was next door
+to it, in routes nobody had thought of as public.
+
+**The entire student roster was served to anonymous callers.** `/students` and
+`/students/:address/credentials` were mounted with no authentication at all.
+With no login, anyone could pull every student's real name, wallet address,
+which institution they attend, whether they have a job, and their complete
+credential history.
+
+What makes this worse than an ordinary oversight is the contrast: three metres
+away, `/public/colleges/:address/records` painstakingly strips student identity
+from the records behind a college's percentage — the privacy boundary the whole
+public dashboard is built around. And then a route that was never *meant* to be
+public handed out the roster with names attached. The care was real; it just
+wasn't applied where it wasn't being looked at. For a placement platform
+holding Indian students' employment outcomes, "Bob is not placed" being world-
+readable is precisely the disclosure the design was trying to avoid.
+
+Both routes now sit behind a session, scoped by who is asking:
+a Company sees candidates, which is what the platform is for; a College sees
+**its own** students and nobody else's — and passing `?college=` for someone
+else's roster is ignored rather than obeyed; a Student sees only themselves; a
+fellow student gets a 403. Covered by nine tests in `test/students.test.js`,
+which previously asserted the unauthenticated behaviour as though it were
+correct.
+
+What held up: no join code appears in any published payload (checked in both
+the public list and the college directory — the invite code is the only thing
+binding a student to a real institution, so leaking it would undo Flow 4's
+guarantee); a published record names the issuing company but carries no
+student name, no student address, and no `studentAddress` field at all; and the
+published figures match `totalPlacedStudents` and `totalRegisteredStudents`
+read straight off the chain. Malformed addresses, unknown colleges, and a
+student address passed where a college is expected all return 404 rather than
+leaking anything.
+
+### Flow 5 — a company hiring (two real bugs)
+
+Companies hold the only credential type that moves the public number, so this
+flow carries more weight than it did before Flow 4. 18 checks; two defects.
+
+**An idempotency key wasn't bound to the request it stood for.** The store
+memoized on `(userId, key)` alone, so a key reused with *different* inputs
+returned the earlier call's receipt and a `201`. Demonstrated live: a company
+issued an Offer to student one with key K, then issued to student two with the
+same K — got `HTTP 201`, and student two had **zero** credentials written.
+The caller is told the offer was issued; it wasn't. A silent false success is
+the worst failure available here, because nothing prompts anyone to check.
+
+The frontend rotates its key when inputs change, so the UI didn't trigger it —
+but "our own client happens to avoid it" isn't a guarantee, it's a coincidence.
+Keys are now bound to a SHA-256 fingerprint of the payload: a genuine retry
+still replays safely, while the same key with different details is refused with
+a 409 that says to use a fresh key. Covered by `test/idempotency.test.js`.
+
+**The check-then-write race, for the third time** — now in the correction path.
+Two concurrent corrections of one credential: the loser reached the chain and
+reverted, and because ethers couldn't decode the custom error, the message was
+`"On-chain correction failed: execution reverted (unknown custom error)"`. Gas
+spent, and nothing a user could act on. Re-checked under the lock; the loser
+now gets `409 — "This credential has already been corrected once."`
+
+That pattern has now appeared in registration, approval and correction. It is
+worth stating as a rule rather than three incidents: **any check-then-write
+against shared state must repeat its check inside the lock that serialises the
+write.** The pre-lock check is for fast, friendly rejection; only the in-lock
+one is authoritative.
+
+What held up: a Pending company can't issue; one company cannot correct
+another's credential, and neither can the student's own college — only the
+original issuer; correcting a non-existent id returns 404; and the edge case
+that matters most, a student holding offers from two companies **stays placed**
+when one rescinds, because the other still stands.
+
+### Flow 4 — a college running its placement cell (two real bugs)
+
+25 checks across join codes, visit announcements and issuance. Two genuine
+defects, one of them the most consequential finding in the whole audit.
+
+**A college could declare its own students placed.** It issued itself an
+`Offer` credential and its public placement rate went from 0/1 to 1/1 — 100%,
+with no company involved anywhere. This is the exact thing ChainProof exists
+to stop: placement statistics that the institution being measured reports about
+itself. Every other guarantee in the system was intact and the headline number
+was still forgeable in one API call.
+
+Fixed by rule: **only a Company can create an Offer.** A college can still
+issue General, Shortlist, Interview and Rejection credentials to its own
+students — it just can't create the record that means "placed", because only
+the employer can truthfully assert it made an offer. Enforced in
+`CredentialIssuer.sol` (`OnlyCompanyCanIssueOffer`) so it holds even with the
+backend bypassed entirely, again in the backend so the refusal reads as a
+sentence rather than a decoded revert, and the option is filtered out of the
+college's issue form so nobody is offered a choice that will be refused. The
+correction path is guarded too — correcting a Shortlist *into* an Offer would
+otherwise have been the same hole with an extra step.
+
+**A college could issue to any student, anywhere.** There was no check that the
+recipient was actually enrolled at the issuing college, so any approved college
+could write records onto students at another institution — vouching for people
+it has no relationship with, and moving another college's public figures, which
+are grouped by the student's own college. A college's issuance is now bounded
+to its own students. Companies are deliberately unbounded: they recruit across
+institutions, which is the whole point of them.
+
+What held up: a Pending or Rejected college can't issue, announce, or touch a
+join code; only a college can read or regenerate its own code; a regenerated
+code immediately invalidates the old one; one college's code can't enrol a
+student into another; two concurrent regenerations leave storage and the read
+API agreeing on the same single code; zero, non-integer and missing visit
+dates are refused, as are empty and over-long company names.
+
+One thing left deliberately alone: a visit can be announced with a date in the
+past. It's almost always a typo, but backfilling a visit that already happened
+is legitimate, and it isn't a safety question — blocking it would cost more
+than it saves.
+
+### Flow 3 — getting verified (hardened)
+
+Attacked the admin path over HTTP: 31 checks on authentication, replay,
+concurrency, attribution and hostile input. Nothing produced a wrong end
+state; two things were tightened.
+
+- **Two admins clicking Approve at the same instant burned gas.** Same shape as
+  the registration race in Flow 2 — both requests passed the "is it still
+  Pending?" check before either wrote, so both reached the chain and the
+  loser's transaction reverted. The audit log stayed correct (one entry), but
+  the second admin paid gas and was shown "On-chain transaction failed", which
+  reads like a system fault rather than "someone beat you to it". The check now
+  repeats inside `withWalletLock`, and the loser gets
+  `409 — "Another admin already decided this one (current status: Active)."`
+- **A user session and an admin session were only separated by accident.**
+  `verifyAdminToken` explicitly demands `type: "admin"`, so a user token can't
+  reach the queue. The reverse had no such check: an admin token's `sub` is an
+  admins-table id, and since both tables use small autoincrement integers, it
+  usually also names a real and unrelated user. What actually rejected it was
+  the tokenVersion comparison — an admin token carries none, and `undefined`
+  never equals a number. Correct today, but it means a later change to that
+  check silently converts an admin session into somebody else's user session.
+  `userAuth` now refuses on type.
+
+What the attacks confirmed already worked: the queue is unreachable with no
+token, a valid *user* token, a malformed token, or the shared bootstrap secret
+(which can create admins but not make decisions); a wrong admin password
+doesn't reveal whether the username exists; approving or rejecting an
+already-decided actor returns 409 and leaves the status untouched; an unknown
+address returns 404; a rejection reason of 5000 characters is truncated to 500;
+`<script>` tags and `DROP TABLE` in a reason are stored verbatim and never
+executed; and — the important one — **the audit log cannot be made to lie**:
+supplying `adminUsername`, `admin` or `username` in the request body changes
+nothing, because attribution comes from the authenticated session and is
+anchored by a transaction hash. A rejected applicant can also still resubmit
+with a corrected identifier, with the stale rejection reason cleared.
+
+### Flow 2 — claiming an identity (hardened)
+
+Attacked directly over HTTP, bypassing the UI's client-side validation
+entirely — 23 checks covering concurrency, normalisation, role confusion and
+hostile input. The path held: no attack produced a wrong end state. Three
+things were tightened anyway.
+
+- **A concurrent double registration paid gas to fail.** Two requests fired
+  together from one account both passed the "already registered?" check before
+  either wrote, so both reached the chain and the loser's transaction reverted
+  with `AlreadyRegistered`. The end state was always correct, but a revert
+  still costs gas, and the caller controls how often it happens. The check is
+  now repeated *inside* `withWalletLock`, where only one request runs at a
+  time, so the loser is refused with a 409 having touched nothing. Verified:
+  the pair now returns `201, 409` where it used to return `201, 400`.
+- **One registration ID had several spellings.** Uniqueness is enforced on the
+  identifier, but `EDU/MH/2024/0142` and `EDU / MH / 2024 / 0142` were
+  different strings — so a single institution could hold two claimable
+  identities, making the guarantee decorative. Now canonicalised
+  (`normalizeRegistrationNumber`): uppercased, whitespace collapsed, and spaces
+  removed either side of `/`, `-` and `.`. CIN validation is unaffected.
+- **A claim could become permanently unreleasable.** `claimRegistrationNumber`
+  compared addresses case-insensitively while `releaseClaimsForAddress` matched
+  exactly. Ethereum addresses are checksummed mixed-case, so a differently-cased
+  caller would count as the owner but free nothing — locking that CIN forever,
+  with no recovery short of direct database access. Both are now
+  case-insensitive. Latent rather than live (every current path passes the same
+  `req.user.address`), but the failure mode was unrecoverable, which is reason
+  enough.
+
+What the attacks confirmed already worked: two accounts racing for one CIN
+(exactly one wins, one claim row, one actor); a lowercased and padded CIN still
+refused; a Student unable to squat a CIN, enrol into a Company, or enrol into
+themselves; an Active actor unable to change role; `javascript:`, `data:`,
+`ftp:` and malformed URLs all refused; oversized and multi-byte names rejected
+on byte length — and in every rejected case, no CIN claim left behind.
+
+### Flow 1 — becoming a user (fixed)
+
+Most of this flow held up better than expected. Single-use reset links, the
+OTP attempt counter, the generic "if that email is registered" response, and
+session eviction on password change were all already covered by tests — an
+earlier note here claiming single-use was untested was simply wrong.
+
+Two real defects did surface:
+
+- **An email differing only by case created a second account.** `Sarthak@Gmail.com`
+  and `sarthak@gmail.com` are one inbox everywhere in the real world, but
+  lookups were case-sensitive, so they became two accounts — two custodial
+  wallets, two gas drips from the treasury, one human. Worse, someone who
+  signed up with one capitalisation and typed another at login got "invalid
+  credentials" with nothing to explain it, and `/forgot-password` would
+  silently do nothing for them, because it deliberately never reveals whether
+  an address is registered. A perfect dead end. Fixed by normalising in the
+  database layer (`normalizeEmail` in `db/users.js`) so every path — signup,
+  login, OTP, resend, reset, check-email — inherits it and they can't drift
+  apart later.
+  - The migration for existing rows deliberately **refuses** to lowercase a
+    row where that would collide with another account, logging it for a human
+    instead. Each account owns a funded wallet; silently deleting one to
+    tidy up the data would be worse than the problem. This path ran for real
+    during testing and behaved exactly that way.
+- **Completing a password reset didn't verify the email.** Someone who forgot
+  their password before ever entering the OTP would reset it successfully,
+  then still be refused at login and sent hunting for a code that had long
+  expired. Opening a link delivered to an inbox is at least as strong a proof
+  of control as typing back a code from the same inbox, so a completed reset
+  now marks the address verified.
+
+One thing deliberately *not* changed: `/auth/check-email` reveals whether an
+address is registered. That's a conscious trade — the signup form needs to say
+"that email's taken" as you type, and `/signup`'s own 409 reveals the same
+thing. `/forgot-password` stays generic because that's the endpoint an
+attacker actually probes.
+
+### Flow 0 — operational gaps (fixed)
+
+Found by reading the code rather than using the app, since neither is visible
+from the UI:
+
+- **Nothing rate-limited the endpoints that spend gas.** Login, signup and OTP
+  were carefully throttled; `/me/register`, `/credentials/issue`,
+  `/credentials/:id/correct` and `/visits/announce` were not — and those are
+  the only calls that cost real money, paid from the treasury. The custodial
+  wallet design means the user never feels that cost, so nothing discourages
+  hammering them. Invisible on Hardhat, where accounts hold thousands of test
+  ETH; on a real network one logged-in user in a loop drains the treasury.
+  Fixed in `backend/src/middleware/chainWriteLimiter.js`, keyed **by
+  authenticated user, not IP** — an entire college behind one NAT would
+  otherwise throttle its own students.
+- **The IPFS hash was never validated as a hash.** The check was "non-empty and
+  under 200 bytes", so any string could be written on-chain permanently. A
+  record pointing at a hash that resolves nowhere is worse than no record: it
+  looks verifiable and isn't. Now checked as a real CIDv0 or CIDv1
+  (`backend/src/ipfsHash.js`). The app's own end-to-end script had been
+  exploiting this without meaning to.
+  - This exposed a trap: the no-Pinata fallback generated `QmMock` + hex, and
+    hex contains `0`, which base58 excludes — so strict validation would have
+    worked with Pinata configured and broken without it. The mock now emits a
+    properly-shaped CIDv0, verified unique across 2000 generations.
+
+---
+
 *`D:\Blockchain` — this file is meant to be re-read and updated as gaps get closed, not archived.*

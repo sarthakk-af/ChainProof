@@ -20,6 +20,7 @@ import { validateWebsiteFormat, checkWebsiteReachable } from "../websiteCheck.js
 import { validateRegistrationNumber } from "../registrationNumber.js";
 import { byteLength, MAX_NAME_BYTES, MAX_METADATA_BYTES } from "../limits.js";
 import { logger } from "../logger.js";
+import { registerLimiter } from "../middleware/chainWriteLimiter.js";
 
 export const meRouter = Router();
 
@@ -59,7 +60,7 @@ meRouter.post("/join-code/regenerate", (req, res) => {
   res.json({ joinCode });
 });
 
-meRouter.post("/register", async (req, res) => {
+meRouter.post("/register", registerLimiter, async (req, res) => {
   const { role, name, collegeAddress, website, joinCode, registrationNumber } = req.body || {};
   const roleNumber = ROLE[role];
   if (roleNumber === undefined || roleNumber === ROLE.None) {
@@ -138,8 +139,22 @@ meRouter.post("/register", async (req, res) => {
     }
   }
 
+  // Sentinel for "someone else got there while we were queued" — thrown from
+  // inside the lock and mapped back to a 409 below, so it isn't reported as an
+  // on-chain failure.
+  const ALREADY_REGISTERED = Symbol("already-registered");
+
   try {
     await withWalletLock(req.user.address, async (nonce) => {
+      // Re-read under the lock. The check above runs before queuing, so two
+      // requests fired together both pass it, both reach the chain, and the
+      // loser pays gas for a transaction that reverts with AlreadyRegistered.
+      // Re-checking here — where only one request runs at a time — turns that
+      // wasted transaction into a clean refusal.
+      const current = getActor(req.user.address);
+      if (current && current.status !== STATUS.Rejected) {
+        throw ALREADY_REGISTERED;
+      }
       const signer = getUserSigner(req.user.id);
       const registry = actorRegistryAsSigner(signer);
       const tx = await registry.register(
@@ -173,6 +188,11 @@ meRouter.post("/register", async (req, res) => {
       setWebsiteReachable(req.user.address, null);
     }
   } catch (err) {
+    if (err === ALREADY_REGISTERED) {
+      // Deliberately no claim release here: the registration that won the race
+      // belongs to this same address, and its claim is the live one.
+      return res.status(409).json({ error: "This account is already registered on-chain" });
+    }
     // Nothing made it on-chain, so don't leave this identifier locked up —
     // otherwise a failed attempt would permanently block the real owner from
     // ever registering under their own CIN.

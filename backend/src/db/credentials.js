@@ -15,9 +15,19 @@ export function markCredentialSuperseded(id) {
   db.prepare("UPDATE credentials SET superseded = 1 WHERE id = ?").run(id);
 }
 
+// Joins the issuer's registered name so a credential can identify who issued
+// it in words, not just as a hex address. LEFT JOIN because the issuer row is
+// only a mirror of the chain — a credential must still render if its issuer
+// hasn't been indexed yet.
 export function getCredentialsForStudent(studentAddress) {
   return db
-    .prepare("SELECT * FROM credentials WHERE student_address = ? ORDER BY id ASC")
+    .prepare(
+      `SELECT c.*, a.name AS issuer_name, a.role AS issuer_role
+         FROM credentials c
+         LEFT JOIN actors a ON a.address = c.issuer_address
+        WHERE c.student_address = ?
+        ORDER BY c.id ASC`
+    )
     .all(studentAddress);
 }
 

@@ -1,14 +1,15 @@
 {
   "name": "chainproof-backend",
   "version": "1.0.0",
-  "description": "ChainProof — admin verification service and on-chain event indexer",
+  "description": "ChainProof \u2014 admin verification service and on-chain event indexer",
   "private": true,
   "type": "module",
   "main": "src/server.js",
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test test/admin.test.js test/auth.test.js test/public.test.js test/me.test.js test/credentials.test.js test/visits.test.js test/colleges.test.js test/students.test.js test/auth-flow.test.js"
+    "test": "node --test test/admin.test.js test/auth.test.js test/public.test.js test/me.test.js test/credentials.test.js test/visits.test.js test/colleges.test.js test/students.test.js test/auth-flow.test.js test/idempotency.test.js",
+    "test:attacks": "node test/attacks/run-all.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -20,6 +20,16 @@ export function userAuth(req, res, next) {
   if (!payload) {
     return res.status(401).json({ error: "Invalid or expired token" });
   }
+  // Both token types are signed with the same secret, and an admin token's
+  // `sub` is an admins-table id — which, being a small autoincrement integer,
+  // usually also names a real and unrelated row in the users table. Today the
+  // tokenVersion comparison below happens to reject it (an admin token has no
+  // tokenVersion, and undefined never equals a number), but relying on that
+  // accident means a later change to that check silently turns an admin
+  // session into someone else's user session. Refuse it on type instead.
+  if (payload.type === "admin") {
+    return res.status(401).json({ error: "Admin sessions can't be used as user sessions." });
+  }
 
   const user = getUserById(payload.sub);
   if (!user || user.token_version !== payload.tokenVersion) {
