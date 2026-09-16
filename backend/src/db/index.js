@@ -32,13 +32,109 @@ export {
 } from "./users.js";
 export { setEmailOtp, getEmailOtp, incrementOtpAttempts, deleteEmailOtp } from "./emailOtps.js";
 export {
-  upsertCredential,
-  markCredentialSuperseded,
-  getCredentialsForStudent,
-  getCredentialSummaries,
-} from "./credentials.js";
-export { upsertVisit, getVisitsForCollege, getRecentVisits } from "./visits.js";
-export { getPerCollegePlacementStats, countPlacedStudentsGlobal, getCollegeRecords } from "./publicStats.js";
+  VERIFICATION,
+  upsertVerification,
+  getVerification,
+  getVerificationByAddress,
+  setVerificationStatus,
+  listPendingVerifications,
+  countPendingVerifications,
+  rollNumberPending,
+} from "./verifications.js";
+export {
+  upsertRosterEntries,
+  getRosterEntry,
+  claimRosterEntry,
+  releaseRosterClaim,
+  getRosterEntryForAddress,
+  listRoster,
+  rosterCounts,
+} from "./roster.js";
+export {
+  upsertProfile,
+  patchProfile,
+  getProfile,
+  listProfiles,
+  checkEligibility,
+} from "./profiles.js";
+export {
+  upsertBatch,
+  getBatch,
+  listBatches,
+  totalStrengthForYear,
+  revisedBatches,
+} from "./batches.js";
+export {
+  upsertDrive,
+  setDriveStatus,
+  setDriveApplicationCount,
+  getDrive,
+  listDrives,
+  addApplication,
+  hasApplied,
+  countApplications,
+  listApplicants,
+  listApplicationsForStudent,
+} from "./drives.js";
+export {
+  addOutcome,
+  getOutcomeHistory,
+  getCurrentStages,
+  getDriveFunnel,
+  countReachedStage,
+  setOfferResponse,
+  getOfferResponse,
+  countAcceptedOffers,
+  setPlacement,
+  isPlaced,
+  countPlaced,
+  listPlacedByBatch,
+} from "./outcomes.js";
+export {
+  getDriveFunnelStats,
+  getPlacementByBatch,
+  getOverviewCounts,
+  getRecruiterSummary,
+} from "./publicStats.js";
+export {
+  addResumeItem,
+  getResumeItem,
+  updateResumeItem,
+  deleteResumeItem,
+  reorderResumeItems,
+  listResumeItems,
+  countResumeItems,
+  setSkills,
+  listSkills,
+  skillsForAddresses,
+  skillVocabulary,
+} from "./resume.js";
+export {
+  AUDIENCE,
+  createAnnouncement,
+  getAnnouncement,
+  getAnnouncementWithContext,
+  updateAnnouncement,
+  deleteAnnouncement,
+  listAnnouncements,
+} from "./announcements.js";
+export {
+  EVENT_KIND,
+  EVENT_KIND_LABELS,
+  upsertPreparationEvent,
+  setPreparationCancelled,
+  getPreparationEvent,
+  listPreparationEvents,
+  preparationSummary,
+} from "./preparation.js";
+export {
+  searchTalentPool,
+  getTalentProfile,
+  talentFacets,
+  lookupStudent,
+  hasAppliedToCompany,
+  getContactDetails,
+} from "./directory.js";
 export { logAdminAction, listAdminActions } from "./adminActions.js";
 export { createAdmin, getAdminByUsername, getAdminById, listAdmins } from "./admins.js";
 export {

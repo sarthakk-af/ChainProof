@@ -8,7 +8,8 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test test/admin.test.js test/auth.test.js test/public.test.js test/me.test.js test/credentials.test.js test/visits.test.js test/colleges.test.js test/students.test.js test/auth-flow.test.js test/idempotency.test.js test/config-guard.test.js",
+    "seed": "node scripts/seed.mjs",
+    "test": "node --test test/auth.test.js test/auth-flow.test.js test/me.test.js test/public.test.js test/roster.test.js test/verification.test.js test/studentProfile.test.js test/resume.test.js test/talent.test.js test/announcements.test.js test/preparation.test.js test/idempotency.test.js test/indexer-cursor.test.js test/config-guard.test.js",
     "test:attacks": "node test/attacks/run-all.mjs"
   },
   "dependencies": {

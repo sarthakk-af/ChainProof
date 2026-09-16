@@ -25,15 +25,16 @@ import ProjectExplainer   from "./components/ProjectExplainer.jsx";
 import PrivacyPage        from "./components/PrivacyPage.jsx";
 import ProfilePage        from "./components/ProfilePage.jsx";
 import PendingApproval    from "./components/PendingApproval.jsx";
-import AdminPanel         from "./components/AdminPanel.jsx";
+import SuspendedAccount   from "./components/SuspendedAccount.jsx";
 import PublicDashboard    from "./components/PublicDashboard.jsx";
 import ResetPassword      from "./components/ResetPassword.jsx";
+import AdminPanel         from "./components/AdminPanel.jsx";
 import Navbar             from "./components/Navbar.jsx";
 import { ErrorBoundary }  from "./components/ErrorBoundary.jsx";
 
 // ── Inner shell (has access to context) ──────────────────────────────────────
 function AppShell() {
-  const { status, actor } = useAuth();
+  const { status, actor, verification } = useAuth();
 
   const renderMain = () => {
     // Viewable by anyone, signed in or not — that's the whole point.
@@ -49,8 +50,23 @@ function AppShell() {
     if (window.location.pathname === "/privacy") return <PrivacyPage />;
     if (status !== "authenticated") return <LandingPage />;
     if (window.location.pathname === "/profile") return <ProfilePage />;
-    if (!actor) return <Registration />;
+
+    // An account with no on-chain identity yet is not necessarily lost. If they
+    // have already told us their roll number they are a student waiting on
+    // verification, and belong on the student dashboard — browsing, with a
+    // banner saying what is outstanding. Sending them back to the role picker
+    // every time was the dead end.
+    if (!actor) {
+      const claimed = !!verification?.rollNumber;
+      return claimed ? <StudentDashboard /> : <Registration />;
+    }
+
+    // A company waits for the college to admit it. A student never sees this:
+    // they are written on-chain only once already verified.
     if (actor.status === "Pending" || actor.status === "Rejected") return <PendingApproval />;
+    // A suspended account gets its own screen rather than a dashboard where
+    // every button fails with no explanation.
+    if (actor.status === "Suspended") return <SuspendedAccount />;
     if (actor.role === "Student") return <StudentDashboard />;
     if (actor.role === "College") return <CollegeDashboard />;
     if (actor.role === "Company") return <CompanyDashboard />;
@@ -67,6 +83,9 @@ function AppShell() {
 
 // ── Root export (wraps in provider) ──────────────────────────────────────────
 export default function App() {
+  // The platform owner's screen. Deliberately outside AuthProvider: it uses a
+  // separate token type, and mixing the two is how an admin session ends up
+  // being accepted as a user session.
   if (window.location.pathname === "/admin") {
     return (
       <ErrorBoundary>

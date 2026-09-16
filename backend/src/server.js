@@ -13,7 +13,48 @@ process.on("uncaughtException", (err) => {
   logger.error("uncaught_exception", { message: err.message, stack: err.stack });
 });
 
+/**
+ * Creates the platform owner's account on first start.
+ *
+ * Bootstrapping used to require a curl call with a shared secret before the app
+ * could do anything at all — which meant the first five minutes of using this
+ * project were spent in a terminal. The owner is configured, not registered.
+ */
+async function ensureAdminAccount() {
+  const { db } = await import("./db.js");
+  const { hashPassword, validatePassword, PASSWORD_RULE_MESSAGE } = await import("./auth.js");
+
+  const existing = db.prepare("SELECT id FROM admins WHERE username = ?").get(config.adminUsername);
+  if (existing) return;
+
+  if (!config.adminPassword) {
+    console.log(
+      `
+[setup] No admin account yet. Set ADMIN_PASSWORD in backend/.env and restart
+` +
+        `        to create the "${config.adminUsername}" login.
+`
+    );
+    return;
+  }
+  if (!validatePassword(config.adminPassword)) {
+    console.log(`
+[setup] ADMIN_PASSWORD is too weak. ${PASSWORD_RULE_MESSAGE}
+`);
+    return;
+  }
+
+  db.prepare("INSERT INTO admins (username, password_hash, created_at) VALUES (?, ?, ?)").run(
+    config.adminUsername,
+    await hashPassword(config.adminPassword),
+    Date.now()
+  );
+  logger.info("admin_account_created", { username: config.adminUsername });
+  console.log(`[setup] Created the admin login "${config.adminUsername}".`);
+}
+
 async function main() {
+  await ensureAdminAccount();
   await startIndexer();
 
   const app = createApp();

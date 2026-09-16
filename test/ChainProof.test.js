@@ -21,7 +21,7 @@ describe("ChainProof — Full Test Suite", function () {
 
   // Enum mirrors for readable assertions (must match contract enum order)
   const Role = { None: 0, Student: 1, College: 2, Company: 3 };
-  const Status = { None: 0, Pending: 1, Active: 2, Rejected: 3 };
+  const Status = { None: 0, Pending: 1, Active: 2, Rejected: 3, Suspended: 4 };
   const CredentialType = { General: 0, Shortlist: 1, Interview: 2, Offer: 3, Rejection: 4 };
 
   // Sample IPFS hashes for test credentials
@@ -162,20 +162,22 @@ describe("ChainProof — Full Test Suite", function () {
           .withArgs(company1.address, verifier.address);
       });
 
-      it("should revert with NotVerifier when a non-verifier attempts to approve", async function () {
+      it("should not let a stranger approve a College", async function () {
+        // Colleges are admitted by the verifier. Companies are admitted by an
+        // Active College — see the Company-approval tests below.
         await expect(
           actorRegistry.connect(stranger).approveActor(college1.address)
         )
-          .to.be.revertedWithCustomError(actorRegistry, "NotVerifier")
-          .withArgs(stranger.address);
+          .to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide")
+          .withArgs(stranger.address, college1.address);
       });
 
-      it("should revert with NotVerifier when a non-verifier attempts to reject", async function () {
+      it("should not let a stranger reject a College", async function () {
         await expect(
           actorRegistry.connect(deployer).rejectActor(college1.address)
         )
-          .to.be.revertedWithCustomError(actorRegistry, "NotVerifier")
-          .withArgs(deployer.address);
+          .to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide")
+          .withArgs(deployer.address, college1.address);
       });
 
       it("should revert with ActorNotPending when approving an already-Active actor", async function () {
@@ -230,10 +232,139 @@ describe("ChainProof — Full Test Suite", function () {
 
         await expect(
           actorRegistry.connect(verifier).approveActor(college1.address)
-        ).to.be.revertedWithCustomError(actorRegistry, "NotVerifier");
+        ).to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide");
 
         await expect(actorRegistry.connect(deployer).approveActor(college1.address)).to.not.be
           .reverted;
+      });
+    });
+
+    describe("Company Approval — the College is the gate", function () {
+      beforeEach(async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(company1).register(Role.Company, "Infosys", "", ZERO_ADDRESS);
+      });
+
+      it("should let an Active College approve a Company", async function () {
+        // A college decides who recruits on its own campus. That is a domain
+        // decision, not an administrative one.
+        await expect(actorRegistry.connect(college1).approveActor(company1.address))
+          .to.emit(actorRegistry, "ActorApproved")
+          .withArgs(company1.address, college1.address);
+        expect(await actorRegistry.isActive(company1.address)).to.be.true;
+      });
+
+      it("should let an Active College reject a Company", async function () {
+        await expect(actorRegistry.connect(college1).rejectActor(company1.address))
+          .to.emit(actorRegistry, "ActorRejected")
+          .withArgs(company1.address, college1.address);
+      });
+
+      it("should still let the verifier approve a Company", async function () {
+        await expect(actorRegistry.connect(verifier).approveActor(company1.address)).to.not.be
+          .reverted;
+      });
+
+      it("should NOT let a Pending College approve a Company", async function () {
+        await actorRegistry.connect(college2).register(Role.College, "Unapproved Poly", "", ZERO_ADDRESS);
+        await expect(actorRegistry.connect(college2).approveActor(company1.address))
+          .to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide")
+          .withArgs(college2.address, company1.address);
+      });
+
+      it("should NOT let a Company approve another Company", async function () {
+        await registerActiveCompany(company2, "Rival Ltd");
+        await expect(actorRegistry.connect(company2).approveActor(company1.address))
+          .to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide")
+          .withArgs(company2.address, company1.address);
+      });
+
+      it("should NOT let a College approve another College", async function () {
+        // A college vouching for a peer institution would be unearned authority —
+        // that is the verifier's one job.
+        await actorRegistry.connect(college2).register(Role.College, "Another Institute", "", ZERO_ADDRESS);
+        await expect(actorRegistry.connect(college1).approveActor(college2.address))
+          .to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide")
+          .withArgs(college1.address, college2.address);
+      });
+    });
+
+    describe("Batch Strength — the auditable denominator", function () {
+      beforeEach(async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+      });
+
+      it("should record a cohort and report it back", async function () {
+        await expect(actorRegistry.connect(college1).recordBatchStrength("CSE", 2026, 180))
+          .to.emit(actorRegistry, "BatchStrengthRecorded")
+          .withArgs(college1.address, "CSE", 2026, 0, 180);
+
+        const batch = await actorRegistry.getBatch(college1.address, "CSE", 2026);
+        expect(batch.strength).to.equal(180);
+        expect(batch.courseCode).to.equal("CSE");
+        expect(batch.exists).to.be.true;
+      });
+
+      it("should expose the previous value when a cohort is revised", async function () {
+        // The whole point. Restating 180 as 60 is allowed, but it can never look
+        // like a first-time declaration — which is how placement rates get
+        // inflated without anyone technically lying.
+        await actorRegistry.connect(college1).recordBatchStrength("CSE", 2026, 180);
+        await expect(actorRegistry.connect(college1).recordBatchStrength("CSE", 2026, 60))
+          .to.emit(actorRegistry, "BatchStrengthRecorded")
+          .withArgs(college1.address, "CSE", 2026, 180, 60);
+      });
+
+      it("should keep cohorts separate by course and by year", async function () {
+        await actorRegistry.connect(college1).recordBatchStrength("CSE", 2026, 180);
+        await actorRegistry.connect(college1).recordBatchStrength("CSE", 2027, 200);
+        await actorRegistry.connect(college1).recordBatchStrength("MECH", 2026, 90);
+
+        expect((await actorRegistry.getBatch(college1.address, "CSE", 2026)).strength).to.equal(180);
+        expect((await actorRegistry.getBatch(college1.address, "CSE", 2027)).strength).to.equal(200);
+        expect((await actorRegistry.getBatch(college1.address, "MECH", 2026)).strength).to.equal(90);
+      });
+
+      it("should report a never-declared cohort as non-existent", async function () {
+        const batch = await actorRegistry.getBatch(college1.address, "CIVIL", 2026);
+        expect(batch.exists).to.be.false;
+        expect(batch.strength).to.equal(0);
+      });
+
+      it("should NOT let a Company or a Student declare a cohort", async function () {
+        await registerActiveCompany(company1, "Infosys");
+        await expect(
+          actorRegistry.connect(company1).recordBatchStrength("CSE", 2026, 180)
+        ).to.be.revertedWithCustomError(actorRegistry, "Unauthorized");
+      });
+
+      it("should NOT let a Pending College declare a cohort", async function () {
+        await actorRegistry.connect(college2).register(Role.College, "Unapproved Poly", "", ZERO_ADDRESS);
+        await expect(
+          actorRegistry.connect(college2).recordBatchStrength("CSE", 2026, 180)
+        ).to.be.revertedWithCustomError(actorRegistry, "Unauthorized");
+      });
+
+      it("should reject implausible cohort values", async function () {
+        await expect(
+          actorRegistry.connect(college1).recordBatchStrength("", 2026, 180)
+        ).to.be.revertedWithCustomError(actorRegistry, "InvalidCourseCodeLength");
+
+        await expect(
+          actorRegistry.connect(college1).recordBatchStrength("C".repeat(21), 2026, 180)
+        ).to.be.revertedWithCustomError(actorRegistry, "InvalidCourseCodeLength");
+
+        await expect(
+          actorRegistry.connect(college1).recordBatchStrength("CSE", 1999, 180)
+        ).to.be.revertedWithCustomError(actorRegistry, "InvalidBatchYear");
+
+        await expect(
+          actorRegistry.connect(college1).recordBatchStrength("CSE", 2026, 0)
+        ).to.be.revertedWithCustomError(actorRegistry, "InvalidBatchStrength");
+
+        await expect(
+          actorRegistry.connect(college1).recordBatchStrength("CSE", 2026, 100001)
+        ).to.be.revertedWithCustomError(actorRegistry, "InvalidBatchStrength");
       });
     });
 
@@ -455,6 +586,164 @@ describe("ChainProof — Full Test Suite", function () {
         expect(await actorRegistry.isActive(company1.address)).to.be.true;
         const actor = await actorRegistry.getActor(company1.address);
         expect(actor.rejectionCount).to.equal(1); // one rejection in its history, now Active
+      });
+    });
+
+    // =====================================================================
+    // Suspension - the admin's only power over an account
+    // =====================================================================
+    describe("Suspension and Reinstatement", function () {
+      /**
+       * The platform owner needs an answer to a fake company, or a shared login
+       * that has to stop acting today. "Edit the database" is not one, because
+       * an admin who can edit records makes every record it touches worthless.
+       * Suspension is that answer: it stops an account acting without touching
+       * a single thing the account already signed.
+       */
+
+      it("should suspend an Active college, blocking it from acting", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+
+        await expect(actorRegistry.connect(verifier).suspendActor(college1.address, "under review"))
+          .to.emit(actorRegistry, "ActorSuspended")
+          .withArgs(college1.address, verifier.address, "under review");
+
+        expect(await actorRegistry.isActive(college1.address)).to.be.false;
+        const actor = await actorRegistry.getActor(college1.address);
+        expect(actor.status).to.equal(Status.Suspended);
+      });
+
+      it("should keep the suspended actor's name and history intact", async function () {
+        // Suspension withdraws access; it does not rewrite the past. If it did,
+        // an admin could erase an inconvenient record by suspending its author.
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(college1).recordBatchStrength("CSE", 2026, 180);
+
+        await actorRegistry.connect(verifier).suspendActor(college1.address, "under review");
+
+        const actor = await actorRegistry.getActor(college1.address);
+        expect(actor.name).to.equal("IIT Bombay");
+        expect(actor.role).to.equal(Role.College);
+        const batch = await actorRegistry.getBatch(college1.address, "CSE", 2026);
+        expect(batch.strength).to.equal(180);
+      });
+
+      it("should restore a suspended actor on reinstatement", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(verifier).suspendActor(college1.address, "under review");
+
+        await expect(actorRegistry.connect(verifier).reinstateActor(college1.address))
+          .to.emit(actorRegistry, "ActorReinstated")
+          .withArgs(college1.address, verifier.address);
+
+        expect(await actorRegistry.isActive(college1.address)).to.be.true;
+      });
+
+      it("should let a College suspend a Company recruiting on its campus", async function () {
+        // Same split as approval: a college decides who recruits at it.
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(company1).register(Role.Company, "Shell Corp", "", ZERO_ADDRESS);
+        await actorRegistry.connect(college1).approveActor(company1.address);
+
+        await actorRegistry.connect(college1).suspendActor(company1.address, "not a real recruiter");
+        expect(await actorRegistry.isActive(company1.address)).to.be.false;
+
+        await actorRegistry.connect(college1).reinstateActor(company1.address);
+        expect(await actorRegistry.isActive(company1.address)).to.be.true;
+      });
+
+      it("should not let a College suspend another College", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await registerActiveCollege(college2, "Rival Institute");
+
+        await expect(
+          actorRegistry.connect(college1).suspendActor(college2.address, "competitor")
+        ).to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide");
+      });
+
+      it("should not let a Company suspend anyone", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(company1).register(Role.Company, "Infosys", "", ZERO_ADDRESS);
+        await actorRegistry.connect(college1).approveActor(company1.address);
+        await actorRegistry.connect(student1).register(Role.Student, "A Student", "", college1.address);
+
+        await expect(
+          actorRegistry.connect(company1).suspendActor(student1.address, "declined our offer")
+        ).to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide");
+      });
+
+      it("should not let a stranger suspend anyone", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await expect(
+          actorRegistry.connect(stranger).suspendActor(college1.address, "because")
+        ).to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide");
+      });
+
+      it("should refuse to suspend an actor that is not Active", async function () {
+        await actorRegistry.connect(college1).register(Role.College, "Pending Institute", "", ZERO_ADDRESS);
+        await expect(
+          actorRegistry.connect(verifier).suspendActor(college1.address, "too early")
+        ).to.be.revertedWithCustomError(actorRegistry, "ActorNotActive");
+      });
+
+      it("should refuse to suspend the same actor twice", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(verifier).suspendActor(college1.address, "once");
+        await expect(
+          actorRegistry.connect(verifier).suspendActor(college1.address, "again")
+        ).to.be.revertedWithCustomError(actorRegistry, "ActorNotActive");
+      });
+
+      it("should refuse to reinstate an actor that was never suspended", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await expect(
+          actorRegistry.connect(verifier).reinstateActor(college1.address)
+        ).to.be.revertedWithCustomError(actorRegistry, "ActorNotSuspended");
+      });
+
+      it("should refuse a suspension reason longer than the bound", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await expect(
+          actorRegistry.connect(verifier).suspendActor(college1.address, "x".repeat(201))
+        ).to.be.revertedWithCustomError(actorRegistry, "ReasonTooLong");
+      });
+
+      it("should accept an empty reason without pretending one was given", async function () {
+        // Better an empty string on the record than a forced placeholder that
+        // reads like a justification nobody actually wrote.
+        await registerActiveCollege(college1, "IIT Bombay");
+        await expect(actorRegistry.connect(verifier).suspendActor(college1.address, ""))
+          .to.emit(actorRegistry, "ActorSuspended")
+          .withArgs(college1.address, verifier.address, "");
+      });
+
+      it("should not let a suspended address register again to escape the suspension", async function () {
+        // Only a Rejected address may resubmit. If Suspended could too, the
+        // suspension would last exactly as long as it took to notice it.
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(verifier).suspendActor(college1.address, "under review");
+
+        await expect(
+          actorRegistry.connect(college1).register(Role.College, "IIT Bombay Again", "", ZERO_ADDRESS)
+        ).to.be.revertedWithCustomError(actorRegistry, "AlreadyRegistered");
+      });
+
+      it("should stop a suspended college declaring a batch strength", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(verifier).suspendActor(college1.address, "under review");
+
+        await expect(
+          actorRegistry.connect(college1).recordBatchStrength("CSE", 2026, 60)
+        ).to.be.reverted;
+      });
+
+      it("should stop a student registering under a suspended college", async function () {
+        await registerActiveCollege(college1, "IIT Bombay");
+        await actorRegistry.connect(verifier).suspendActor(college1.address, "under review");
+
+        await expect(
+          actorRegistry.connect(student1).register(Role.Student, "A Student", "", college1.address)
+        ).to.be.revertedWithCustomError(actorRegistry, "CollegeNotActive");
       });
     });
   });

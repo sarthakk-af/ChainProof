@@ -5,7 +5,8 @@ const path = require("path");
 /**
  * ChainProof Deployment Script
  * ==============================
- * Deploys ActorRegistry first, then CredentialIssuer (passing the registry address).
+ * Deploys ActorRegistry, then PlacementDrive (registry address), then
+ * DriveOutcomes (both addresses), then PreparationLog (registry address).
  * After deployment, writes a deployment manifest (addresses + ABIs) directly to the
  * frontend/src/contracts directory so the Vite app can import them without extra build steps.
  *
@@ -42,34 +43,49 @@ async function main() {
   console.log(`      ✓ Initial verifier: ${deployer.address}`);
 
   // -------------------------------------------------------------------------
-  // Step 2: Deploy CredentialIssuer (passing registry address to constructor)
+  // Step 2: Deploy PlacementDrive (passing registry address to constructor)
   // -------------------------------------------------------------------------
-  console.log("\n[2/3] Deploying CredentialIssuer...");
-  const CredentialIssuer = await hre.ethers.getContractFactory("CredentialIssuer");
-  const credentialIssuer = await CredentialIssuer.deploy(registryAddress);
-  await credentialIssuer.waitForDeployment();
-  const issuerAddress = await credentialIssuer.getAddress();
-  console.log(`      ✓ CredentialIssuer deployed at: ${issuerAddress}`);
+  console.log("\n[2/3] Deploying PlacementDrive...");
+  const PlacementDrive = await hre.ethers.getContractFactory("PlacementDrive");
+  const placementDrive = await PlacementDrive.deploy(registryAddress);
+  await placementDrive.waitForDeployment();
+  const driveAddress = await placementDrive.getAddress();
+  console.log(`      ✓ PlacementDrive deployed at: ${driveAddress}`);
 
   // -------------------------------------------------------------------------
-  // Step 3: Deploy PlacementTracker (passing registry address to constructor)
+  // Step 3: Deploy DriveOutcomes — needs the registry for roles, and the drive
+  //         contract to establish which company owns a drive before accepting
+  //         an outcome recorded against it.
   // -------------------------------------------------------------------------
-  console.log("\n[3/3] Deploying PlacementTracker...");
-  const PlacementTracker = await hre.ethers.getContractFactory("PlacementTracker");
-  const placementTracker = await PlacementTracker.deploy(registryAddress);
-  await placementTracker.waitForDeployment();
-  const trackerAddress = await placementTracker.getAddress();
-  console.log(`      ✓ PlacementTracker deployed at: ${trackerAddress}`);
+  console.log("\n[3/3] Deploying DriveOutcomes...");
+  const DriveOutcomes = await hre.ethers.getContractFactory("DriveOutcomes");
+  const driveOutcomes = await DriveOutcomes.deploy(registryAddress, driveAddress);
+  await driveOutcomes.waitForDeployment();
+  const outcomesAddress = await driveOutcomes.getAddress();
+  console.log(`      ✓ DriveOutcomes deployed at: ${outcomesAddress}`);
 
   // -------------------------------------------------------------------------
-  // Step 4: Extract ABIs from compiled artifacts
+  // Step 4: Deploy PreparationLog — the college's record of what it did to
+  //         prepare students. Needs only the registry, to check the caller is
+  //         an Active College.
+  // -------------------------------------------------------------------------
+  console.log("\n[4/4] Deploying PreparationLog...");
+  const PreparationLog = await hre.ethers.getContractFactory("PreparationLog");
+  const preparationLog = await PreparationLog.deploy(registryAddress);
+  await preparationLog.waitForDeployment();
+  const preparationAddress = await preparationLog.getAddress();
+  console.log(`      ✓ PreparationLog deployed at: ${preparationAddress}`);
+
+  // -------------------------------------------------------------------------
+  // Step 5: Extract ABIs from compiled artifacts
   // -------------------------------------------------------------------------
   const registryArtifact = await hre.artifacts.readArtifact("ActorRegistry");
-  const issuerArtifact = await hre.artifacts.readArtifact("CredentialIssuer");
-  const trackerArtifact = await hre.artifacts.readArtifact("PlacementTracker");
+  const driveArtifact = await hre.artifacts.readArtifact("PlacementDrive");
+  const outcomesArtifact = await hre.artifacts.readArtifact("DriveOutcomes");
+  const preparationArtifact = await hre.artifacts.readArtifact("PreparationLog");
 
   // -------------------------------------------------------------------------
-  // Step 5: Write deployment manifest to frontend/src/contracts/
+  // Step 6: Write deployment manifest to frontend/src/contracts/
   // -------------------------------------------------------------------------
   const contractsDir = path.join(__dirname, "..", "frontend", "src", "contracts");
 
@@ -90,13 +106,17 @@ async function main() {
         address: registryAddress,
         abi: registryArtifact.abi,
       },
-      CredentialIssuer: {
-        address: issuerAddress,
-        abi: issuerArtifact.abi,
+      PlacementDrive: {
+        address: driveAddress,
+        abi: driveArtifact.abi,
       },
-      PlacementTracker: {
-        address: trackerAddress,
-        abi: trackerArtifact.abi,
+      DriveOutcomes: {
+        address: outcomesAddress,
+        abi: outcomesArtifact.abi,
+      },
+      PreparationLog: {
+        address: preparationAddress,
+        abi: preparationArtifact.abi,
       },
     },
   };
@@ -109,12 +129,9 @@ async function main() {
 export const DEPLOYMENT = ${JSON.stringify(deploymentManifest, null, 2)};
 
 export const ACTOR_REGISTRY_ADDRESS = "${registryAddress}";
-export const CREDENTIAL_ISSUER_ADDRESS = "${issuerAddress}";
-export const PLACEMENT_TRACKER_ADDRESS = "${trackerAddress}";
-
-export const ACTOR_REGISTRY_ABI = ${JSON.stringify(registryArtifact.abi, null, 2)};
-export const CREDENTIAL_ISSUER_ABI = ${JSON.stringify(issuerArtifact.abi, null, 2)};
-export const PLACEMENT_TRACKER_ABI = ${JSON.stringify(trackerArtifact.abi, null, 2)};
+export const PLACEMENT_DRIVE_ADDRESS = "${driveAddress}";
+export const DRIVE_OUTCOMES_ADDRESS = "${outcomesAddress}";
+export const PREPARATION_LOG_ADDRESS = "${preparationAddress}";
 `;
 
   const manifestPath = path.join(contractsDir, "deployment.js");
@@ -130,8 +147,9 @@ export const PLACEMENT_TRACKER_ABI = ${JSON.stringify(trackerArtifact.abi, null,
   console.log("  Deployment Complete!");
   console.log("=".repeat(60));
   console.log(`  ActorRegistry:     ${registryAddress}`);
-  console.log(`  CredentialIssuer:  ${issuerAddress}`);
-  console.log(`  PlacementTracker:  ${trackerAddress}`);
+  console.log(`  PlacementDrive:    ${driveAddress}`);
+  console.log(`  DriveOutcomes:     ${outcomesAddress}`);
+  console.log(`  PreparationLog:    ${preparationAddress}`);
   console.log(`  Network:           ${network}`);
   console.log("=".repeat(60));
   console.log("\n  Next Steps:");

@@ -6,9 +6,15 @@ import { fileURLToPath } from "node:url";
 import { ethers } from "ethers";
 
 /**
- * Covers the public accountability dashboard's backend: all of it is
- * DB-only aggregation over the already-indexed cache, so it's fully testable
- * without a live chain — same pattern as admin.test.js.
+ * The public routes — what anyone can read without an account.
+ *
+ * Two properties are worth more than everything else here:
+ *   - no individual ever appears. Not a name, not a roll number, not one
+ *     person's outcome. The institution is accountable; the student who didn't
+ *     get picked is not;
+ *   - the denominator is shown, not assumed. "92% placed" means nothing until
+ *     you know 92% of what, and a college that has quietly restated its batch
+ *     size must not be able to present that as a first declaration.
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -20,7 +26,6 @@ function cleanupDbFiles() {
     if (fs.existsSync(file)) fs.rmSync(file);
   }
 }
-
 cleanupDbFiles();
 
 process.env.RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
@@ -33,38 +38,84 @@ process.env.WALLET_ENCRYPTION_KEY =
   "236d277256c4ac74368580b5be214189ace6dff26eb4e5efe448dbf1c2a1158c";
 process.env.DB_PATH = TEST_DB_PATH;
 
-const { db, upsertActor, upsertCredential, upsertVisit } = await import("../src/db.js");
+const {
+  db,
+  upsertActor,
+  upsertBatch,
+  upsertDrive,
+  upsertProfile,
+  upsertRosterEntries,
+  claimRosterEntry,
+  addOutcome,
+  setOfferResponse,
+  setPlacement,
+} = await import("../src/db.js");
 const { createApp } = await import("../src/app.js");
-const { ROLE, STATUS } = await import("../src/chain.js");
+const { ROLE, STATUS, DRIVE_STATUS, STAGE, OFFER_RESPONSE } = await import("../src/chain.js");
 const { default: request } = await import("supertest");
 
 const app = createApp();
 
-const college1 = ethers.Wallet.createRandom().address;
-const college2 = ethers.Wallet.createRandom().address;
-const company1 = ethers.Wallet.createRandom().address;
-const student1 = ethers.Wallet.createRandom().address;
-const student2 = ethers.Wallet.createRandom().address;
-const student3 = ethers.Wallet.createRandom().address;
+const college = ethers.Wallet.createRandom().address;
+const company = ethers.Wallet.createRandom().address;
+const students = Array.from({ length: 3 }, () => ethers.Wallet.createRandom().address);
 
 before(() => {
-  upsertActor({ address: college1, role: ROLE.College, status: STATUS.Active, name: "IIT Bombay", college: null, registeredAtBlock: 1, updatedAtBlock: 1 });
-  upsertActor({ address: college2, role: ROLE.College, status: STATUS.Active, name: "IIT Delhi", college: null, registeredAtBlock: 2, updatedAtBlock: 2 });
-  upsertActor({ address: company1, role: ROLE.Company, status: STATUS.Active, name: "Google", college: null, registeredAtBlock: 3, updatedAtBlock: 3 });
+  upsertActor({
+    address: college, role: ROLE.College, status: STATUS.Active, name: "Test Institute",
+    college: null, registeredAtBlock: 1, updatedAtBlock: 1,
+  });
+  upsertActor({
+    address: company, role: ROLE.Company, status: STATUS.Active, name: "Acme Corp",
+    college: null, registeredAtBlock: 1, updatedAtBlock: 1,
+  });
 
-  // college1: 2 students, 1 placed (50%)
-  upsertActor({ address: student1, role: ROLE.Student, status: STATUS.Active, name: "Alice", college: college1, registeredAtBlock: 4, updatedAtBlock: 4 });
-  upsertActor({ address: student2, role: ROLE.Student, status: STATUS.Active, name: "Bob", college: college1, registeredAtBlock: 5, updatedAtBlock: 5 });
-  // college2: 1 student, 1 placed (100%)
-  upsertActor({ address: student3, role: ROLE.Student, status: STATUS.Active, name: "Carol", college: college2, registeredAtBlock: 6, updatedAtBlock: 6 });
+  // A cohort of 180, later restated as 60 — the move that inflates a rate.
+  upsertBatch({ collegeAddress: college, courseCode: "CSE", batchYear: 2026, strength: 60, previousStrength: 180, blockNumber: 5 });
+  db.prepare("UPDATE batches SET revision_count = 1 WHERE college_address = ?").run(college.toLowerCase());
 
-  upsertCredential({ id: 0, studentAddress: student1, issuerAddress: company1, ipfsHash: "Qm1", credType: 3, timestamp: 1000, blockNumber: 7 });
-  upsertCredential({ id: 1, studentAddress: student3, issuerAddress: company1, ipfsHash: "Qm2", credType: 3, timestamp: 1001, blockNumber: 8 });
-  // A non-offer credential for student2 shouldn't count as placed.
-  upsertCredential({ id: 2, studentAddress: student2, issuerAddress: company1, ipfsHash: "Qm3", credType: 1, timestamp: 1002, blockNumber: 9 });
+  upsertRosterEntries(college, students.map((_, i) => ({
+    roll_number: `21CE10${41 + i}`,
+    full_name: `Private Person ${i + 1}`,
+    course_code: "CSE",
+    batch_year: 2026,
+  })));
 
-  upsertVisit({ id: 0, collegeAddress: college1, companyName: "Microsoft", ipfsHash: "QmV1", visitDate: 2000, timestamp: 1003, blockNumber: 10 });
-  upsertVisit({ id: 1, collegeAddress: college2, companyName: "Amazon", ipfsHash: "QmV2", visitDate: 2001, timestamp: 1004, blockNumber: 11 });
+  students.forEach((address, i) => {
+    upsertActor({
+      address, role: ROLE.Student, status: STATUS.Active, name: `Private Person ${i + 1}`,
+      college, registeredAtBlock: 2, updatedAtBlock: 2,
+    });
+    claimRosterEntry(college, `21CE10${41 + i}`, address);
+    upsertProfile(address, college, {
+      roll_number: `21CE10${41 + i}`,
+      full_name: `Private Person ${i + 1}`,
+      course_code: "CSE",
+      batch_year: 2026,
+      cgpa_scaled: 800,
+      phone: null,
+    });
+  });
+
+  upsertDrive({
+    id: 1, companyAddress: company, collegeAddress: college, roleTitle: "Software Engineer",
+    annualPackage: 650000, minCgpaScaled: 700, batchYear: 2026,
+    applicationDeadline: 1900000000, driveDate: 1900100000, ipfsHash: "QmTest",
+    status: DRIVE_STATUS.Approved, postedAt: 10, blockNumber: 10,
+  });
+  db.prepare("UPDATE drives SET application_count = 140 WHERE id = 1").run();
+
+  // A funnel: 3 shortlisted, 2 interviewed, 2 offered, 1 accepted.
+  students.forEach((address, i) => {
+    addOutcome({ driveId: 1, studentAddress: address, stage: STAGE.Shortlisted, previousStage: STAGE.None, label: "Screen", ipfsHash: null, timestamp: 1000 + i, blockNumber: 11 + i });
+  });
+  students.slice(0, 2).forEach((address, i) => {
+    addOutcome({ driveId: 1, studentAddress: address, stage: STAGE.Interview, previousStage: STAGE.Shortlisted, label: "Tech", ipfsHash: null, timestamp: 2000 + i, blockNumber: 20 + i });
+    addOutcome({ driveId: 1, studentAddress: address, stage: STAGE.Offered, previousStage: STAGE.Interview, label: "Final", ipfsHash: null, timestamp: 3000 + i, blockNumber: 30 + i });
+  });
+  setOfferResponse({ driveId: 1, studentAddress: students[0], response: OFFER_RESPONSE.Accepted, timestamp: 4000, blockNumber: 40 });
+  setOfferResponse({ driveId: 1, studentAddress: students[1], response: OFFER_RESPONSE.Declined, timestamp: 4001, blockNumber: 41 });
+  setPlacement({ studentAddress: students[0], collegeAddress: college, batchYear: 2026, placed: true, blockNumber: 42 });
 });
 
 after(() => {
@@ -72,59 +123,130 @@ after(() => {
   cleanupDbFiles();
 });
 
-test("GET /public/overview reports correct platform-wide totals", async () => {
+// --- privacy -----------------------------------------------------------------
+
+test("no student name, roll number or address appears anywhere public", async () => {
+  const paths = [
+    "/public/overview",
+    "/public/colleges",
+    `/public/colleges/${college}/placement`,
+    `/public/colleges/${college}/drives`,
+    `/public/colleges/${college}/recruiters`,
+    "/public/drives/1",
+  ];
+  for (const p of paths) {
+    const res = await request(app).get(p);
+    assert.equal(res.status, 200, `${p} should be readable`);
+    const blob = JSON.stringify(res.body);
+    assert.ok(!/Private Person/.test(blob), `${p} leaked a student name`);
+    assert.ok(!/21CE10/.test(blob), `${p} leaked a roll number`);
+    for (const address of students) {
+      assert.ok(!blob.toLowerCase().includes(address.toLowerCase()), `${p} leaked a student address`);
+    }
+  }
+});
+
+test("the public routes need no session at all", async () => {
+  // The whole point: a parent has no account.
   const res = await request(app).get("/public/overview");
   assert.equal(res.status, 200);
-  assert.equal(res.body.totalColleges, 2);
-  assert.equal(res.body.totalCompanies, 1);
-  assert.equal(res.body.totalStudents, 3);
-  assert.equal(res.body.totalPlaced, 2);
-  // 2 placed / 3 students = 66.67%
-  assert.equal(res.body.overallPlacementPercentage, 66.67);
 });
 
-test("GET /public/colleges merges per-college stats and keeps them isolated", async () => {
-  const res = await request(app).get("/public/colleges");
+// --- the denominator ---------------------------------------------------------
+
+test("placement is published against the declared batch AND against signups", async () => {
+  const res = await request(app).get(`/public/colleges/${college}/placement`);
+  const batch = res.body.batches.find((b) => b.batchYear === 2026);
+
+  assert.equal(batch.placed, 1);
+  assert.equal(batch.declaredStrength, 60);
+  assert.equal(batch.registered, 3);
+  // Both rates side by side. Quoting only the second is the usual way a
+  // placement figure flatters itself.
+  assert.equal(batch.placementRateOfBatch, 1.67);
+  assert.equal(batch.placementRateOfRegistered, 33.33);
+});
+
+test("a restated cohort size is flagged, not presented as a first declaration", async () => {
+  const res = await request(app).get(`/public/colleges/${college}/placement`);
+  const batch = res.body.batches.find((b) => b.batchYear === 2026);
+  assert.ok(batch.declaredStrengthRevisions >= 1, "the revision must be visible");
+});
+
+test("an unknown or malformed college returns 404 rather than leaking anything", async () => {
+  assert.equal((await request(app).get("/public/colleges/not-an-address/placement")).status, 404);
+  assert.equal(
+    (await request(app).get(`/public/colleges/${ethers.Wallet.createRandom().address}/placement`)).status,
+    404
+  );
+});
+
+// --- the funnel --------------------------------------------------------------
+
+test("the funnel counts everyone who ever reached a stage", async () => {
+  const res = await request(app).get("/public/drives/1");
+  const f = res.body.drive.funnel;
+
+  // "Ever reached", not "currently standing": a student shortlisted and later
+  // rejected was still shortlisted, and a funnel that forgot them would
+  // understate every stage above the last one.
+  assert.equal(f.shortlisted, 3);
+  assert.equal(f.interviewed, 2);
+  assert.equal(f.offered, 2);
+  assert.equal(f.accepted, 1);
+});
+
+test("applied is the company's signed figure, not a row count", async () => {
+  const res = await request(app).get("/public/drives/1");
+  assert.equal(res.body.drive.funnel.applied, 140);
+});
+
+test("an unstated applicant total reads as null, never as zero", async () => {
+  // "Nobody applied" and "not published yet" are different facts, and only one
+  // of them is true.
+  upsertDrive({
+    id: 2, companyAddress: company, collegeAddress: college, roleTitle: "Analyst",
+    annualPackage: 800000, minCgpaScaled: 0, batchYear: 2026,
+    applicationDeadline: 1900000000, driveDate: 1900100000, ipfsHash: "QmTest2",
+    status: DRIVE_STATUS.Approved, postedAt: 50, blockNumber: 50,
+  });
+  const res = await request(app).get("/public/drives/2");
+  assert.equal(res.body.drive.funnel.applied, null);
+});
+
+// --- which drives are visible ------------------------------------------------
+
+test("a proposed or rejected drive is not published", async () => {
+  // A company the college declined never recruited here, and publishing that
+  // would expose a private decision.
+  upsertDrive({
+    id: 3, companyAddress: company, collegeAddress: college, roleTitle: "Secret Role",
+    annualPackage: 1, minCgpaScaled: 0, batchYear: 2026,
+    applicationDeadline: 1900000000, driveDate: 1900100000, ipfsHash: "QmTest3",
+    status: DRIVE_STATUS.Proposed, postedAt: 60, blockNumber: 60,
+  });
+  assert.equal((await request(app).get("/public/drives/3")).status, 404);
+
+  const list = await request(app).get(`/public/colleges/${college}/drives`);
+  assert.ok(!JSON.stringify(list.body).includes("Secret Role"));
+});
+
+test("a cancelled drive IS published", async () => {
+  // A student who applied is entitled to the fact that the company withdrew.
+  upsertDrive({
+    id: 4, companyAddress: company, collegeAddress: college, roleTitle: "Withdrawn Role",
+    annualPackage: 500000, minCgpaScaled: 0, batchYear: 2026,
+    applicationDeadline: 1900000000, driveDate: 1900100000, ipfsHash: "QmTest4",
+    status: DRIVE_STATUS.Cancelled, postedAt: 70, blockNumber: 70,
+  });
+  const res = await request(app).get("/public/drives/4");
   assert.equal(res.status, 200);
-  assert.equal(res.body.colleges.length, 2);
-
-  const c1 = res.body.colleges.find((c) => c.address === college1);
-  const c2 = res.body.colleges.find((c) => c.address === college2);
-
-  assert.equal(c1.registered, 2);
-  assert.equal(c1.placed, 1);
-  assert.equal(c1.percentage, 50);
-
-  assert.equal(c2.registered, 1);
-  assert.equal(c2.placed, 1);
-  assert.equal(c2.percentage, 100);
+  assert.equal(res.body.drive.status, "Cancelled");
 });
 
-test("GET /public/colleges returns 0% for a college with no students", async () => {
-  upsertActor({ address: ethers.Wallet.createRandom().address, role: ROLE.College, status: STATUS.Active, name: "Empty College", college: null, registeredAtBlock: 12, updatedAtBlock: 12 });
-  const res = await request(app).get("/public/colleges");
-  const empty = res.body.colleges.find((c) => c.name === "Empty College");
-  assert.equal(empty.registered, 0);
-  assert.equal(empty.placed, 0);
-  assert.equal(empty.percentage, 0);
-});
-
-test("GET /public/visits returns recent visits newest-first with college names", async () => {
-  const res = await request(app).get("/public/visits");
-  assert.equal(res.status, 200);
-  assert.equal(res.body.visits.length, 2);
-  assert.equal(res.body.visits[0].companyName, "Amazon"); // id 1, most recent
-  assert.equal(res.body.visits[0].collegeName, "IIT Delhi");
-  assert.equal(res.body.visits[1].companyName, "Microsoft");
-});
-
-test("GET /public/visits respects the limit query param", async () => {
-  const res = await request(app).get("/public/visits?limit=1");
-  assert.equal(res.status, 200);
-  assert.equal(res.body.visits.length, 1);
-});
-
-test("public routes require no authentication", async () => {
-  const res = await request(app).get("/public/overview");
-  assert.notEqual(res.status, 401);
+test("recruiters are summarised with what they actually offered", async () => {
+  const res = await request(app).get(`/public/colleges/${college}/recruiters`);
+  const acme = res.body.recruiters.find((r) => r.companyName === "Acme Corp");
+  assert.ok(acme.driveCount >= 1);
+  assert.equal(acme.highestPackage, 800000);
 });

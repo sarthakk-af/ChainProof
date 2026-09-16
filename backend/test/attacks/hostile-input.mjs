@@ -78,7 +78,7 @@ function refused(res) {
 }
 
 async function serverAlive() {
-  const res = await raw("GET", "/admin/health");
+  const res = await raw("GET", "/health");
   return res.status === 200;
 }
 
@@ -172,19 +172,25 @@ console.log("\n=== B. URLs that should not answer ===");
   const guarded = [
     ["GET", "/me"],
     ["POST", "/me/register"],
-    ["GET", "/me/join-code"],
-    ["POST", "/me/join-code/regenerate"],
-    ["POST", "/credentials/issue"],
-    ["POST", "/credentials/0/correct"],
-    ["POST", "/visits/announce"],
-    ["GET", "/students"],
-    ["GET", `/students/${victim.address}/credentials`],
-    ["GET", "/admin/actors"],
-    ["GET", "/admin/actions"],
-    ["POST", `/admin/actors/${victim.address}/approve`],
-    ["POST", `/admin/actors/${victim.address}/reject`],
-    ["POST", "/admin/admins"],
-    ["GET", "/admin/admins"],
+    ["PATCH", "/me/profile"],
+    ["GET", "/me/profile-fields"],
+    ["GET", "/college/roster"],
+    ["POST", "/college/roster"],
+    ["POST", "/college/batches"],
+    ["GET", "/college/companies"],
+    ["POST", `/college/companies/${victim.address}/approve`],
+    ["POST", "/college/drives/0/approve"],
+    ["POST", "/drives"],
+    ["GET", "/drives/mine"],
+    ["GET", "/drives/open"],
+    ["POST", "/drives/0/apply"],
+    ["POST", "/drives/0/application-count"],
+    ["POST", "/outcomes/0/stage"],
+    ["POST", "/outcomes/0/answer"],
+    [
+      "GET",
+      `/outcomes/0/history/${victim.address}`,
+    ],
   ];
   for (const [method, urlPath] of guarded) {
     const res = await raw(method, urlPath, { body: {} });
@@ -193,20 +199,20 @@ console.log("\n=== B. URLs that should not answer ===");
 
   // Path traversal and encoding tricks aimed at the admin routes.
   const traversals = [
-    "/public/../admin/actors",
-    "/public/..%2fadmin%2factors",
-    "/public/%2e%2e/admin/actors",
-    "/students/..%2f..%2fadmin%2factors",
-    "/admin/../admin/actors",
-    "/ADMIN/actors",
-    "/admin//actors",
-    "/admin/actors%00",
-    "/admin/actors/../../actors",
+    "/public/../college/roster",
+    "/public/..%2fcollege%2froster",
+    "/public/%2e%2e/college/roster",
+    "/drives/..%2f..%2fcollege%2froster",
+    "/college/../college/roster",
+    "/COLLEGE/roster",
+    "/college//roster",
+    "/college/roster%00",
+    "/college/roster/../../roster",
   ];
   for (const urlPath of traversals) {
     const res = await raw("GET", urlPath);
-    check(`traversal ${urlPath} does not reach the queue`,
-      res.status !== 200 || !Array.isArray(res.data?.actors),
+    check(`traversal ${urlPath} does not reach the roster`,
+      res.status !== 200 || !Array.isArray(res.data?.roster),
       `status ${res.status}`);
   }
 
@@ -218,8 +224,8 @@ console.log("\n=== B. URLs that should not answer ===");
 
   // Wrong methods on real routes.
   for (const method of ["DELETE", "PUT", "PATCH"]) {
-    const res = await raw(method, "/admin/actors", { body: {} });
-    check(`${method} /admin/actors is not accepted`, res.status !== 200, `status ${res.status}`);
+    const res = await raw(method, "/college/roster", { body: {} });
+    check(`${method} /college/roster is not accepted`, res.status !== 200, `status ${res.status}`);
   }
 }
 await sectionEnd("B");
@@ -264,14 +270,24 @@ console.log("\n=== C. Injection payloads in real fields ===");
 
   // Injection through a URL parameter that reaches a query.
   for (const payload of ["' OR 1=1--", "%27%20OR%201%3D1--", "0x0'--"]) {
-    const res = await raw("GET", `/public/colleges/${encodeURIComponent(payload)}/records`);
+    const res = await raw("GET", `/public/colleges/${encodeURIComponent(payload)}/placement`);
     check(`college address ${JSON.stringify(payload)} refused`, refused(res), `status ${res.status}`);
   }
 
-  // The users table must still be there.
-  const stillAlive = await raw("POST", "/auth/login", { body: { email: "nobody@example.com", password: "whatever1" } });
-  check("the users table survived the SQL payloads", stillAlive.status === 401 || stillAlive.status === 403,
-    `status ${stillAlive.status}`);
+  // The users table must still be there. Queried directly rather than through
+  // /auth/login, which by this point in the run answers 429 — a rate-limited
+  // refusal would have "passed" this check without the query ever running,
+  // which is exactly the kind of evidence that isn't.
+  const { db } = await import(src("db.js"));
+  let tableIntact = false;
+  try {
+    db.prepare("SELECT COUNT(*) AS c FROM users").get();
+    db.prepare("SELECT COUNT(*) AS c FROM roster_entries").get();
+    tableIntact = true;
+  } catch (err) {
+    console.log("    db error:", err.message);
+  }
+  check("the users and roster tables survived the SQL payloads", tableIntact);
 }
 await sectionEnd("C");
 
@@ -304,13 +320,11 @@ console.log("\n=== D. Wrong types where a string is expected ===");
   // a real test elsewhere to prove nothing here. Covered instead in
   // test/auth-flow.test.js, where nothing is in the way.
 
-  for (const [label, value] of wrongTypes) {
-    const res = await raw("POST", "/credentials/issue", {
-      token: victim.token,
-      body: { studentAddress: value, credType: value, ipfsHash: value },
-    });
-    check(`issue with ${label}`, res.status === 400, describe(res));
-  }
+  // Type confusion on the role-gated routes (/drives, /outcomes, /college/*) is
+  // deliberately not repeated here. Those refuse on role before they ever reach
+  // validation, so a check against them would pass on a 403 and prove nothing
+  // about type handling. /me/register above is reachable by any account, which
+  // is what makes its 400s real evidence.
 
   // Numeric extremes where a timestamp is expected.
   for (const value of [-1, 0, NaN, Infinity, -Infinity, 1e308, Number.MAX_SAFE_INTEGER + 1, "1e999", 1.5]) {
@@ -399,9 +413,9 @@ console.log("\n=== F. Malformed bodies and protocol abuse ===");
 
   // Header injection attempts.
   const headerRes = await raw("GET", "/public/overview", {
-    headers: { "X-Forwarded-For": "127.0.0.1, evil", "X-Original-URL": "/admin/actors" },
+    headers: { "X-Forwarded-For": "127.0.0.1, evil", "X-Original-URL": "/college/roster" },
   });
-  check("X-Original-URL does not reroute to admin", headerRes.status === 200 && !headerRes.data?.actors);
+  check("X-Original-URL does not reroute to a guarded route", headerRes.status === 200 && !headerRes.data?.roster);
 }
 await sectionEnd("F");
 
@@ -432,7 +446,7 @@ console.log("\n=== G. Unicode, control characters and length ===");
   const longQuery = await raw("GET", "/public/visits?limit=" + "9".repeat(5000));
   check("absurd ?limit handled", longQuery.status < 500, `status ${longQuery.status}`);
 
-  const longPath = await raw("GET", "/public/colleges/" + "a".repeat(10000) + "/records");
+  const longPath = await raw("GET", "/public/colleges/" + "a".repeat(10000) + "/placement");
   check("10k-character path handled", longPath.status < 500 && longPath.status !== 0, `status ${longPath.status}`);
 
   // Parameter pollution.
@@ -446,10 +460,10 @@ console.log("\n=== H. Does any of it leak internals? ===");
 // =============================================================================
 {
   const probes = [
-    ["GET", "/public/colleges/%00/records"],
-    ["GET", "/students/notanaddress/credentials"],
-    ["POST", "/credentials/notanumber/correct"],
-    ["POST", "/admin/actors/xyz/approve"],
+    ["GET", "/public/colleges/%00/placement"],
+    ["GET", "/outcomes/0/history/notanaddress"],
+    ["POST", "/outcomes/notanumber/stage"],
+    ["POST", "/college/companies/xyz/approve"],
   ];
   for (const [method, urlPath] of probes) {
     const res = await raw(method, urlPath, { token: victim.token, body: {} });

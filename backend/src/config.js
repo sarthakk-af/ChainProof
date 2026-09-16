@@ -50,7 +50,11 @@ function requireEnv(name) {
 export const config = {
   rpcUrl: process.env.RPC_URL || "http://127.0.0.1:8545",
   verifierPrivateKey: requireEnv("VERIFIER_PRIVATE_KEY"),
-  adminApiKey: requireEnv("ADMIN_API_KEY"),
+  // The platform owner's login, created at first start. Not a shared secret
+  // any more: the old ADMIN_API_KEY was a bearer token that anyone holding
+  // could act with, and nothing it did was attributable to a person.
+  adminUsername: (process.env.ADMIN_USERNAME || "admin").trim().toLowerCase(),
+  adminPassword: process.env.ADMIN_PASSWORD || "",
   port: Number(process.env.PORT || 4000),
   dbPath: process.env.DB_PATH || "./data/chainproof.sqlite",
   jwtSecret: requireEnv("JWT_SECRET"),

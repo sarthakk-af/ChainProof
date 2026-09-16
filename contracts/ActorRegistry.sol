@@ -45,10 +45,11 @@ contract ActorRegistry {
      *      act with authority on the platform.
      */
     enum Status {
-        None,     // 0 - Default / not registered
-        Pending,  // 1 - Registered, awaiting verifier approval (College/Company only)
-        Active,   // 2 - Verified and authorized to act
-        Rejected  // 3 - Verifier declined this registration
+        None,      // 0 - Default / not registered
+        Pending,   // 1 - Registered, awaiting verifier approval (College/Company only)
+        Active,    // 2 - Verified and authorized to act
+        Rejected,  // 3 - Verifier declined this registration
+        Suspended  // 4 - Was Active; access withdrawn, reversible (see `suspendActor`)
     }
 
     /**
@@ -105,6 +106,29 @@ contract ActorRegistry {
     /// @notice Thrown when `_metadata` is longer than `MAX_METADATA_LENGTH` bytes.
     error MetadataTooLong(uint256 length);
 
+    /// @notice Thrown when the caller may not decide this actor's registration.
+    /// @dev    The verifier admits Colleges; an Active College admits the Companies
+    ///         that recruit on its campus. Nobody decides their own kind.
+    error NotAuthorizedToDecide(address caller, address actor);
+
+    /// @notice Thrown when suspending an actor that is not currently `Active`.
+    error ActorNotActive(address actor);
+
+    /// @notice Thrown when reinstating an actor that is not currently `Suspended`.
+    error ActorNotSuspended(address actor);
+
+    /// @notice Thrown when a suspension reason exceeds `MAX_REASON_LENGTH` bytes.
+    error ReasonTooLong(uint256 length);
+
+    /// @notice Thrown when a course code is empty or over `MAX_COURSE_CODE_LENGTH` bytes.
+    error InvalidCourseCodeLength(uint256 length);
+
+    /// @notice Thrown when a batch year falls outside a plausible range.
+    error InvalidBatchYear(uint16 year);
+
+    /// @notice Thrown when a declared batch strength exceeds `MAX_BATCH_STRENGTH`.
+    error InvalidBatchStrength(uint256 strength);
+
     // =========================================================================
     // CONSTANTS
     // =========================================================================
@@ -123,6 +147,17 @@ contract ActorRegistry {
     uint256 public constant MAX_NAME_LENGTH = 100;
     uint256 public constant MAX_METADATA_LENGTH = 200;
 
+    /// @notice Bound on the reason given for a suspension. Short on purpose: this is
+    ///         a label for a record, not a case file.
+    uint256 public constant MAX_REASON_LENGTH = 200;
+
+    /// @notice Bounds on a declared batch: a course code like "CSE" or "MECH-B",
+    ///         a plausible academic year, and a headcount no real cohort exceeds.
+    uint256 public constant MAX_COURSE_CODE_LENGTH = 20;
+    uint16 public constant MIN_BATCH_YEAR = 2000;
+    uint16 public constant MAX_BATCH_YEAR = 2100;
+    uint256 public constant MAX_BATCH_STRENGTH = 100000;
+
     // =========================================================================
     // STATE VARIABLES
     // =========================================================================
@@ -138,6 +173,28 @@ contract ActorRegistry {
     ///         Keyed by College address. Used by CredentialIssuer for per-college
     ///         placement percentage calculations.
     mapping(address => uint256) public totalRegisteredStudents;
+
+    /**
+     * @notice How many students a College declares are in a given cohort.
+     * @dev    This is the *denominator* of every placement percentage, and the one
+     *         number the College itself supplies. A placement statistic is trivial
+     *         to inflate by quietly shrinking it — "92% placed" meaning 92% of the
+     *         60 students counted, out of a batch of 180. Recording it here, with
+     *         the previous value in the event on every change, is what makes that
+     *         impossible to do quietly: the College may run an opt-in scheme, but
+     *         it cannot hide the shape of one.
+     *
+     *         Keyed by keccak256(courseCode, batchYear) since Solidity cannot use a
+     *         string as a mapping key directly; the readable values live in the
+     *         event and the struct.
+     */
+    struct Batch {
+        string courseCode;
+        uint16 batchYear;
+        uint256 strength;
+        bool exists;
+    }
+    mapping(address => mapping(bytes32 => Batch)) private batches;
 
     // =========================================================================
     // EVENTS
@@ -164,8 +221,34 @@ contract ActorRegistry {
     /// @notice Emitted when the verifier rejects a Pending College/Company registration.
     event ActorRejected(address indexed actor, address indexed verifier);
 
+    /**
+     * @notice Emitted when an Active actor's access is withdrawn.
+     * @dev    Carries the reason, because a suspension with no stated cause is
+     *         indistinguishable from an arbitrary one — and the whole argument for
+     *         an admin that only manages accounts is that what it does is visible.
+     */
+    event ActorSuspended(address indexed actor, address indexed by, string reason);
+
+    /// @notice Emitted when a Suspended actor's access is restored.
+    event ActorReinstated(address indexed actor, address indexed by);
+
     /// @notice Emitted when the platform verifier address is rotated.
     event VerifierUpdated(address indexed oldVerifier, address indexed newVerifier);
+
+    /**
+     * @notice Emitted whenever a College declares or revises a cohort's size.
+     * @dev    Carries the previous value as well as the new one, so a reduction is
+     *         as visible as the original declaration. Auditing the denominator is
+     *         the entire point: without the old value, a College could restate
+     *         180 as 60 and the record would look no different from a first entry.
+     */
+    event BatchStrengthRecorded(
+        address indexed college,
+        string courseCode,
+        uint16 indexed batchYear,
+        uint256 previousStrength,
+        uint256 newStrength
+    );
 
     // =========================================================================
     // MODIFIERS
@@ -298,7 +381,8 @@ contract ActorRegistry {
      *         from issuing credentials or otherwise acting with authority.
      * @param _actor The address of the Pending actor to approve.
      */
-    function approveActor(address _actor) external onlyVerifier {
+    function approveActor(address _actor) external {
+        _checkMayDecide(_actor);
         if (actors[_actor].status != Status.Pending) {
             revert ActorNotPending(_actor);
         }
@@ -312,7 +396,8 @@ contract ActorRegistry {
      *         a permanent ban — but `rejectionCount` permanently records that it happened.
      * @param _actor The address of the Pending actor to reject.
      */
-    function rejectActor(address _actor) external onlyVerifier {
+    function rejectActor(address _actor) external {
+        _checkMayDecide(_actor);
         Actor storage a = actors[_actor];
         if (a.status != Status.Pending) {
             revert ActorNotPending(_actor);
@@ -323,11 +408,144 @@ contract ActorRegistry {
     }
 
     /**
+     * @notice Withdraws an Active actor's access without erasing anything they did.
+     * @dev    The admin's only power over an account, and deliberately the limit of
+     *         it. A fake company, a shared student login, an account that has to stop
+     *         acting today — all of those need an answer, and "edit the database" is
+     *         not one, because an admin who can edit records makes every record it
+     *         touches worthless.
+     *
+     *         Suspension is reversible and additive: the drives, stages and offers
+     *         this address already signed stay exactly as they were. What changes is
+     *         that `isActive` now returns false, so nothing new can be signed.
+     *
+     *         Authority follows the same split as approval — the verifier suspends a
+     *         College or Student, and a College may suspend a Company recruiting on
+     *         its own campus.
+     * @param _actor  The Active actor to suspend.
+     * @param _reason Short, public statement of why.
+     */
+    function suspendActor(address _actor, string calldata _reason) external {
+        _checkMayDecide(_actor);
+        if (bytes(_reason).length > MAX_REASON_LENGTH) {
+            revert ReasonTooLong(bytes(_reason).length);
+        }
+        Actor storage a = actors[_actor];
+        if (a.status != Status.Active) {
+            revert ActorNotActive(_actor);
+        }
+        a.status = Status.Suspended;
+        emit ActorSuspended(_actor, msg.sender, _reason);
+    }
+
+    /**
+     * @notice Restores a Suspended actor to Active.
+     * @dev    A suspension that could not be lifted would be a ban by another name,
+     *         and this admin is explicitly not a judge. Same authority as suspending.
+     * @param _actor The Suspended actor to reinstate.
+     */
+    function reinstateActor(address _actor) external {
+        _checkMayDecide(_actor);
+        Actor storage a = actors[_actor];
+        if (a.status != Status.Suspended) {
+            revert ActorNotSuspended(_actor);
+        }
+        a.status = Status.Active;
+        emit ActorReinstated(_actor, msg.sender);
+    }
+
+    /**
      * @notice Rotates the platform verifier address.
      * @dev    Verifier-only. Intended to allow migrating from a single admin key to a
      *         multisig as the platform matures.
      * @param _newVerifier The new verifier address.
      */
+    /**
+     * @notice Reverts unless the caller may decide `_actor`'s registration.
+     * @dev    Two different gates, because two different questions are being
+     *         answered:
+     *           - a **College** is admitted by the platform verifier. That is a
+     *             one-time bootstrap: somebody has to vouch for the institution.
+     *           - a **Company** is admitted by an Active College. A college decides
+     *             who recruits on its own campus, which is a domain decision, not
+     *             an administrative one.
+     *
+     *         Note what this deliberately does not allow: the College confirms a
+     *         Company may take part, but never writes that Company's data or its
+     *         hiring outcomes. Gatekeeper, never author.
+     */
+    function _checkMayDecide(address _actor) internal view {
+        Role targetRole = actors[_actor].role;
+
+        if (targetRole == Role.Company) {
+            bool callerIsActiveCollege =
+                actors[msg.sender].role == Role.College &&
+                actors[msg.sender].status == Status.Active;
+            if (!callerIsActiveCollege && msg.sender != verifier) {
+                revert NotAuthorizedToDecide(msg.sender, _actor);
+            }
+            return;
+        }
+
+        if (msg.sender != verifier) {
+            revert NotAuthorizedToDecide(msg.sender, _actor);
+        }
+    }
+
+    /**
+     * @notice Declares, or revises, how many students are in one cohort.
+     * @dev    College-only, and only once Active. See the `batches` mapping for why
+     *         this lives on-chain at all.
+     * @param _courseCode  Short course identifier, e.g. "CSE".
+     * @param _batchYear   Graduating year of the cohort.
+     * @param _strength    Total number of students in it.
+     */
+    function recordBatchStrength(
+        string calldata _courseCode,
+        uint16 _batchYear,
+        uint256 _strength
+    ) external onlyRole(Role.College) {
+        if (actors[msg.sender].status != Status.Active) {
+            revert Unauthorized(msg.sender, Role.College);
+        }
+
+        uint256 codeLength = bytes(_courseCode).length;
+        if (codeLength == 0 || codeLength > MAX_COURSE_CODE_LENGTH) {
+            revert InvalidCourseCodeLength(codeLength);
+        }
+        if (_batchYear < MIN_BATCH_YEAR || _batchYear > MAX_BATCH_YEAR) {
+            revert InvalidBatchYear(_batchYear);
+        }
+        if (_strength == 0 || _strength > MAX_BATCH_STRENGTH) {
+            revert InvalidBatchStrength(_strength);
+        }
+
+        bytes32 key = batchKey(_courseCode, _batchYear);
+        Batch storage batch = batches[msg.sender][key];
+        uint256 previous = batch.exists ? batch.strength : 0;
+
+        batch.courseCode = _courseCode;
+        batch.batchYear = _batchYear;
+        batch.strength = _strength;
+        batch.exists = true;
+
+        emit BatchStrengthRecorded(msg.sender, _courseCode, _batchYear, previous, _strength);
+    }
+
+    /// @notice The storage key for one cohort. Public so callers can derive it too.
+    function batchKey(string memory _courseCode, uint16 _batchYear) public pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_courseCode, _batchYear));
+    }
+
+    /// @notice Returns a declared cohort. `exists` is false if never declared.
+    function getBatch(address _college, string calldata _courseCode, uint16 _batchYear)
+        external
+        view
+        returns (Batch memory)
+    {
+        return batches[_college][batchKey(_courseCode, _batchYear)];
+    }
+
     function setVerifier(address _newVerifier) external onlyVerifier {
         if (_newVerifier == address(0)) {
             revert ZeroAddress();

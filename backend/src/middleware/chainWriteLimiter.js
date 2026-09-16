@@ -45,6 +45,18 @@ export const issueLimiter = byUser(
   "Too many credentials issued in a short period. Please wait a few minutes and try again."
 );
 
+// A college entering a term's preparation record in one sitting — twenty
+// training sessions, mock interviews and workshops — is the heaviest genuine
+// use here, and it happens in one burst rather than spread through the year.
+// These were briefly throttled by registerLimiter, which allowed ten an hour
+// and refused the eleventh with "too many registration attempts" — the wrong
+// ceiling and a message describing something the college was not doing.
+export const recordLimiter = byUser(
+  60 * 60 * 1000,
+  100,
+  "Too many records in a short period. Please wait a few minutes and try again."
+);
+
 // Announcements are occasional by nature — a placement cell posts a handful a
 // week, not hundreds.
 export const announceLimiter = byUser(

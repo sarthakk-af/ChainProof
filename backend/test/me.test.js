@@ -130,12 +130,28 @@ test("POST /me/register rejects a missing name", async () => {
   assert.equal(res.status, 400);
 });
 
-test("POST /me/register rejects a Student registration with an invalid collegeAddress", async () => {
+test("POST /me/register turns a Student away, pointing at the right route", async () => {
+  // Students are never registered here any more. They sign up, browse
+  // unverified, and are written on-chain only once their roll number is
+  // matched — so that someone who signs up and never returns costs no gas and
+  // never lands in the registered-student count.
   const res = await request(app)
     .post("/me/register")
     .set("Authorization", authHeader(plainUser))
     .send({ role: "Student", name: "A Student", collegeAddress: "not-an-address" });
   assert.equal(res.status, 400);
+  assert.match(res.body.error, /roll number/i);
+});
+
+test("POST /me/register turns a College away — the admin creates it", async () => {
+  // The platform belongs to the college; an internal tool doesn't ask its owner
+  // to sign up for it.
+  const res = await request(app)
+    .post("/me/register")
+    .set("Authorization", authHeader(plainUser))
+    .send({ role: "College", name: "Some Institute", registrationNumber: "EDU/MH/2024/0142" });
+  assert.equal(res.status, 403);
+  assert.match(res.body.error, /administrator/i);
 });
 
 test("POST /me/register rejects an already-registered account", async () => {

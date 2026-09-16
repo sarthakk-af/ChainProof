@@ -1,485 +1,639 @@
 /**
- * AdminPanel.jsx — Platform-admin verification queue.
+ * AdminPanel.jsx — the platform owner's screen.
  *
- * Separate from the normal user auth flow entirely: admins log in with their
- * own username/password (see backend's /admin/auth/login) to get a
- * short-lived admin session token, rather than everyone sharing one static
- * key — that's what lets every approve/reject decision be attributed to an
- * actual person (see the "Recent Decisions" log below). The shared
- * ADMIN_API_KEY still exists, but only to bootstrap a new admin account
- * (backend's POST /admin/admins) — it can't approve or reject anything
- * itself. Visit /admin directly to reach this page (see App.jsx's plain
- * pathname check).
+ * Deliberately one page. It exists to do the thing no screen could do before:
+ * bring the college into existence. That used to take a console command pasted
+ * into the middle of someone's first five minutes, which made the product
+ * unusable by anyone who hadn't built it.
+ *
+ * It cannot post a drive or record an outcome, and that is not an oversight.
+ * The moment any account can record a placement, "only the company can say who
+ * got hired" stops being true — and that sentence is the whole reason this is
+ * on a blockchain.
+ *
+ * Lives outside AuthProvider: admin sessions are a different token type, and
+ * mixing the two is how one ends up accepted as the other.
  */
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  ClipboardList,
-  RefreshCw,
+  ShieldCheck,
+  Landmark,
   AlertCircle,
-  AlertTriangle,
-  Inbox,
-  Check,
-  X,
-  ExternalLink,
   CheckCircle2,
-  XCircle,
-  IdCard,
-  LogIn,
-  LogOut,
-  UserCircle2,
+  Activity,
+  KeyRound,
+  Ban,
 } from "lucide-react";
-import { shortAddr } from "../utils/format.js";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
-const SESSION_STORAGE_KEY = "chainproof_admin_session"; // { token, username }
+const TOKEN_KEY = "chainproof_admin_session";
 
-const STATUS_BADGE = {
-  Pending: "badge-warning",
-  Active: "badge-success",
-  Rejected: "badge-danger",
-};
-
-function loadSession() {
-  try {
-    return JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY) || "null");
-  } catch {
-    return null;
-  }
+async function adminApi(path, { method = "GET", body, token } = {}) {
+  const res = await fetch(BASE_URL + path, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed: ${res.status}`);
+  return data;
 }
 
 export default function AdminPanel() {
-  const [session, setSession] = useState(loadSession);
-  const [loginUsername, setLoginUsername] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
-  const [loginLoading, setLoginLoading] = useState(false);
+  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY));
+  const [username, setUsername] = useState("");
 
-  const [statusFilter, setStatusFilter] = useState("Pending");
-  const [actors, setActors] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [actionError, setActionError] = useState("");
-  const [confirming, setConfirming] = useState(null); // { address, action } awaiting confirmation, or null
-  const [actingOn, setActingOn] = useState(null); // address currently mid-request, or null
-  const [rejectReason, setRejectReason] = useState("");
-  const [showLog, setShowLog] = useState(false);
-  const [actionLog, setActionLog] = useState([]);
-  const [logLoading, setLogLoading] = useState(false);
-
-  const clearSession = useCallback(() => {
-    sessionStorage.removeItem(SESSION_STORAGE_KEY);
-    setSession(null);
-  }, []);
-
-  const adminFetch = useCallback(
-    async (path, options = {}) => {
-      const res = await fetch(`${BASE_URL}${path}`, {
-        ...options,
-        headers: {
-          Authorization: `Bearer ${session?.token}`,
-          "Content-Type": "application/json",
-          ...options.headers,
-        },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `Request failed: ${res.status}`);
-      return data;
-    },
-    [session]
-  );
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    if (loginLoading) return;
-    setLoginLoading(true);
-    setLoginError("");
-    try {
-      const res = await fetch(`${BASE_URL}/admin/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: loginUsername.trim(), password: loginPassword }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Login failed");
-      const newSession = { token: data.token, username: data.username };
-      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newSession));
-      setSession(newSession);
-      setLoginPassword("");
-    } catch (err) {
-      setLoginError(err.message || "Login failed");
-    } finally {
-      setLoginLoading(false);
-    }
+  const signOut = () => {
+    sessionStorage.removeItem(TOKEN_KEY);
+    setToken(null);
   };
 
-  const fetchActors = useCallback(async () => {
-    if (!session) return;
-    setLoading(true);
+  if (!token) {
+    return (
+      <LoginScreen
+        onSignedIn={(t, name) => {
+          sessionStorage.setItem(TOKEN_KEY, t);
+          setToken(t);
+          setUsername(name);
+        }}
+      />
+    );
+  }
+
+  return <Console token={token} username={username} onSignOut={signOut} onExpired={signOut} />;
+}
+
+// ---------------------------------------------------------------------------
+
+function LoginScreen({ onSignedIn }) {
+  const [form, setForm] = useState({ username: "", password: "" });
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
     setError("");
     try {
-      const query = statusFilter === "All" ? "" : `?status=${statusFilter}`;
-      const { actors: list } = await adminFetch(`/admin/actors${query}`);
-      setActors(list);
+      const result = await adminApi("/admin/auth/login", { method: "POST", body: form });
+      onSignedIn(result.token, result.username);
     } catch (err) {
       setError(err.message);
-      if (err.message.toLowerCase().includes("session")) {
-        clearSession();
-      }
     } finally {
-      setLoading(false);
-    }
-  }, [session, statusFilter, adminFetch, clearSession]);
-
-  useEffect(() => { fetchActors(); }, [fetchActors]);
-
-  const fetchLog = useCallback(async () => {
-    if (!session) return;
-    setLogLoading(true);
-    try {
-      const { actions } = await adminFetch("/admin/actions?limit=50");
-      setActionLog(actions);
-    } catch {
-      setActionLog([]);
-    } finally {
-      setLogLoading(false);
-    }
-  }, [session, adminFetch]);
-
-  useEffect(() => { if (showLog) fetchLog(); }, [showLog, fetchLog]);
-
-  const handleAction = async (address, action, reason) => {
-    // See frontend's IssueCredentialForm.jsx handleIssue for why this checks
-    // the in-flight state directly rather than trusting the button's disabled/hidden state.
-    if (actingOn) return;
-    setActionError("");
-    setConfirming(null);
-    setActingOn(address);
-    try {
-      await adminFetch(`/admin/actors/${address}/${action}`, {
-        method: "POST",
-        body: action === "reject" ? JSON.stringify({ reason: reason || "" }) : undefined,
-      });
-      await fetchActors();
-      if (showLog) fetchLog();
-    } catch (err) {
-      setActionError(err.message);
-    } finally {
-      setActingOn(null);
-      setRejectReason("");
+      setBusy(false);
     }
   };
 
-  if (!session) {
-    return (
-      <div className="page-container animate-fade-in-up" style={{ maxWidth: 480, marginTop: 100 }}>
-        <div className="section-eyebrow">Platform Admin</div>
-        <h2 style={{ marginBottom: 20 }}>Admin Sign In</h2>
-        <form className="glass-card p-32 flex flex-col gap-16" onSubmit={handleLogin} noValidate>
+  return (
+    <div className="page-container animate-fade-in-up" style={{ maxWidth: 420, marginTop: 100 }}>
+      <div className="glass-card p-24 flex flex-col gap-16">
+        <div className="flex items-center gap-12">
+          <ShieldCheck size={22} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
+          <div>
+            <strong style={{ fontFamily: "var(--font-head)" }}>Platform administration</strong>
+            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+              Set up from your backend .env file.
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={submit} className="flex flex-col gap-16">
           <div className="form-group">
-            <label htmlFor="admin-username">Username</label>
+            <label htmlFor="a-user">Username</label>
             <input
-              id="admin-username"
-              type="text"
-              value={loginUsername}
-              onChange={(e) => setLoginUsername(e.target.value)}
+              id="a-user"
+              value={form.username}
+              onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
               autoComplete="username"
               required
             />
           </div>
           <div className="form-group">
-            <label htmlFor="admin-password">Password</label>
+            <label htmlFor="a-pass">Password</label>
             <input
-              id="admin-password"
+              id="a-pass"
               type="password"
-              value={loginPassword}
-              onChange={(e) => setLoginPassword(e.target.value)}
+              value={form.password}
+              onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
               autoComplete="current-password"
               required
             />
           </div>
-          {loginError && (
+
+          {error && (
             <div className="alert alert-danger" role="alert">
               <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-              <span>{loginError}</span>
+              <span>{error}</span>
             </div>
           )}
-          <button type="submit" className="btn btn-primary btn-lg" disabled={loginLoading}>
-            {loginLoading ? (
-              <><div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} /> Signing in…</>
-            ) : (
-              <><LogIn size={16} /> Sign In</>
-            )}
+
+          <button type="submit" className="btn btn-primary w-full" disabled={busy}>
+            {busy ? <span className="spinner" /> : "Sign in"}
           </button>
-          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: 0 }}>
-            No account yet? Ask whoever holds the platform's shared bootstrap key to create one via
-            <code style={{ margin: "0 4px" }}>POST /admin/admins</code>.
-          </p>
         </form>
       </div>
-    );
-  }
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function Console({ token, username, onSignOut, onExpired }) {
+  const [overview, setOverview] = useState(null);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const load = useCallback(() => {
+    adminApi("/admin/overview", { token })
+      .then(setOverview)
+      .catch((err) => {
+        // A dead session shouldn't look like a broken page.
+        if (/session|token/i.test(err.message)) return onExpired();
+        setError(err.message);
+      });
+  }, [token, onExpired]);
+
+  useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="page-container animate-fade-in-up">
-      <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 12 }}>
+    <div className="page-container animate-fade-in-up" style={{ maxWidth: 780 }}>
+      <div className="flex items-center justify-between" style={{ marginBottom: 20, flexWrap: "wrap", gap: 8 }}>
         <div>
-          <div className="section-eyebrow">Platform Admin</div>
-          <h2 style={{ marginBottom: 4 }}>Institution Verification Queue</h2>
+          <div className="section-eyebrow">Platform administration</div>
+          <h2 style={{ marginBottom: 0 }}>System</h2>
         </div>
         <div className="flex items-center gap-8">
-          <span
-            className="badge badge-none"
-            style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-            title="Every decision below is attributed to this account"
-          >
-            <UserCircle2 size={13} /> {session.username}
-          </span>
-          <button className="btn btn-ghost btn-sm" onClick={clearSession}>
-            <LogOut size={14} /> Sign Out
-          </button>
+          {username && <span className="badge badge-student">{username}</span>}
+          <button className="btn btn-ghost btn-sm" onClick={onSignOut}>Sign out</button>
         </div>
       </div>
-      <p style={{ marginBottom: 24 }}>
-        Approve or reject Colleges and Companies before they can act on the platform.
-      </p>
 
-      <div className="flex items-center gap-8" style={{ marginBottom: 20, flexWrap: "wrap" }}>
-        {["Pending", "Active", "Rejected", "All"].map((s) => (
-          <button
-            key={s}
-            className={`btn btn-sm ${statusFilter === s ? "btn-primary" : "btn-ghost"}`}
-            onClick={() => setStatusFilter(s)}
-          >
-            {s}
-          </button>
-        ))}
-        <button
-          className={`btn btn-sm ${showLog ? "btn-primary" : "btn-ghost"}`}
-          onClick={() => setShowLog((v) => !v)}
-          style={{ marginLeft: "auto" }}
-        >
-          <ClipboardList size={14} /> Recent Decisions
-        </button>
-        <button className="btn btn-ghost btn-sm" onClick={fetchActors}>
-          <RefreshCw size={14} /> Refresh
-        </button>
-      </div>
-
-      {showLog && (
-        <div className="glass-card p-16" style={{ marginBottom: 20 }}>
-          <div className="section-eyebrow" style={{ marginBottom: 10 }}>
-            Recent Verification Decisions
-          </div>
-          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: -4, marginBottom: 12 }}>
-            A permanent record of every approve/reject decision — who decided it, who was affected,
-            when, and why.
-          </p>
-          {logLoading ? (
-            <div className="flex justify-center" style={{ padding: 16 }}>
-              <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-            </div>
-          ) : actionLog.length === 0 ? (
-            <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>No decisions recorded yet.</p>
-          ) : (
-            <div className="flex flex-col gap-8">
-              {actionLog.map((a) => (
-                <div
-                  key={a.id}
-                  style={{ fontSize: "0.8rem", borderBottom: "1px solid var(--border-card)", paddingBottom: 8 }}
-                >
-                  <span
-                    className={`badge ${a.action === "actor_approved" ? "badge-success" : "badge-danger"}`}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-                  >
-                    {a.action === "actor_approved" ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                    {a.action === "actor_approved" ? "Approved" : "Rejected"}
-                  </span>{" "}
-                  <strong>{a.actor_name || shortAddr(a.actor_address)}</strong>{" "}
-                  <span style={{ color: "var(--text-muted)" }}>
-                    — {new Date(a.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
-                    {a.admin_username && (
-                      <> · by <strong style={{ color: "var(--text-secondary)" }}>{a.admin_username}</strong></>
-                    )}
-                  </span>
-                  {a.reason && (
-                    <p style={{ margin: "4px 0 0", color: "var(--text-secondary)" }}>Reason: "{a.reason}"</p>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {actionError && (
-        <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>
-          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-          <span>{actionError}</span>
-        </div>
-      )}
       {error && (
         <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{error}</span>
         </div>
       )}
+      {notice && (
+        <div className="alert alert-info" role="status" style={{ marginBottom: 16 }}>
+          <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{notice}</span>
+        </div>
+      )}
 
-      {loading ? (
-        <div className="flex justify-center" style={{ padding: 40 }}>
-          <div className="spinner" />
+      <Health chain={overview?.chain} counts={overview?.counts} />
+
+      {overview && !overview.college && (
+        <CreateCollege
+          token={token}
+          onCreated={() => { setNotice("College created. The placement cell can sign in now."); load(); }}
+          onError={setError}
+        />
+      )}
+
+      {overview?.college && (
+        <CollegeCard
+          college={overview.college}
+          token={token}
+          onNotice={setNotice}
+          onError={setError}
+        />
+      )}
+
+      <Accounts
+        token={token}
+        onChanged={load}
+        onNotice={setNotice}
+        onError={setError}
+      />
+
+      <ActionLog token={token} onError={setError} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * Every account on the platform, and the one thing that can be done to them.
+ *
+ * Suspension is the whole of the owner's authority over other people's data,
+ * and the panel says so plainly. It stops an account acting; it changes nothing
+ * that account already signed. There is no edit button here and there is not
+ * going to be one — an owner who could alter a placement record would make
+ * every record on this platform worth exactly as much as their word, which is
+ * the thing it was built to avoid needing.
+ */
+function Accounts({ token, onChanged, onNotice, onError }) {
+  const [accounts, setAccounts] = useState([]);
+  const [role, setRole] = useState("");
+  const [query, setQuery] = useState("");
+  const [busy, setBusy] = useState(null);
+  const [confirming, setConfirming] = useState(null);
+  const [reason, setReason] = useState("");
+
+  const load = useCallback(() => {
+    const params = new URLSearchParams();
+    if (role) params.set("role", role);
+    if (query.trim()) params.set("q", query.trim());
+    adminApi(`/admin/accounts?${params.toString()}`, { token })
+      .then((d) => setAccounts(d.accounts))
+      .catch((err) => onError(err.message));
+  }, [token, role, query, onError]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const act = async (account, action) => {
+    setBusy(account.address);
+    onError("");
+    try {
+      await adminApi(`/admin/accounts/${account.address}/${action}`, {
+        token,
+        method: "POST",
+        body: action === "suspend" ? { reason } : {},
+      });
+      onNotice(
+        action === "suspend"
+          ? `${account.name} can no longer act. Everything they already signed stands.`
+          : `${account.name} is active again.`
+      );
+      setConfirming(null);
+      setReason("");
+      load();
+      onChanged();
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <div className="section-eyebrow" style={{ marginBottom: 12 }}>Accounts</div>
+
+      <div className="glass-card p-24" style={{ marginBottom: 16 }}>
+        <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: 14 }}>
+          You can stop an account from acting, and let it act again. You cannot edit what
+          it has already recorded — a drive, a result or a placement stays exactly as its
+          author signed it, which is what makes any of it worth reading.
+        </p>
+
+        <div className="flex gap-12" style={{ flexWrap: "wrap" }}>
+          <div className="form-group" style={{ flex: "1 1 140px", marginBottom: 0 }}>
+            <label htmlFor="ac-role">Role</label>
+            <select id="ac-role" value={role} onChange={(e) => setRole(e.target.value)}>
+              <option value="">All</option>
+              <option value="College">College</option>
+              <option value="Company">Company</option>
+              <option value="Student">Student</option>
+            </select>
+          </div>
+          <div className="form-group" style={{ flex: "2 1 200px", marginBottom: 0 }}>
+            <label htmlFor="ac-q">Search</label>
+            <input
+              id="ac-q"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Name, address or registration number"
+            />
+          </div>
         </div>
-      ) : actors.length === 0 ? (
-        <div className="empty-state glass-card">
-          <Inbox size={48} className="empty-state-icon" />
-          <h3>Nothing here</h3>
-          <p style={{ fontSize: "0.85rem" }}>No {statusFilter.toLowerCase()} actors right now.</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-10">
-          {actors.map((a) => (
-            <div key={a.address} className="glass-card animate-fade-in-up" style={{ padding: "16px 20px" }}>
-              <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 12 }}>
-                <div>
-                  <div className="flex items-center gap-8" style={{ marginBottom: 4 }}>
-                    <strong style={{ fontFamily: "var(--font-head)" }}>{a.name}</strong>
-                    <span className="badge badge-none">{a.role}</span>
-                    <span className={`badge ${STATUS_BADGE[a.status] || "badge-none"}`}>{a.status}</span>
-                    {a.rejectionCount > 0 && (
-                      <span
-                        className="badge badge-none"
-                        style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-                        title="Recorded on-chain and preserved across resubmission — never hidden by a later approval"
-                      >
-                        <AlertTriangle size={12} /> Previously rejected {a.rejectionCount}x
-                      </span>
-                    )}
-                    {a.sharesNameWithAnother && (
-                      <span
-                        className="badge badge-warning"
-                        style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-                        title="Another registration uses this exact name. Not necessarily wrong — many real institutions share a name — but check the registration numbers differ before approving."
-                      >
-                        <AlertTriangle size={12} /> Name shared with another registration
-                      </span>
-                    )}
-                  </div>
-                  <span className="mono-addr" style={{ fontSize: "0.75rem" }}>{shortAddr(a.address, { head: 8, tail: 6 })}</span>
-                  {a.role !== "Student" && (
-                    a.registrationNumber ? (
-                      <p style={{ fontSize: "0.78rem", marginTop: 6, display: "flex", alignItems: "center", gap: 4 }}>
-                        <IdCard size={12} />
-                        <span className="mono-addr" style={{ fontSize: "0.75rem" }}>{a.registrationNumber}</span>
-                        <span style={{ color: "var(--text-muted)" }}>
-                          — {a.role === "Company" ? "look this CIN up on the MCA registry" : "look this ID up with the accrediting body"}
-                        </span>
-                      </p>
-                    ) : (
-                      <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: 6 }}>
-                        No registration number on file.
-                      </p>
-                    )
-                  )}
-                  {a.website ? (
-                    <p style={{ fontSize: "0.78rem", marginTop: 6, display: "flex", alignItems: "center", gap: 4, flexWrap: "wrap" }}>
-                      <ExternalLink size={12} />
-                      <a href={a.website} target="_blank" rel="noopener noreferrer">{a.website}</a>
-                      {a.websiteReachable === true ? (
-                        <span
-                          className="badge badge-success"
-                          style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: "0.68rem" }}
-                          title="A live request to this address got a response when the account registered"
-                        >
-                          <CheckCircle2 size={11} /> Site responded
-                        </span>
-                      ) : a.websiteReachable === false ? (
-                        <span
-                          className="badge badge-danger"
-                          style={{ display: "inline-flex", alignItems: "center", gap: 3, fontSize: "0.68rem" }}
-                          title="A live request to this address failed or timed out when the account registered — doesn't necessarily mean it's fake, but worth a manual look"
-                        >
-                          <XCircle size={11} /> Could not reach this site
-                        </span>
-                      ) : (
-                        <span style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>checking…</span>
-                      )}
-                    </p>
-                  ) : a.role !== "Student" ? (
-                    <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: 6 }}>
-                      No website given — verify identity by other means before approving.
-                    </p>
-                  ) : null}
-                  {a.status === "Rejected" && a.rejectionReason && (
-                    <p style={{ fontSize: "0.78rem", color: "var(--text-secondary)", marginTop: 6, maxWidth: 420 }}>
-                      Reason given: "{a.rejectionReason}"
-                    </p>
-                  )}
+      </div>
+
+      {accounts.length === 0 && (
+        <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>No accounts match.</p>
+      )}
+
+      <div className="flex flex-col gap-10">
+        {accounts.map((a) => (
+          <div key={a.address} className="glass-card p-24">
+            <div className="flex items-start justify-between gap-12" style={{ flexWrap: "wrap" }}>
+              <div style={{ minWidth: 0 }}>
+                <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
+                  <strong style={{ fontFamily: "var(--font-head)" }}>{a.name}</strong>
+                  <span className="pill pill-muted" style={{ fontSize: "0.68rem" }}>{a.role}</span>
+                  <span
+                    className="pill"
+                    style={{
+                      fontSize: "0.68rem",
+                      color: a.status === "Suspended" ? "var(--accent-warning)" : undefined,
+                    }}
+                  >
+                    {a.status}
+                  </span>
                 </div>
-                {a.status === "Pending" && (
-                  <div className="flex items-center gap-8">
-                    {actingOn === a.address ? (
-                      <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
-                        <div className="spinner" style={{ width: 14, height: 14, borderWidth: 2 }} />
-                        Writing to the record…
-                      </span>
-                    ) : confirming?.address === a.address ? (
-                      <>
-                        <button
-                          className={`btn btn-sm ${confirming.action === "approve" ? "btn-success" : "btn-danger"}`}
-                          onClick={() => handleAction(a.address, confirming.action, rejectReason)}
-                        >
-                          {confirming.action === "approve" ? <Check size={14} /> : <X size={14} />}
-                          Confirm {confirming.action === "approve" ? "Approve" : "Reject"}
-                        </button>
-                        <button className="btn btn-ghost btn-sm" onClick={() => { setConfirming(null); setRejectReason(""); }}>
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button className="btn btn-success btn-sm" onClick={() => setConfirming({ address: a.address, action: "approve" })}>
-                          <Check size={14} /> Approve
-                        </button>
-                        <button className="btn btn-danger btn-sm" onClick={() => setConfirming({ address: a.address, action: "reject" })}>
-                          <X size={14} /> Reject
-                        </button>
-                      </>
-                    )}
-                  </div>
+                <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: 6 }}>
+                  <span className="mono-addr">{a.address}</span>
+                  {a.email && <> · {a.email}</>}
+                </div>
+              </div>
+
+              <div style={{ flexShrink: 0 }}>
+                {a.status === "Active" && (
+                  <button
+                    className="btn btn-ghost btn-sm"
+                    disabled={busy === a.address}
+                    onClick={() => { setConfirming(a.address); setReason(""); }}
+                  >
+                    <Ban size={13} /> Suspend
+                  </button>
+                )}
+                {a.status === "Suspended" && (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={busy === a.address}
+                    onClick={() => act(a, "reinstate")}
+                  >
+                    {busy === a.address ? <span className="spinner" /> : "Reinstate"}
+                  </button>
                 )}
               </div>
-              {confirming?.address === a.address && actingOn !== a.address && (
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid var(--border-card)" }}>
-                  {confirming.action === "reject" ? (
-                    <div className="form-group">
-                      <label htmlFor={`reject-reason-${a.address}`}>Reason (shown to {a.name})</label>
-                      <input
-                        id={`reject-reason-${a.address}`}
-                        type="text"
-                        placeholder="e.g. Couldn't confirm this is an official institution — please resubmit with more detail"
-                        value={rejectReason}
-                        onChange={(e) => setRejectReason(e.target.value)}
-                        maxLength={500}
-                        aria-describedby={`reject-reason-count-${a.address}`}
-                      />
-                      <span
-                        id={`reject-reason-count-${a.address}`}
-                        style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}
-                      >
-                        {rejectReason.length}/500
-                      </span>
-                    </div>
-                  ) : (
-                    <p style={{ fontSize: "0.85rem", margin: 0 }}>
-                      This grants {a.name} full access to issue credentials{a.role === "College" ? "/announce visits" : ""} under this identity.
-                    </p>
-                  )}
+            </div>
+
+            {confirming === a.address && (
+              <div className="flex flex-col gap-12" style={{ marginTop: 16 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label htmlFor={`ac-reason-${a.address}`}>Why are you suspending this account?</label>
+                  <input
+                    id={`ac-reason-${a.address}`}
+                    value={reason}
+                    onChange={(e) => setReason(e.target.value)}
+                    placeholder="e.g. Reported by the placement cell as not a real recruiter"
+                  />
+                  <p style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: 4 }}>
+                    The reason goes on the blockchain with the suspension. Nothing this
+                    account already recorded changes.
+                  </p>
                 </div>
-              )}
+                <div className="flex gap-8">
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={busy === a.address}
+                    onClick={() => act(a, "suspend")}
+                  >
+                    {busy === a.address ? <span className="spinner" /> : "Confirm suspension"}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirming(null)}>
+                    Never mind
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * What the owner has done, shown to the owner.
+ *
+ * On screen rather than in a log file, because the claim this project makes is
+ * that its records do not rest on trusting whoever runs it. An administrator
+ * acting invisibly would quietly turn that back into "trust me".
+ */
+function ActionLog({ token, onError }) {
+  const [actions, setActions] = useState([]);
+
+  useEffect(() => {
+    adminApi("/admin/actions?limit=25", { token })
+      .then((d) => setActions(d.actions))
+      .catch((err) => onError(err.message));
+  }, [token, onError]);
+
+  if (actions.length === 0) return null;
+
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <div className="section-eyebrow" style={{ marginBottom: 12 }}>Your record</div>
+      <div className="glass-card p-24">
+        <div className="flex flex-col gap-10">
+          {actions.map((a) => (
+            <div key={a.id} style={{ fontSize: "0.82rem" }}>
+              <span style={{ textTransform: "capitalize" }}>{a.action}</span>
+              {" · "}
+              <strong>{a.actor_name || a.actor_address}</strong>
+              {a.reason && <> · {a.reason}</>}
+              <span style={{ color: "var(--text-muted)" }}>
+                {" · "}
+                {new Date(a.created_at).toLocaleString()}
+              </span>
             </div>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function Health({ chain, counts }) {
+  if (!chain) return null;
+  return (
+    <section style={{ marginBottom: 24 }}>
+      <div className="section-eyebrow" style={{ marginBottom: 12 }}>
+        <Activity size={13} style={{ verticalAlign: "-2px" }} /> Health
+      </div>
+
+      {chain.error ? (
+        <div className="alert alert-danger">
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>The blockchain isn't reachable: {chain.error}</span>
+        </div>
+      ) : (
+        <>
+          <div className="kpi-strip">
+            <div className="kpi">
+              <span className="kpi-n">{chain.blockNumber}</span>
+              <span className="kpi-l">Current block</span>
+            </div>
+            <div className="kpi">
+              <span className="kpi-n">{counts?.companies ?? 0}</span>
+              <span className="kpi-l">Companies</span>
+            </div>
+            <div className="kpi">
+              <span className="kpi-n">{counts?.students ?? 0}</span>
+              <span className="kpi-l">Verified students</span>
+            </div>
+            <div className="kpi">
+              <span className={chain.low ? "kpi-n accent" : "kpi-n"}>
+                {chain.approxSignupsRemaining ?? "—"}
+              </span>
+              <span className="kpi-l">Sign-ups the treasury can fund</span>
+            </div>
+          </div>
+
+          {chain.low && (
+            <div className="alert alert-warning" style={{ marginTop: 12, fontSize: "0.82rem" }}>
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+              {/* Worth seeing before it stops anything rather than after: when
+                  this empties, every signup fails and nothing else says why. */}
+              <span>
+                The service wallet is running low. Top up{" "}
+                <span className="mono-addr">{chain.treasuryAddress}</span> — it funds
+                every new account, and sign-ups stop when it empties.
+              </span>
+            </div>
+          )}
+        </>
       )}
-    </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function CreateCollege({ token, onCreated, onError }) {
+  const [form, setForm] = useState({
+    name: "",
+    registrationNumber: "",
+    website: "",
+    email: "",
+    password: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    onError("");
+    try {
+      await adminApi("/admin/college", { method: "POST", body: form, token });
+      onCreated();
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16">
+      <div className="flex items-center gap-12">
+        <Landmark size={20} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
+        <div>
+          <strong style={{ fontFamily: "var(--font-head)" }}>Set up the college</strong>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>
+            Nothing else works until this exists — students are verified against its
+            roster and companies are admitted by it. This creates its on-chain identity
+            and the placement cell's login together.
+          </p>
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="c-name">Institution name</label>
+        <input id="c-name" value={form.name} onChange={set("name")} required />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="c-reg">Registration / accreditation ID</label>
+        <input id="c-reg" value={form.registrationNumber} onChange={set("registrationNumber")} placeholder="EDU/MH/2024/0142" required />
+        <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4 }}>
+          Published publicly so anyone can look it up independently.
+        </p>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="c-web">Website <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span></label>
+        <input id="c-web" value={form.website} onChange={set("website")} placeholder="https://example.com" />
+      </div>
+
+      <div className="section-eyebrow" style={{ marginTop: 4, marginBottom: 0 }}>Placement cell login</div>
+
+      <div className="form-group">
+        <label htmlFor="c-email">Email</label>
+        <input id="c-email" type="email" value={form.email} onChange={set("email")} required />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="c-pass">Password</label>
+        <input id="c-pass" type="password" value={form.password} onChange={set("password")} required />
+        <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4 }}>
+          At least 8 characters, including a number. Hand these to your placement cell.
+        </p>
+      </div>
+
+      <button type="submit" className="btn btn-primary" disabled={busy}>
+        {busy ? <span className="spinner" /> : "Create the college"}
+      </button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function CollegeCard({ college, token, onNotice, onError }) {
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const reset = async (e) => {
+    e.preventDefault();
+    if (busy || !password) return;
+    setBusy(true);
+    onError("");
+    try {
+      const result = await adminApi("/admin/college/reset-password", {
+        method: "POST",
+        body: { password },
+        token,
+      });
+      setPassword("");
+      onNotice(`Password reset for ${result.email}.`);
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <section className="glass-card p-24" style={{ marginBottom: 20 }}>
+        <div className="section-eyebrow" style={{ marginBottom: 12 }}>The college</div>
+        <div style={{ fontSize: "0.9rem", lineHeight: 1.9 }}>
+          <div><strong style={{ fontFamily: "var(--font-head)" }}>{college.name}</strong></div>
+          <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+            {college.registrationNumber || "no registration ID"} · {college.status}
+          </div>
+          <div className="mono-addr" style={{ fontSize: "0.72rem" }}>{college.address}</div>
+        </div>
+      </section>
+
+      <form onSubmit={reset} className="glass-card p-24 flex flex-col gap-16">
+        <div className="flex items-center gap-12">
+          <KeyRound size={20} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
+          <div>
+            <strong style={{ fontFamily: "var(--font-head)" }}>Reset the placement cell's password</strong>
+            <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>
+              The break-glass for a lost login. Nothing else about the college changes.
+            </p>
+          </div>
+        </div>
+        <div className="form-group">
+          <label htmlFor="c-newpass">New password</label>
+          <input
+            id="c-newpass"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 8 characters, including a number"
+          />
+        </div>
+        <button type="submit" className="btn btn-ghost" disabled={busy || !password}>
+          {busy ? <span className="spinner" /> : "Reset password"}
+        </button>
+      </form>
+    </>
   );
 }

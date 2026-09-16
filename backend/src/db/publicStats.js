@@ -1,59 +1,124 @@
 import { db } from "./connection.js";
 
 /**
- * Public/aggregate stats — DB-only, no live chain calls, safe for anonymous
- * traffic since everything here is answered from the already-indexed cache.
+ * publicStats.js — the aggregate reads behind the public dashboard.
+ *
+ * Every figure here is derived from mirrored chain events, never from anything
+ * a user typed into this database. Individual students are absent by design:
+ * the page exists to hold an institution accountable, not to publish what
+ * happened to any particular person.
  */
 
 /**
- * Registered/placed student counts per College, computed in one grouped
- * query rather than one lookup per college.
+ * The funnel for one drive.
+ * @dev `applied` is the company's own on-chain attestation, not a count of rows
+ *      in the applications table. The row count belongs to the platform, and the
+ *      platform is run by the college whose conversion rate the number shapes —
+ *      so the figure published is the one signed by the party with nothing to
+ *      gain from it. Null means the company has not stated it yet, which is not
+ *      the same as zero.
+ *
+ * The stage counts are "ever reached", not "currently standing": a student who
+ * was shortlisted and later rejected was still shortlisted, and a funnel that
+ * forgot them would understate every stage above the last one.
  */
-export function getPerCollegePlacementStats() {
-  const rows = db
-    .prepare(
-      `SELECT a.college AS college_address,
-              COUNT(DISTINCT a.address) AS registered,
-              COUNT(DISTINCT CASE WHEN c.cred_type = 3 AND c.superseded = 0 THEN a.address END) AS placed
-       FROM actors a
-       LEFT JOIN credentials c ON c.student_address = a.address
-       WHERE a.role = 1 AND a.college IS NOT NULL
-       GROUP BY a.college`
-    )
-    .all();
-  return new Map(rows.map((r) => [r.college_address, r]));
+export function getDriveFunnelStats(driveId, { stageShortlisted, stageAssessment, stageInterview, stageOffered, acceptedResponse }) {
+  const reached = (stage) =>
+    db
+      .prepare(
+        "SELECT COUNT(DISTINCT student_address) AS c FROM drive_outcomes WHERE drive_id = ? AND stage = ?"
+      )
+      .get(driveId, stage).c;
+
+  const drive = db.prepare("SELECT application_count FROM drives WHERE id = ?").get(driveId);
+
+  return {
+    applied: drive?.application_count ?? null,
+    shortlisted: reached(stageShortlisted),
+    assessed: reached(stageAssessment),
+    interviewed: reached(stageInterview),
+    offered: reached(stageOffered),
+    accepted: db
+      .prepare("SELECT COUNT(*) AS c FROM offer_responses WHERE drive_id = ? AND response = ?")
+      .get(driveId, acceptedResponse).c,
+  };
 }
 
 /**
- * Platform-wide count of distinct students with at least one *currently
- * standing* Offer credential — a rescinded offer (corrected into something
- * else) no longer counts, same rule the contract's own placement recompute uses.
+ * Placement per cohort year for a college: placed against declared strength.
+ * @dev Both halves come from the chain — placed from DriveOutcomes, declared from
+ *      ActorRegistry — so neither can be adjusted without the adjustment itself
+ *      being on the record. `revisions` surfaces how many times the college has
+ *      restated the cohort size, because a denominator that keeps moving is worth
+ *      seeing next to the percentage it produces.
  */
-export function countPlacedStudentsGlobal() {
+export function getPlacementByBatch(collegeAddress) {
+  const college = collegeAddress.toLowerCase();
   return db
-    .prepare("SELECT COUNT(DISTINCT student_address) AS c FROM credentials WHERE cred_type = 3 AND superseded = 0")
-    .get().c;
+    .prepare(
+      `SELECT b.batch_year,
+              SUM(b.strength)                AS declared,
+              MAX(b.revision_count)          AS revisions,
+              COALESCE(p.placed, 0)          AS placed,
+              COALESCE(r.listed, 0)          AS listed,
+              COALESCE(r.claimed, 0)         AS registered
+         FROM batches b
+         LEFT JOIN (
+           SELECT batch_year, COUNT(*) AS placed
+             FROM placements
+            WHERE college_address = ? AND placed = 1
+            GROUP BY batch_year
+         ) p ON p.batch_year = b.batch_year
+         LEFT JOIN (
+           SELECT batch_year,
+                  COUNT(*) AS listed,
+                  SUM(CASE WHEN claimed_by IS NOT NULL THEN 1 ELSE 0 END) AS claimed
+             FROM roster_entries
+            WHERE college_address = ?
+            GROUP BY batch_year
+         ) r ON r.batch_year = b.batch_year
+        WHERE b.college_address = ?
+        GROUP BY b.batch_year
+        ORDER BY b.batch_year DESC`
+    )
+    .all(college, college, college);
+}
+
+/** Headline counts for the landing page. */
+export function getOverviewCounts({ roleCollege, roleCompany, roleStudent, statusActive }) {
+  const actors = (role, status) =>
+    status === undefined
+      ? db.prepare("SELECT COUNT(*) AS c FROM actors WHERE role = ?").get(role).c
+      : db.prepare("SELECT COUNT(*) AS c FROM actors WHERE role = ? AND status = ?").get(role, status).c;
+
+  return {
+    colleges: actors(roleCollege, statusActive),
+    companies: actors(roleCompany, statusActive),
+    students: actors(roleStudent),
+    drives: db.prepare("SELECT COUNT(*) AS c FROM drives").get().c,
+    placed: db.prepare("SELECT COUNT(*) AS c FROM placements WHERE placed = 1").get().c,
+  };
 }
 
 /**
- * The individual on-chain records behind one college's placement percentage —
- * what a skeptical visitor drills into to check the number is real, without
- * publicly naming which student received which credential. Deliberately
- * shows the record (type, when, which verified issuer) and not student
- * identity — "verifiable" should mean checking the underlying activity is
- * real, not broadcasting a named student's personal outcome to the internet.
+ * Companies that have actually run a drive here, with what they offered.
+ * @dev The package is the company's own published figure, so "what do companies
+ *      pay at this college" is answerable without the college being the source.
  */
-export function getCollegeRecords(collegeAddress, limit = 100) {
+export function getRecruiterSummary(collegeAddress) {
   return db
     .prepare(
-      `SELECT c.id, c.cred_type, c.timestamp, c.issuer_address,
-              i.name AS issuer_name, i.role AS issuer_role
-       FROM credentials c
-       JOIN actors s ON s.address = c.student_address
-       LEFT JOIN actors i ON i.address = c.issuer_address
-       WHERE s.college = ?
-       ORDER BY c.timestamp DESC
-       LIMIT ?`
+      `SELECT d.company_address,
+              a.name AS company_name,
+              COUNT(*)                AS drive_count,
+              MAX(d.annual_package)   AS highest_package,
+              MIN(d.annual_package)   AS lowest_package,
+              MAX(d.drive_date)       AS latest_drive
+         FROM drives d
+         LEFT JOIN actors a ON a.address = d.company_address
+        WHERE d.college_address = ?
+        GROUP BY d.company_address, a.name
+        ORDER BY latest_drive DESC`
     )
-    .all(collegeAddress, limit);
+    .all(collegeAddress.toLowerCase());
 }

@@ -1,7 +1,7 @@
 /**
  * registrationNumber.js — Validates the one concrete, externally-checkable
  * identifier a College/Company gives at registration, so an admin has more
- * to weigh than a name and an optional website (see FLOW_AUDIT.md gap #4).
+ * to weigh than a name and an optional website.
  *
  * A Company's CIN (Corporate Identification Number) has a real, fixed
  * structure defined by India's Ministry of Corporate Affairs, so that one

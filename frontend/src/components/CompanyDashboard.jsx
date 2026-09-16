@@ -1,99 +1,383 @@
 /**
- * CompanyDashboard.jsx — Recruiter terminal (layout only)
+ * CompanyDashboard.jsx — the recruiter's console.
  *
- * Data-fetching lives in ../hooks/useStudentList.js; the candidate table and
- * the pipeline-action panel live in ./company/ — this file just arranges
- * them and owns which student is currently selected (shared between the
- * two). Layout: a KPI strip up top, the candidate table as wide primary
- * content, and the action panel as a sticky rail beside it.
+ * Everything a company writes here it writes about itself: its own openings,
+ * its own terms, its own decisions about its own applicants. Nothing on this
+ * screen can be authored by the college, and nothing here can mark a student
+ * placed — an offer only counts once the student accepts it.
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  Briefcase,
+  Users,
+  Megaphone,
+  Plus,
+  AlertCircle,
+  CheckCircle2,
+  Send,
+  Lock,
+} from "lucide-react";
+import TalentPool from "./company/TalentPool.jsx";
+import Announcements from "./shared/Announcements.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-import { useStudentList } from "../hooks/useStudentList.js";
-import CandidateTable from "./company/CandidateTable.jsx";
-import PipelineActionPanel from "./company/PipelineActionPanel.jsx";
+import { api } from "../utils/api.js";
+import { uploadToIPFS } from "../utils/ipfsService.js";
+import { getIdempotencyKey } from "../utils/idempotency.js";
+import { formatDate } from "../utils/format.js";
+
+const STAGES = ["Shortlisted", "Assessment", "Interview", "Offered", "NotSelected"];
+const STAGE_LABEL = {
+  Shortlisted: "Shortlisted",
+  Assessment: "Assessment",
+  Interview: "Interview",
+  Offered: "Offer",
+  NotSelected: "Not selected",
+};
+
+const TABS = [
+  { id: "drives", label: "Your drives", icon: Briefcase },
+  { id: "students", label: "Students", icon: Users },
+  { id: "notices", label: "Notices", icon: Megaphone },
+];
 
 export default function CompanyDashboard() {
   const { actor } = useAuth();
-  const { students, loading, refresh } = useStudentList();
-  const [activeStudent, setActiveStudent] = useState(null);
+  const [tab, setTab] = useState("drives");
+  const [drives, setDrives] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [showPost, setShowPost] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const counts = useMemo(() => {
-    const c = { Shortlist: 0, Interview: 0, Offer: 0 };
-    for (const s of students) {
-      if (s.highestCredentialStage && c[s.highestCredentialStage] !== undefined) {
-        c[s.highestCredentialStage]++;
-      }
-    }
-    return c;
-  }, [students]);
+  const load = useCallback(() => {
+    api.get("/drives/mine").then((d) => setDrives(d.drives)).catch((e) => setError(e.message));
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   return (
     <div className="page-container animate-fade-in-up">
-      {/* Header */}
-      <div className="section-eyebrow">Company Terminal</div>
-      <h2 style={{ marginBottom: 4 }}>{actor?.name || "Company Dashboard"}</h2>
-      <p style={{ marginBottom: 24 }}>
-        Progress student candidates through the recruitment pipeline on-chain.
-        Every status change is a permanent, auditable record.
+      <div className="section-eyebrow">Recruiter</div>
+      <h2 style={{ marginBottom: 4 }}>{actor?.name}</h2>
+      <p style={{ marginBottom: 24, fontSize: "0.85rem", color: "var(--text-muted)" }}>
+        You set your own terms and record your own decisions. The college decides only
+        whether a drive runs on its campus.
       </p>
 
-      {/* Pipeline legend */}
-      <div className="glass-card p-16 flex items-center gap-16 flex-wrap animate-fade-in-up" style={{ marginBottom: 28 }}>
-        <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", fontWeight: 600 }}>PIPELINE:</span>
-        {["Application Received", "Shortlisted", "Interviewed", "Offer / Rejection"].map((s, i) => (
-          <React.Fragment key={s}>
-            <span className="pipeline-stage">{s}</span>
-            {i < 3 && <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>→</span>}
-          </React.Fragment>
+      {error && (
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{error}</span>
+        </div>
+      )}
+      {notice && (
+        <div className="alert alert-info" role="status" style={{ marginBottom: 16 }}>
+          <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>{notice}</span>
+        </div>
+      )}
+
+      <div className="board-toolbar" style={{ flexWrap: "wrap", marginBottom: 24 }}>
+        {TABS.map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            type="button"
+            className={tab === id ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
+            onClick={() => { setTab(id); setError(""); setNotice(""); }}
+          >
+            <Icon size={14} /> {label}
+          </button>
         ))}
       </div>
 
-      {/* KPI strip */}
-      <div className="kpi-strip">
-        <div className="kpi">
-          <span className="kpi-n">{counts.Shortlist}</span>
-          <span className="kpi-l">Shortlisted</span>
+      {tab === "students" && <TalentPool />}
+      {tab === "notices" && <Announcements role="Company" drives={drives} />}
+
+      {tab === "drives" && (
+      <>
+      <div className="flex items-center justify-between" style={{ marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
+        <div className="section-eyebrow" style={{ marginBottom: 0 }}>Your drives ({drives.length})</div>
+        <button className="btn btn-primary btn-sm" onClick={() => setShowPost((v) => !v)}>
+          <Plus size={14} /> {showPost ? "Cancel" : "Post an opening"}
+        </button>
+      </div>
+
+      {showPost && (
+        <PostDriveForm
+          onPosted={() => { setShowPost(false); setNotice("Posted. The college will decide whether to host it."); load(); }}
+          onError={setError}
+        />
+      )}
+
+      {drives.length === 0 && !showPost ? (
+        <div className="empty-state glass-card">
+          <Briefcase size={48} className="empty-state-icon" />
+          <h3>No openings yet</h3>
+          <p style={{ fontSize: "0.85rem" }}>Post one and the college will decide whether to host it.</p>
         </div>
-        <div className="kpi">
-          <span className="kpi-n">{counts.Interview}</span>
-          <span className="kpi-l">Interviewed</span>
+      ) : (
+        <div className="flex flex-col gap-10">
+          {drives.map((d) => (
+            <DriveCard
+              key={d.id}
+              drive={d}
+              expanded={selected === d.id}
+              onToggle={() => setSelected(selected === d.id ? null : d.id)}
+              onChanged={() => { load(); }}
+              onError={setError}
+              onNotice={setNotice}
+            />
+          ))}
         </div>
-        <div className="kpi">
-          <span className="kpi-n accent">{counts.Offer}</span>
-          <span className="kpi-l">Offers made</span>
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function PostDriveForm({ onPosted, onError }) {
+  const [colleges, setColleges] = useState([]);
+  const [form, setForm] = useState({
+    collegeAddress: "",
+    roleTitle: "",
+    annualPackage: "",
+    minCgpa: "",
+    batchYear: "",
+    applicationDeadline: "",
+    driveDate: "",
+    description: "",
+  });
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api.get("/public/colleges").then((d) => {
+      setColleges(d.colleges);
+      if (d.colleges.length === 1) setForm((f) => ({ ...f, collegeAddress: d.colleges[0].address }));
+    }).catch(() => {});
+  }, []);
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    onError("");
+    try {
+      // The full description goes to IPFS; only its hash is written on-chain,
+      // which keeps the permanent record small and tamper-evident at once.
+      const ipfsHash = await uploadToIPFS({
+        schema: "chainproof-drive-v1",
+        roleTitle: form.roleTitle,
+        description: form.description,
+        annualPackage: Number(form.annualPackage),
+        postedAt: new Date().toISOString(),
+      });
+
+      await api.post("/drives", {
+        collegeAddress: form.collegeAddress,
+        roleTitle: form.roleTitle.trim(),
+        annualPackage: Number(form.annualPackage),
+        minCgpa: form.minCgpa === "" ? 0 : Number(form.minCgpa),
+        batchYear: Number(form.batchYear),
+        applicationDeadline: Math.floor(new Date(form.applicationDeadline).getTime() / 1000),
+        driveDate: Math.floor(new Date(form.driveDate).getTime() / 1000),
+        ipfsHash,
+        idempotencyKey: getIdempotencyKey("post-drive", JSON.stringify(form)),
+      });
+      onPosted();
+    } catch (err) {
+      onError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16" style={{ marginBottom: 20 }}>
+      <div className="form-group">
+        <label htmlFor="d-college">College</label>
+        <select id="d-college" value={form.collegeAddress} onChange={set("collegeAddress")} required>
+          <option value="">Select…</option>
+          {colleges.map((c) => <option key={c.address} value={c.address}>{c.name}</option>)}
+        </select>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="d-role">Role title</label>
+        <input id="d-role" value={form.roleTitle} onChange={set("roleTitle")} placeholder="Software Engineer" required />
+      </div>
+
+      <div className="grid-2" style={{ gap: 12 }}>
+        <div className="form-group">
+          <label htmlFor="d-package">Annual package (₹)</label>
+          <input id="d-package" type="number" value={form.annualPackage} onChange={set("annualPackage")} placeholder="650000" required />
         </div>
-        <div className="kpi">
-          <span className="kpi-n">{students.length}</span>
-          <span className="kpi-l">Registered students visible</span>
+        <div className="form-group">
+          <label htmlFor="d-cgpa">Minimum CGPA</label>
+          <input id="d-cgpa" type="number" step="0.01" min="0" max="10" value={form.minCgpa} onChange={set("minCgpa")} placeholder="7.00" />
         </div>
       </div>
 
-      <div className="dash-body">
-        {/* ── Wide column: candidate table ── */}
+      <div className="grid-2" style={{ gap: 12 }}>
+        <div className="form-group">
+          <label htmlFor="d-batch">Batch year</label>
+          <input id="d-batch" type="number" value={form.batchYear} onChange={set("batchYear")} placeholder="2026" required />
+        </div>
+        <div className="form-group">
+          <label htmlFor="d-deadline">Applications close</label>
+          <input id="d-deadline" type="date" value={form.applicationDeadline} onChange={set("applicationDeadline")} required />
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="d-date">Drive date</label>
+        <input id="d-date" type="date" value={form.driveDate} onChange={set("driveDate")} required />
+      </div>
+
+      <div className="form-group">
+        <label htmlFor="d-desc">Description</label>
+        <textarea id="d-desc" value={form.description} onChange={set("description")} style={{ height: 100 }} />
+      </div>
+
+      <p style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+        The package and CGPA cutoff are published on-chain before applications open, so
+        they can't be quietly changed later to explain away a rejection.
+      </p>
+
+      <button type="submit" className="btn btn-primary" disabled={busy}>
+        {busy ? <span className="spinner" /> : <><Send size={16} /> Post opening</>}
+      </button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) {
+  const [applicants, setApplicants] = useState([]);
+  const [busy, setBusy] = useState(null);
+
+  const loadApplicants = useCallback(() => {
+    if (!expanded) return;
+    api.get(`/drives/${drive.id}/applicants`)
+      .then((d) => setApplicants(d.applicants))
+      .catch((e) => onError(e.message));
+  }, [expanded, drive.id, onError]);
+
+  useEffect(() => { loadApplicants(); }, [loadApplicants]);
+
+  const recordStage = async (address, stage) => {
+    setBusy(address + stage);
+    onError("");
+    try {
+      await api.post(`/outcomes/${drive.id}/stage`, {
+        studentAddress: address,
+        stage,
+        label: "",
+        idempotencyKey: getIdempotencyKey("stage", `${drive.id}:${address}:${stage}`),
+      });
+      onNotice(`Recorded: ${STAGE_LABEL[stage]}`);
+      loadApplicants();
+      onChanged();
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const publishCount = async () => {
+    setBusy("count");
+    onError("");
+    try {
+      const r = await api.post(`/drives/${drive.id}/application-count`, {});
+      onNotice(`Published: ${r.applicationCount} applied.`);
+      onChanged();
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const unpublished = drive.applicationCount !== drive.applicationsReceived;
+
+  return (
+    <div className="glass-card" style={{ padding: "16px 20px" }}>
+      <div
+        className="flex items-center justify-between"
+        style={{ cursor: "pointer", flexWrap: "wrap", gap: 8 }}
+        role="button"
+        tabIndex={0}
+        onClick={onToggle}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
+      >
         <div>
-          <div className="section-eyebrow" style={{ marginBottom: 12 }}>
-            Registered Students ({students.length})
+          <strong style={{ fontFamily: "var(--font-head)" }}>{drive.roleTitle}</strong>
+          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+            {drive.collegeName} · batch {drive.batchYear} · {formatDate(drive.driveDate)}
           </div>
-          <CandidateTable
-            students={students}
-            loading={loading}
-            activeAddress={activeStudent?.address}
-            onSelect={(s) => setActiveStudent(s)}
-          />
         </div>
-
-        {/* ── Rail: pipeline actions ── */}
-        <div className="rail">
-          <p className="rail-title">Pipeline Actions</p>
-          <PipelineActionPanel
-            activeStudent={activeStudent}
-            onDeselect={() => setActiveStudent(null)}
-            onIssued={refresh}
-          />
-        </div>
+        <span className="badge badge-company">{drive.status}</span>
       </div>
+
+      {expanded && (
+        <div style={{ marginTop: 16 }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+              {drive.applicationsReceived} applied
+              {drive.applicationCount !== null && ` · ${drive.applicationCount} published on-chain`}
+            </span>
+            {unpublished && (
+              <button className="btn btn-ghost btn-sm" onClick={publishCount} disabled={busy === "count"}>
+                <Lock size={13} /> Publish the applicant count
+              </button>
+            )}
+          </div>
+          {unpublished && (
+            <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: 12 }}>
+              The public funnel shows the figure you sign, not the one our database
+              counted — because this platform is run by the college whose success rate
+              that number shapes.
+            </p>
+          )}
+
+          {applicants.length === 0 ? (
+            <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>Nobody has applied yet.</p>
+          ) : (
+            <div className="flex flex-col gap-8">
+              {applicants.map((a) => (
+                <div key={a.address} className="glass-card" style={{ padding: "10px 14px" }}>
+                  <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: "0.85rem" }}>
+                      <span className="mono-addr">{a.rollNumber}</span> · {a.fullName}
+                      {a.cgpa !== null && <span style={{ color: "var(--text-muted)" }}> · CGPA {a.cgpa.toFixed(2)}</span>}
+                    </span>
+                    <span className="badge badge-student">{a.stage ? STAGE_LABEL[a.stage] ?? a.stage : "Applied"}</span>
+                  </div>
+                  <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
+                    {STAGES.filter((s) => s !== a.stage).map((s) => (
+                      <button
+                        key={s}
+                        className="btn btn-ghost btn-sm"
+                        disabled={busy === a.address + s}
+                        onClick={() => recordStage(a.address, s)}
+                      >
+                        {STAGE_LABEL[s]}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

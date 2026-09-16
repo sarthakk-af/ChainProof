@@ -29,9 +29,10 @@ import {
   OTP_MAX_ATTEMPTS,
 } from "../auth.js";
 import { generateWallet } from "../wallets.js";
-import { fundWallet } from "../treasury.js";
+import { fundWallet, TreasuryExhaustedError, treasuryAddress } from "../treasury.js";
 import { sendEmail, buildPasswordResetEmail, buildOtpEmail } from "../email.js";
 import { userAuth } from "../middleware/userAuth.js";
+import { tryComplete } from "../studentVerification.js";
 import { logger } from "../logger.js";
 
 export const authRouter = Router();
@@ -166,12 +167,38 @@ authRouter.post("/signup", signupLimiter, async (req, res) => {
     }
 
     logger.info("user_signed_up", { email, address: user.wallet_address });
+    // Signed in immediately. The code is already on its way, and confirming it
+    // is something they do to finish verifying — not a turnstile before they
+    // are allowed to see anything.
+    const token = signToken({
+      userId: user.id,
+      address: user.wallet_address,
+      tokenVersion: user.token_version,
+    });
     res.status(201).json({
-      message: "Account created. Check your email for a verification code.",
+      message: "Account created. We've emailed you a code to confirm your address.",
       email: user.email,
-      requiresVerification: true,
+      token,
+      address: user.wallet_address,
+      emailVerified: false,
     });
   } catch (err) {
+    if (err instanceof TreasuryExhaustedError) {
+      // Loud and specific: no signup can succeed until someone tops the
+      // treasury up, and a generic "try again" would have people retrying a
+      // request that cannot work while nobody knows why.
+      logger.error("treasury_exhausted", {
+        email,
+        treasury: treasuryAddress,
+        balanceEth: err.balanceEth,
+        requiredEth: err.requiredEth,
+      });
+      return res.status(503).json({
+        error:
+          "Sign-ups are temporarily unavailable — the service wallet that funds new " +
+          "accounts needs topping up. Please try again later.",
+      });
+    }
     logger.error("signup_failed", { email, message: err.message, stack: err.stack });
     res.status(502).json({ error: "Could not create account. Please try again." });
   }
@@ -207,6 +234,15 @@ authRouter.post("/verify-email", verifyEmailLimiter, async (req, res) => {
   deleteEmailOtp(user.id);
   setEmailVerified(user.id);
   logger.info("email_verified", { email: user.email });
+
+  // Confirming the email may be the second of the two conditions to land, so
+  // this is one of the two places verification can complete. tryComplete is
+  // safe to call when it isn't — "not yet" is an ordinary answer there.
+  try {
+    await tryComplete(user.id);
+  } catch (err) {
+    logger.error("verification_completion_failed", { email, message: err.message });
+  }
 
   const token = signToken({ userId: user.id, address: user.wallet_address, tokenVersion: user.token_version });
   res.json({ token, address: user.wallet_address });
@@ -247,18 +283,21 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
     return res.status(401).json({ error: "Invalid email or password" });
   }
 
-  if (!user.email_verified) {
-    return res.status(403).json({
-      error: "Please verify your email before signing in.",
-      requiresVerification: true,
-      email: user.email,
-    });
-  }
-
-  logger.info("user_logged_in", { email, address: user.wallet_address });
+  // An unverified email no longer blocks sign-in. It used to, which put a wall
+  // at the very first step and required a working inbox before you could even
+  // look around. The address still has to be proved before anything counts —
+  // it is one of the conditions for verification (see studentVerification.js) —
+  // but proving it is no longer the price of getting through the door.
+  logger.info("user_logged_in", { email, address: user.wallet_address, emailVerified: !!user.email_verified });
 
   const token = signToken({ userId: user.id, address: user.wallet_address, tokenVersion: user.token_version });
-  res.json({ token, address: user.wallet_address });
+  res.json({
+    token,
+    address: user.wallet_address,
+    // Not a gate any more, but the interface still needs to know so it can
+    // prompt for it rather than silently leaving the account half-finished.
+    emailVerified: !!user.email_verified,
+  });
 });
 
 /** Invalidates every token issued to this account, not just the one in hand. */

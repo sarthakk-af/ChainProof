@@ -25,11 +25,17 @@ export function AuthProvider({ children }) {
   const [status, setStatus] = useState("idle"); // idle | authenticated | unauthenticated
   const [user, setUser] = useState(null); // { email, address }
   const [actor, setActor] = useState(null); // serialized actor from GET /me, or null
+  // What is still outstanding before this account counts as real. An account
+  // can be signed in and useful without being verified — that is the point.
+  const [verification, setVerification] = useState(null);
+  const [profile, setProfile] = useState(null);
 
   const refreshActor = useCallback(async () => {
     const me = await api.get("/me");
     setUser({ email: me.email, address: me.address });
     setActor(me.actor);
+    setVerification(me.verification ?? null);
+    setProfile(me.profile ?? null);
     setStatus("authenticated");
   }, []);
 
@@ -58,12 +64,22 @@ export function AuthProvider({ children }) {
     [refreshActor]
   );
 
-  // No session yet — the account can't be used until the emailed code comes
-  // back through verifyEmailOtp. Returns the raw response so the caller
-  // (AuthScreen) knows to show the "enter your code" step.
-  const signup = useCallback(async (email, password) => {
-    return api.post("/auth/signup", { email, password });
-  }, []);
+  /**
+   * Signs up and signs straight in.
+   *
+   * Signup used to return no session: the account was unusable until the
+   * emailed code came back, which put a wall at the very first step and
+   * required a working inbox before you could even look around. Confirming the
+   * email is now something you do to finish verifying, not the price of entry.
+   */
+  const signup = useCallback(
+    async (email, password) => {
+      const result = await api.post("/auth/signup", { email, password });
+      if (result.token) await applySession(result.token);
+      return result;
+    },
+    [applySession]
+  );
 
   const login = useCallback(
     async (email, password) => {
@@ -108,20 +124,33 @@ export function AuthProvider({ children }) {
     return api.post("/auth/reset-password", { token, newPassword });
   }, []);
 
-  const registerActor = useCallback(async ({ role, name, collegeAddress, joinCode, website, registrationNumber }) => {
-    const { actor: newActor } = await api.post("/me/register", {
-      role,
-      name,
-      collegeAddress,
-      joinCode,
-      website,
-      registrationNumber,
-    });
+  /**
+   * Registers this account in a role.
+   * @dev Passes the payload straight through rather than naming each field. The
+   *      student profile field list is expected to grow, and a destructured
+   *      allow-list here would silently drop anything added to it — the failure
+   *      would look like a backend bug rather than a missing line in this file.
+   */
+  const registerActor = useCallback(async (payload) => {
+    const { actor: newActor } = await api.post("/me/register", payload);
     setActor(newActor);
   }, []);
 
+  /** Records a student's roll number — verifies them, or queues them. */
+  const claimRollNumber = useCallback(
+    async (payload) => {
+      const result = await api.post("/me/claim-roll-number", payload);
+      await refreshActor();
+      return result;
+    },
+    [refreshActor]
+  );
+
   const value = {
     status,
+    verification,
+    profile,
+    claimRollNumber,
     user,
     actor,
     signup,

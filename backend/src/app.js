@@ -5,11 +5,13 @@ import { logger } from "./logger.js";
 import { adminRouter } from "./routes/admin.js";
 import { authRouter } from "./routes/auth.js";
 import { meRouter } from "./routes/me.js";
-import { collegesRouter } from "./routes/colleges.js";
-import { studentsRouter } from "./routes/students.js";
+import { collegeRouter } from "./routes/college.js";
 import { publicRouter } from "./routes/public.js";
-import { credentialsRouter } from "./routes/credentials.js";
-import { visitsRouter } from "./routes/visits.js";
+import { drivesRouter } from "./routes/drives.js";
+import { outcomesRouter } from "./routes/outcomes.js";
+import { announcementsRouter } from "./routes/announcements.js";
+import { directoryRouter } from "./routes/directory.js";
+import { talentRouter } from "./routes/talent.js";
 import { userAuth } from "./middleware/userAuth.js";
 
 /**
@@ -41,24 +43,60 @@ export function createApp() {
     res.json({ status: "chainproof-backend" });
   });
 
+  /**
+   * Chain connectivity and treasury state. Deliberately unauthenticated — it
+   * reveals nothing beyond "the chain is up and the service wallet can still
+   * fund signups", and both are things you want to see before they stop
+   * working rather than after.
+   */
+  app.get("/health", async (_req, res) => {
+    try {
+      const { provider } = await import("./chain.js");
+      const { getTreasuryBalance, treasuryAddress } = await import("./treasury.js");
+      const [blockNumber, treasuryBalanceEth] = await Promise.all([
+        provider.getBlockNumber(),
+        getTreasuryBalance(),
+      ]);
+      const drip = Number(config.walletGasDripEth);
+      const balance = Number(treasuryBalanceEth);
+      const remainingSignups = drip > 0 ? Math.floor(balance / drip) : null;
+      res.json({
+        status: "ok",
+        blockNumber,
+        treasury: {
+          address: treasuryAddress,
+          balanceEth: treasuryBalanceEth,
+          approxSignupsRemaining: remainingSignups,
+          low: remainingSignups !== null && remainingSignups < 10,
+        },
+      });
+    } catch (err) {
+      res.status(503).json({ status: "error", error: err.message });
+    }
+  });
+
   // Public — no auth (signup/login themselves, and public read endpoints).
   app.use("/auth", authRouter);
-  app.use("/colleges", collegesRouter);
-  // Personal data about identifiable students — never anonymous. See
-  // routes/students.js for who may see what.
-  app.use("/students", userAuth, studentsRouter);
+  // The platform owner. Small on purpose — it creates the college and reports
+  // system health, and deliberately cannot post drives or record outcomes.
+  app.use("/admin", adminRouter);
   app.use("/public", publicRouter);
 
   // Custodial-account actions — require a user's own JWT.
   app.use("/me", userAuth, meRouter);
-  app.use("/credentials", userAuth, credentialsRouter);
-  app.use("/visits", userAuth, visitsRouter);
-
-  // Platform-admin verification queue — auth is applied per-route inside
-  // adminRouter itself: the shared secret only bootstraps new admin
-  // accounts, while the actual queue actions require a per-admin session
-  // (see middleware/adminSessionAuth.js and routes/admin.js).
-  app.use("/admin", adminRouter);
+  // The college account is the administrator in v2 — there is no separate admin
+  // panel and no shared secret. college.js gates every route on an Active
+  // College itself.
+  app.use("/college", userAuth, collegeRouter);
+  app.use("/drives", userAuth, drivesRouter);
+  app.use("/outcomes", userAuth, outcomesRouter);
+  // Placement notices — the college and its approved companies post, everyone
+  // signed in reads. The only editable surface here; see routes/announcements.js.
+  app.use("/announcements", userAuth, announcementsRouter);
+  // Students looking each other up, by roll number AND email.
+  app.use("/students", userAuth, directoryRouter);
+  // A company browsing the college's students, anonymised until they apply.
+  app.use("/talent", userAuth, talentRouter);
 
   // Safety net: catches anything a route's own try/catch missed, so one bad
   // request returns a clean error instead of taking the whole process down.

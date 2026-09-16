@@ -1,11 +1,14 @@
 import { verifyAdminToken } from "../auth.js";
-import { getAdminById } from "../db.js";
+import { db } from "../db.js";
 
 /**
- * Guards the actual verification-queue actions (list/approve/reject) with a
- * real admin session, not the shared bootstrap secret — see adminAuth.js for
- * that secret's narrower remaining role. Attaches `req.admin` so every
- * action can record exactly which admin performed it.
+ * Guards the platform-owner routes.
+ *
+ * Admin tokens are a separate type from user sessions (`type: "admin"`), and
+ * `verifyAdminToken` refuses anything else. The reverse is guarded too, in
+ * userAuth — both tokens are signed with the same secret, and an admin token's
+ * `sub` is an admins-table id which, being a small autoincrement integer,
+ * usually also names a real and unrelated user.
  */
 export function adminSessionAuth(req, res, next) {
   const header = req.get("authorization") || "";
@@ -19,7 +22,7 @@ export function adminSessionAuth(req, res, next) {
     return res.status(401).json({ error: "Invalid or expired admin session. Please log in again." });
   }
 
-  const admin = getAdminById(payload.sub);
+  const admin = db.prepare("SELECT id, username FROM admins WHERE id = ?").get(payload.sub);
   if (!admin) {
     return res.status(401).json({ error: "This admin account no longer exists." });
   }
