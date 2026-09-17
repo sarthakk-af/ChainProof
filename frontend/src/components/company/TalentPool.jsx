@@ -162,7 +162,7 @@ export default function TalentPool() {
                   type="button"
                   className={skills.includes(s.skill) ? "pill pill-active" : "pill"}
                   onClick={() => toggleSkill(s.skill)}
-                  style={{ cursor: "pointer", border: 0 }}
+                  style={{ cursor: "pointer" }}
                 >
                   {s.display} · {s.students}
                 </button>
@@ -183,7 +183,7 @@ export default function TalentPool() {
             type="button"
             className="glass-card p-24"
             onClick={() => setSelected(s.rollNumber)}
-            style={{ textAlign: "left", cursor: "pointer", border: 0, width: "100%" }}
+            style={{ textAlign: "left", cursor: "pointer", width: "100%" }}
           >
             <div className="flex items-start justify-between gap-12" style={{ flexWrap: "wrap" }}>
               <div style={{ minWidth: 0 }}>

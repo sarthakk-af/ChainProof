@@ -13,6 +13,8 @@
 import React, { useState, useEffect } from "react";
 import { GraduationCap, Landmark, Briefcase } from "lucide-react";
 import { api } from "../utils/api.js";
+import { useAuth } from "../context/AuthContext.jsx";
+import { Link } from "../utils/navigation.jsx";
 
 const ROLES = [
   {
@@ -66,8 +68,10 @@ function useLiveStats() {
   return stats;
 }
 
-export default function ProjectExplainer({ onGetStarted }) {
+export default function ProjectExplainer() {
   const stats = useLiveStats();
+  const { status } = useAuth();
+  const signedIn = status === "authenticated";
 
   return (
     <div className="animate-fade-in-up">
@@ -82,19 +86,22 @@ export default function ProjectExplainer({ onGetStarted }) {
             An internal placement platform for one college, where each figure is signed by the
             party with nothing to gain from inflating it — and then can never be changed.
           </p>
-          <div className="flex gap-12" style={{ flexWrap: "wrap" }}>
-            {onGetStarted ? (
-              <button type="button" className="btn btn-primary btn-lg" onClick={onGetStarted}>
-                Create an account
-              </button>
-            ) : (
-              <a href="/" className="btn btn-primary btn-lg">Create an account</a>
-            )}
-            <a href="/public" className="btn btn-ghost btn-lg">View the public dashboard</a>
-          </div>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 16 }}>
-            No wallet or crypto knowledge needed.
-          </p>
+          {/* One main action and one alternative. Placement results live in the
+              top bar, so they are not repeated here. */}
+          {signedIn ? (
+            <Link to="/" className="btn btn-primary btn-lg">Go to your dashboard</Link>
+          ) : (
+            <>
+              <div className="flex gap-12 items-center" style={{ flexWrap: "wrap" }}>
+                <Link to="/signup" className="btn btn-primary btn-lg">Create an account</Link>
+                <Link to="/login" className="btn btn-ghost btn-lg">Sign in</Link>
+              </div>
+              <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 16 }}>
+                No wallet or crypto knowledge needed. Just want to see the numbers?{" "}
+                <Link to="/results">View placement results</Link>.
+              </p>
+            </>
+          )}
         </div>
 
         <div className="ledger-card">
@@ -231,7 +238,7 @@ export default function ProjectExplainer({ onGetStarted }) {
 
       <p className="text-center" style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
         Want to know exactly what is stored, and where?{" "}
-        <a href="/privacy">Read the Privacy &amp; Data page →</a>
+        <Link to="/privacy">Read the Privacy &amp; Data page →</Link>
       </p>
     </div>
   );

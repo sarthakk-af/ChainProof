@@ -14,7 +14,7 @@
  * a way back to "wait, what is this?" without signing out.
  */
 
-import React from "react";
+import React, { useEffect } from "react";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import Registration       from "./components/Registration.jsx";
 import StudentDashboard   from "./components/StudentDashboard.jsx";
@@ -30,26 +30,44 @@ import PublicDashboard    from "./components/PublicDashboard.jsx";
 import ResetPassword      from "./components/ResetPassword.jsx";
 import AdminPanel         from "./components/AdminPanel.jsx";
 import Navbar             from "./components/Navbar.jsx";
+import AuthScreen         from "./components/AuthScreen.jsx";
+import { navigate, usePath } from "./utils/navigation.jsx";
 import { ErrorBoundary }  from "./components/ErrorBoundary.jsx";
 
 // ── Inner shell (has access to context) ──────────────────────────────────────
+// Pages with their own address that only make sense when signed out.
+const AUTH_PATHS = { "/login": "login", "/signup": "signup" };
+
 function AppShell() {
   const { status, actor, verification } = useAuth();
+  const path = usePath();
+
+  // Someone who is signed in has no business on the sign-in page — after
+  // signing in, that is exactly where they are, so move them to their home.
+  useEffect(() => {
+    if (status === "authenticated" && AUTH_PATHS[path]) navigate("/", { replace: true });
+  }, [status, path]);
 
   const renderMain = () => {
-    // Viewable by anyone, signed in or not — that's the whole point.
-    if (window.location.pathname === "/public") return <PublicDashboard />;
-    if (window.location.pathname === "/reset-password") return <ResetPassword />;
-    if (window.location.pathname === "/about") {
+    // Viewable by anyone, signed in or not — that's the whole point. /public is
+    // kept so older links still work.
+    if (path === "/results" || path === "/public") return <PublicDashboard />;
+    if (path === "/reset-password") return <ResetPassword />;
+    if (AUTH_PATHS[path]) {
+      if (status === "authenticated") return null;
+      // key forces a fresh form when moving between the two pages.
+      return <AuthScreen key={path} initialMode={AUTH_PATHS[path]} />;
+    }
+    if (path === "/about") {
       return (
         <div className="page-container" style={{ maxWidth: 1000 }}>
           <ProjectExplainer />
         </div>
       );
     }
-    if (window.location.pathname === "/privacy") return <PrivacyPage />;
+    if (path === "/privacy") return <PrivacyPage />;
     if (status !== "authenticated") return <LandingPage />;
-    if (window.location.pathname === "/profile") return <ProfilePage />;
+    if (path === "/profile") return <ProfilePage />;
 
     // An account with no on-chain identity yet is not necessarily lost. If they
     // have already told us their roll number they are a student waiting on

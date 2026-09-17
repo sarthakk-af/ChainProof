@@ -7,10 +7,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // The deploy script (scripts/deploy.js at repo root) writes contract addresses/ABIs
 // here on every deployment. Reusing it directly avoids keeping a second copy of
 // addresses/ABIs in sync by hand.
-const DEPLOYMENT_MANIFEST_PATH = path.resolve(
-  __dirname,
-  "../../frontend/src/contracts/deployment.js"
-);
+// DEPLOYMENT_MANIFEST points a second, throwaway stack at its own deployment
+// (for example a sandbox on another port) without touching the real one.
+const DEPLOYMENT_MANIFEST_PATH = process.env.DEPLOYMENT_MANIFEST
+  ? path.resolve(process.env.DEPLOYMENT_MANIFEST)
+  : path.resolve(__dirname, "../../frontend/src/contracts/deployment.js");
 
 async function loadDeployment() {
   let manifest;

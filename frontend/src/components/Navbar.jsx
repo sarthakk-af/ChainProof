@@ -7,15 +7,9 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { Link2, Sun, Moon, ArrowLeft, BarChart3, LayoutDashboard, User, LogOut, Info } from "lucide-react";
+import { Link2, Sun, Moon, BarChart3, LayoutDashboard, User, LogOut, Info, LogIn, UserPlus } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
-import { shortAddr } from "../utils/format.js";
-
-const ROLE_BADGE_CLASS = {
-  Student: "badge-student",
-  College: "badge-college",
-  Company: "badge-company",
-};
+import { Link, usePath } from "../utils/navigation.jsx";
 
 const THEME_KEY = "chainproof_theme";
 
@@ -27,8 +21,9 @@ function currentTheme() {
 }
 
 export default function Navbar() {
-  const { status, user, actor, logout } = useAuth();
-  const path = window.location.pathname;
+  const { status, user, logout } = useAuth();
+  const path = usePath();
+  const signedIn = status === "authenticated" && user;
   const [theme, setTheme] = useState(currentTheme);
 
   useEffect(() => {
@@ -42,9 +37,9 @@ export default function Navbar() {
     <nav className="navbar animate-fade-in">
       {/* Brand — always links back home */}
       <div className="flex items-center gap-12">
-        <a href="/" className="navbar-brand" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <Link to="/" className="navbar-brand" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
           <Link2 size={20} aria-hidden="true" /> ChainProof
-        </a>
+        </Link>
         <span
           className="badge badge-warning nav-testnet"
           style={{ fontSize: "0.68rem" }}
@@ -65,44 +60,61 @@ export default function Navbar() {
         >
           {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </button>
-        {/* On a phone the labels hide and the icons remain; each link keeps its
-            name for screen readers and as a tooltip, so nothing becomes a
-            mystery button. */}
-        {path !== "/about" && (
-          <a href="/about" className="btn btn-ghost btn-sm" aria-label="How it works" title="How it works">
-            <Info size={14} /> <span className="nav-label">How It Works</span>
-          </a>
-        )}
-        {path === "/public" ? (
-          <a href="/" className="btn btn-ghost btn-sm" aria-label="Back to app" title="Back to app">
-            <ArrowLeft size={14} /> <span className="nav-label">Back to App</span>
-          </a>
-        ) : (
-          <a href="/public" className="btn btn-ghost btn-sm" aria-label="Public dashboard" title="Public dashboard">
-            <BarChart3 size={14} /> <span className="nav-label">Public Dashboard</span>
-          </a>
-        )}
-        {status === "authenticated" && user && (
+        {/* One link per destination, and nothing repeated from the page below.
+            On a phone the labels hide and the icons remain; each keeps its
+            name for screen readers and as a tooltip. */}
+        <Link
+          to="/results"
+          className={`btn btn-ghost btn-sm${path === "/results" || path === "/public" ? " nav-current" : ""}`}
+          aria-label="Placement results"
+          title="Placement results"
+        >
+          <BarChart3 size={14} /> <span className="nav-label">Placement results</span>
+        </Link>
+
+        {!signedIn && (
           <>
-            {path !== "/" && (
-              <a href="/" className="btn btn-ghost btn-sm" aria-label="Dashboard" title="Dashboard">
-                <LayoutDashboard size={14} /> <span className="nav-label">Dashboard</span>
-              </a>
+            {path !== "/login" && (
+              <Link to="/login" className="btn btn-ghost btn-sm" aria-label="Sign in" title="Sign in">
+                <LogIn size={14} /> <span className="nav-label">Sign in</span>
+              </Link>
             )}
-            {path !== "/profile" && (
-              <a href="/profile" className="btn btn-ghost btn-sm" aria-label="Profile" title="Profile">
-                <User size={14} /> <span className="nav-label">Profile</span>
-              </a>
+            {path !== "/signup" && (
+              <Link to="/signup" className="btn btn-primary btn-sm" aria-label="Create account" title="Create account">
+                <UserPlus size={14} /> <span className="nav-label">Create account</span>
+              </Link>
             )}
-            {actor && (
-              <span className={`badge nav-hide-sm ${ROLE_BADGE_CLASS[actor.role] || "badge-none"}`}>
-                {actor.role}
-                {actor.status !== "Active" ? ` · ${actor.status}` : ""}
-              </span>
-            )}
-            <span className="mono-addr nav-hide-sm" title={`${user.email} · ${user.address}`}>
-              {shortAddr(user.address)}
-            </span>
+          </>
+        )}
+
+        {signedIn && (
+          <>
+            {/* Signed-out visitors read the explanation on the home page; once
+                signed in, home is the dashboard, so it needs its own link. */}
+            <Link
+              to="/about"
+              className={`btn btn-ghost btn-sm${path === "/about" ? " nav-current" : ""}`}
+              aria-label="How it works"
+              title="How it works"
+            >
+              <Info size={14} /> <span className="nav-label">How it works</span>
+            </Link>
+            <Link
+              to="/"
+              className={`btn btn-ghost btn-sm${path === "/" ? " nav-current" : ""}`}
+              aria-label="Dashboard"
+              title="Dashboard"
+            >
+              <LayoutDashboard size={14} /> <span className="nav-label">Dashboard</span>
+            </Link>
+            <Link
+              to="/profile"
+              className={`btn btn-ghost btn-sm${path === "/profile" ? " nav-current" : ""}`}
+              aria-label="Account"
+              title={`Account · ${user.email}`}
+            >
+              <User size={14} /> <span className="nav-label">Account</span>
+            </Link>
             <button
               id="navbar-logout-btn"
               className="btn btn-ghost btn-sm"
@@ -110,7 +122,7 @@ export default function Navbar() {
               aria-label="Sign out"
               title="Sign out"
             >
-              <LogOut size={14} /> <span className="nav-label">Sign Out</span>
+              <LogOut size={14} /> <span className="nav-label">Sign out</span>
             </button>
           </>
         )}

@@ -49,8 +49,8 @@ export default function ResumeEditor({ onError, onNotice }) {
   return (
     <div className="flex flex-col gap-20">
       <div className="glass-card p-24">
-        <div className="section-eyebrow" style={{ marginBottom: 8 }}>Your resume</div>
-        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+        <h3 className="card-title">Your resume</h3>
+        <p className="card-lead" style={{ marginBottom: 0 }}>
           Companies browsing this college see everything below, along with your roll
           number, course, batch and CGPA — but not your name, email or phone. Those
           appear only to a company whose drive you have applied to.

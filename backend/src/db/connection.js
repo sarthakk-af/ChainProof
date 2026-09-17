@@ -12,6 +12,23 @@ if (!fs.existsSync(dbDir)) {
 export const db = new Database(config.dbPath);
 db.pragma("journal_mode = WAL");
 
+// In WAL mode new writes land in chainproof.sqlite-wal and are only folded into
+// the main file once the log reaches about 4 MB — which this app rarely does.
+// Until then the main file can be almost empty, and a viewer that reads only
+// that file (the VS Code "SQLite Viewer" extension, for one) shows no tables at
+// all. Folding the log in on start and every 30 seconds keeps the main file
+// current. PASSIVE never blocks a reader or writer; it does what it can.
+function checkpoint() {
+  try {
+    db.pragma("wal_checkpoint(PASSIVE)");
+  } catch {
+    // A busy database simply gets checkpointed on the next tick.
+  }
+}
+checkpoint();
+const checkpointTimer = setInterval(checkpoint, 30_000);
+if (typeof checkpointTimer.unref === "function") checkpointTimer.unref();
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS actors (
     address TEXT PRIMARY KEY,

@@ -1,7 +1,19 @@
 import { ethers } from "ethers";
 import { config, deployment } from "./config.js";
 
-export const provider = new ethers.JsonRpcProvider(config.rpcUrl);
+/**
+ * The chain id comes from the deployment manifest rather than being detected.
+ *
+ * Detection is a loop: when the node isn't reachable, ethers retries every
+ * second, forever. That kept the process alive with nothing to do — the backend
+ * test suite, which never needs a chain, hung for minutes whenever the local
+ * node wasn't running. Telling the provider which network to expect removes
+ * the loop; a request to a node that is down now simply fails.
+ */
+const network = ethers.Network.from(Number(deployment.chainId ?? 31337));
+export const provider = new ethers.JsonRpcProvider(config.rpcUrl, network, {
+  staticNetwork: network,
+});
 
 export const verifierSigner = new ethers.Wallet(config.verifierPrivateKey, provider);
 

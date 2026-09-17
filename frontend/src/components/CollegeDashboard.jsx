@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import PreparationPanel from "./college/PreparationPanel.jsx";
 import Announcements from "./shared/Announcements.jsx";
+import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import { shortAddr, formatDate } from "../utils/format.js";
@@ -41,7 +42,7 @@ const TABS = [
 
 export default function CollegeDashboard() {
   const { actor } = useAuth();
-  const [tab, setTab] = useState("students");
+  const [tab, setTab] = useUrlTab(TABS.map((t) => t.id), "students");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -50,23 +51,16 @@ export default function CollegeDashboard() {
       <div className="section-eyebrow">Placement Cell</div>
       <h2 style={{ marginBottom: 4 }}>{actor?.name}</h2>
       <p style={{ marginBottom: 24, fontSize: "0.85rem", color: "var(--text-muted)" }}>
-        You admit companies and agree to host drives. What a company offers, and who it
-        selects, is written by the company itself — which is what makes your placement
-        figures something you can point to rather than something you assert.
+        Admit companies and host their drives. Offers and results are written by the
+        companies themselves.
       </p>
 
-      <div className="board-toolbar" style={{ flexWrap: "wrap", marginBottom: 24 }}>
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            className={tab === id ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
-            onClick={() => { setTab(id); setError(""); setNotice(""); }}
-          >
-            <Icon size={14} /> {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={TABS}
+        value={tab}
+        onChange={(id) => { setTab(id); setError(""); setNotice(""); }}
+        label="Placement cell sections"
+      />
 
       {error && (
         <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>

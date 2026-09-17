@@ -164,7 +164,9 @@ function Console({ token, username, onSignOut, onExpired }) {
     <div className="page-container animate-fade-in-up" style={{ maxWidth: 780 }}>
       <div className="flex items-center justify-between" style={{ marginBottom: 20, flexWrap: "wrap", gap: 8 }}>
         <div>
-          <div className="section-eyebrow">Platform administration</div>
+          <div className="section-eyebrow">
+            <a href="/" style={{ color: "inherit" }}>ChainProof</a> · Platform administration
+          </div>
           <h2 style={{ marginBottom: 0 }}>System</h2>
         </div>
         <div className="flex items-center gap-8">
@@ -412,16 +414,17 @@ function ActionLog({ token, onError }) {
 
   return (
     <section style={{ marginBottom: 24 }}>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>Your record</div>
+      <div className="section-eyebrow" style={{ marginBottom: 12 }}>Recent actions</div>
       <div className="glass-card p-24">
         <div className="flex flex-col gap-10">
           {actions.map((a) => (
             <div key={a.id} style={{ fontSize: "0.82rem" }}>
-              <span style={{ textTransform: "capitalize" }}>{a.action}</span>
+              <span>{humanAction(a.action)}</span>
               {" · "}
               <strong>{a.actor_name || a.actor_address}</strong>
               {a.reason && <> · {a.reason}</>}
               <span style={{ color: "var(--text-muted)" }}>
+                {a.admin_username && <> · by {a.admin_username}</>}
                 {" · "}
                 {new Date(a.created_at).toLocaleString()}
               </span>
@@ -431,6 +434,12 @@ function ActionLog({ token, onError }) {
       </div>
     </section>
   );
+}
+
+/** "company_approved" → "Company approved". */
+function humanAction(code = "") {
+  const text = code.replace(/_/g, " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -522,8 +531,8 @@ function CreateCollege({ token, onCreated, onError }) {
       <div className="flex items-center gap-12">
         <Landmark size={20} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
         <div>
-          <strong style={{ fontFamily: "var(--font-head)" }}>Set up the college</strong>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>
+          <h3 className="card-title">Set up the college</h3>
+          <p className="card-lead" style={{ marginBottom: 0 }}>
             Nothing else works until this exists — students are verified against its
             roster and companies are admitted by it. This creates its on-chain identity
             and the placement cell's login together.
@@ -549,7 +558,7 @@ function CreateCollege({ token, onCreated, onError }) {
         <input id="c-web" value={form.website} onChange={set("website")} placeholder="https://example.com" />
       </div>
 
-      <div className="section-eyebrow" style={{ marginTop: 4, marginBottom: 0 }}>Placement cell login</div>
+      <h3 className="card-title" style={{ marginTop: 4, marginBottom: 0 }}>Placement cell login</h3>
 
       <div className="form-group">
         <label htmlFor="c-email">Email</label>
@@ -600,7 +609,7 @@ function CollegeCard({ college, token, onNotice, onError }) {
   return (
     <>
       <section className="glass-card p-24" style={{ marginBottom: 20 }}>
-        <div className="section-eyebrow" style={{ marginBottom: 12 }}>The college</div>
+        <h3 className="card-title" style={{ marginBottom: 12 }}>The college</h3>
         <div style={{ fontSize: "0.9rem", lineHeight: 1.9 }}>
           <div><strong style={{ fontFamily: "var(--font-head)" }}>{college.name}</strong></div>
           <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
@@ -610,11 +619,11 @@ function CollegeCard({ college, token, onNotice, onError }) {
         </div>
       </section>
 
-      <form onSubmit={reset} className="glass-card p-24 flex flex-col gap-16">
+      <form onSubmit={reset} className="glass-card p-24 flex flex-col gap-16" style={{ marginBottom: 24 }}>
         <div className="flex items-center gap-12">
           <KeyRound size={20} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
           <div>
-            <strong style={{ fontFamily: "var(--font-head)" }}>Reset the placement cell's password</strong>
+            <h3 className="card-title">Reset the placement cell's password</h3>
             <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>
               The break-glass for a lost login. Nothing else about the college changes.
             </p>

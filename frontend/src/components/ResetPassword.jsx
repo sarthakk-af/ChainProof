@@ -5,6 +5,7 @@
 
 import React, { useState } from "react";
 import { Eye, EyeOff, AlertCircle, ArrowLeft, CheckCircle2, XCircle, KeyRound } from "lucide-react";
+import { Link } from "../utils/navigation.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 
 // Mirrors backend/src/auth.js's validatePassword — see AuthScreen.jsx for the
@@ -52,7 +53,7 @@ export default function ResetPassword() {
         <XCircle size={40} style={{ color: "var(--accent-danger)", marginBottom: 16 }} />
         <h2 style={{ marginBottom: 12 }}>Invalid Link</h2>
         <p style={{ marginBottom: 24 }}>This page needs a reset token from the email link.</p>
-        <a href="/" className="btn btn-primary"><ArrowLeft size={16} /> Back to Sign In</a>
+        <Link to="/login" className="btn btn-primary"><ArrowLeft size={16} /> Back to sign in</Link>
       </div>
     );
   }
@@ -63,7 +64,7 @@ export default function ResetPassword() {
         <CheckCircle2 size={40} style={{ color: "var(--accent-success)", marginBottom: 16 }} />
         <h2 style={{ marginBottom: 12 }}>Password Updated</h2>
         <p style={{ marginBottom: 24 }}>You can now sign in with your new password.</p>
-        <a href="/" className="btn btn-primary">Go to Sign In</a>
+        <Link to="/login" className="btn btn-primary">Go to sign in</Link>
       </div>
     );
   }

@@ -36,9 +36,9 @@ module.exports = {
   },
   overrides: [
     {
-      // A context module exports its provider and its hook together, which is
-      // the conventional shape and costs nothing but fast-refresh granularity.
-      files: ["src/context/*.jsx"],
+      // A context or navigation module exports hooks and helpers beside its
+      // component, which is the conventional shape and costs nothing but fast-refresh granularity.
+      files: ["src/context/*.jsx", "src/utils/*.jsx", "src/components/shared/Tabs.jsx"],
       rules: { "react-refresh/only-export-components": "off" },
     },
   ],

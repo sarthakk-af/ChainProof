@@ -129,7 +129,11 @@ async function main() {
 export const DEPLOYMENT = ${JSON.stringify(deploymentManifest, null, 2)};
 `;
 
-  const manifestPath = path.join(contractsDir, "deployment.js");
+  // DEPLOYMENT_MANIFEST writes a sandbox deployment somewhere else, so it never
+  // overwrites the manifest the real stack reads.
+  const manifestPath = process.env.DEPLOYMENT_MANIFEST
+    ? path.resolve(process.env.DEPLOYMENT_MANIFEST)
+    : path.join(contractsDir, "deployment.js");
   fs.writeFileSync(manifestPath, manifestContent, "utf8");
 
   console.log("\n[FS] Deployment manifest written to:");

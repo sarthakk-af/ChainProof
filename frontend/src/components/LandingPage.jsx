@@ -1,47 +1,29 @@
 /**
- * LandingPage.jsx — The default view for anyone not signed in.
+ * LandingPage.jsx — the home page for anyone not signed in.
  *
- * Explains the whole project first (ProjectExplainer.jsx). Clicking
- * "Create an account" swaps the explainer out for the actual sign-in/up
- * form — one entry point, not a button up top that just scrolls to a second
- * copy of the same form further down the page.
+ * Only the explanation of the project. Signing in and creating an account are
+ * separate pages (/login and /signup) with their own addresses, reached from
+ * the top bar or the buttons below. They used to appear in place of this page
+ * with no change of address, which left no way to go straight to "Sign in" and
+ * made the browser's Back button leave the site.
  */
 
-import React, { useState } from "react";
+import React from "react";
 import ProjectExplainer from "./ProjectExplainer.jsx";
-import AuthScreen from "./AuthScreen.jsx";
 
 export default function LandingPage() {
-  const [showForm, setShowForm] = useState(false);
-
-  const openForm = () => {
-    setShowForm(true);
-    window.scrollTo(0, 0);
-  };
-
   return (
-    <div className="page-container" style={{ maxWidth: showForm ? 480 : 1160 }}>
-      {showForm ? (
-        <>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowForm(false)} style={{ marginBottom: 24 }}>
-            ← Back
-          </button>
-          <AuthScreen initialMode="signup" />
-        </>
-      ) : (
-        <>
-          <ProjectExplainer onGetStarted={openForm} />
+    <div className="page-container" style={{ maxWidth: 1160 }}>
+      <ProjectExplainer />
 
-          <footer style={{ borderTop: "1px solid var(--border-glow)", marginTop: 64, padding: "32px 0 8px" }}>
-            <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 16 }}>
-              <span style={{ fontFamily: "var(--font-head)", fontSize: "1.05rem" }}>ChainProof</span>
-              <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                Public ledger of student placements · records are permanent
-              </span>
-            </div>
-          </footer>
-        </>
-      )}
+      <footer style={{ borderTop: "1px solid var(--border-glow)", marginTop: 64, padding: "32px 0 8px" }}>
+        <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 16 }}>
+          <span style={{ fontFamily: "var(--font-head)", fontSize: "1.05rem" }}>ChainProof</span>
+          <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+            Public ledger of student placements · records are permanent
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }

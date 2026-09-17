@@ -11,9 +11,10 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
-import { Eye, EyeOff, LogIn, UserPlus, Mail, Check, AlertCircle, Info, ArrowLeft, ArrowRight, ShieldCheck, RotateCw } from "lucide-react";
+import { Eye, EyeOff, LogIn, UserPlus, Mail, Check, AlertCircle, Info, ArrowLeft, ShieldCheck, RotateCw } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
+import { Link } from "../utils/navigation.jsx";
 
 // Mirrors backend/src/auth.js's validatePassword — client-side is UX only,
 // the server re-checks the exact same rule regardless of what this says.
@@ -168,7 +169,7 @@ export default function AuthScreen({ initialMode = "login" }) {
     (mode === "verify" && otp.trim().length !== 6);
 
   return (
-    <div id="get-started" className="page-container" style={{ maxWidth: 480, paddingTop: 0 }}>
+    <div className="page-container auth-page">
       <form className="glass-card p-32 animate-pulse-glow flex flex-col gap-16" onSubmit={handleSubmit} noValidate>
         {mode === "signup" && (
           <div className="flex items-center gap-8" style={{ marginBottom: -4 }}>
@@ -177,26 +178,18 @@ export default function AuthScreen({ initialMode = "login" }) {
           </div>
         )}
 
-        <div className="flex items-center justify-between" style={{ marginBottom: 4 }}>
-          <h3 style={{ margin: 0 }}>
-            {mode === "signup"
-              ? "Create your account"
-              : mode === "forgot"
-              ? "Reset your password"
-              : mode === "verify"
-              ? "Verify your email"
-              : "Sign in"}
-          </h3>
-          {mode !== "forgot" && mode !== "verify" && (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => switchMode(mode === "signup" ? "login" : "signup")}
-            >
-              {mode === "signup" ? "Already have an account? Sign in" : "New here? Create an account"}
-            </button>
-          )}
-        </div>
+        {/* The heading gets the full width; the link to the other page sits
+            under the form, where people look for it once they realise they are
+            on the wrong one. */}
+        <h2 style={{ margin: "0 0 4px", fontSize: "1.6rem" }}>
+          {mode === "signup"
+            ? "Create your account"
+            : mode === "forgot"
+            ? "Reset your password"
+            : mode === "verify"
+            ? "Verify your email"
+            : "Sign in"}
+        </h2>
 
         {mode === "verify" && (
           <p style={{ fontSize: "0.88rem", margin: "0 0 4px" }}>
@@ -362,12 +355,7 @@ export default function AuthScreen({ initialMode = "login" }) {
         )}
 
         {mode === "login" && (
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            style={{ alignSelf: "flex-start", padding: 0 }}
-            onClick={() => switchMode("forgot")}
-          >
+          <button type="button" className="link-button" onClick={() => switchMode("forgot")}>
             Forgot password?
           </button>
         )}
@@ -406,13 +394,13 @@ export default function AuthScreen({ initialMode = "login" }) {
                 : "Signing in…"}
             </>
           ) : mode === "signup" ? (
-            <><UserPlus size={16} /> Create Account</>
+            <><UserPlus size={16} /> Create account</>
           ) : mode === "forgot" ? (
-            <><Mail size={16} /> Send Reset Link</>
+            <><Mail size={16} /> Send reset link</>
           ) : mode === "verify" ? (
-            <><ShieldCheck size={16} /> Verify & Continue</>
+            <><ShieldCheck size={16} /> Verify and continue</>
           ) : (
-            <><LogIn size={16} /> Sign In</>
+            <><LogIn size={16} /> Sign in</>
           )}
         </button>
 
@@ -433,13 +421,17 @@ export default function AuthScreen({ initialMode = "login" }) {
             <ArrowLeft size={14} /> Back to sign in
           </button>
         )}
+        {mode === "signup" && (
+          <p className="auth-switch">
+            Already have an account? <Link to="/login">Sign in</Link>
+          </p>
+        )}
+        {mode === "login" && (
+          <p className="auth-switch">
+            New here? <Link to="/signup">Create an account</Link>
+          </p>
+        )}
       </form>
-
-      <div className="text-center" style={{ marginTop: 24 }}>
-        <a href="/public" style={{ fontSize: "0.85rem", display: "inline-flex", alignItems: "center", gap: 6 }}>
-          View Public Placement Dashboard — no sign-in required <ArrowRight size={14} />
-        </a>
-      </div>
     </div>
   );
 }

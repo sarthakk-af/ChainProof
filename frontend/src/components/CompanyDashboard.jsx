@@ -17,9 +17,11 @@ import {
   CheckCircle2,
   Send,
   Lock,
+  ChevronRight,
 } from "lucide-react";
 import TalentPool from "./company/TalentPool.jsx";
 import Announcements from "./shared/Announcements.jsx";
+import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import { uploadToIPFS } from "../utils/ipfsService.js";
@@ -43,7 +45,7 @@ const TABS = [
 
 export default function CompanyDashboard() {
   const { actor } = useAuth();
-  const [tab, setTab] = useState("drives");
+  const [tab, setTab] = useUrlTab(TABS.map((t) => t.id), "drives");
   const [drives, setDrives] = useState([]);
   const [selected, setSelected] = useState(null);
   const [showPost, setShowPost] = useState(false);
@@ -78,18 +80,12 @@ export default function CompanyDashboard() {
         </div>
       )}
 
-      <div className="board-toolbar" style={{ flexWrap: "wrap", marginBottom: 24 }}>
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            className={tab === id ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
-            onClick={() => { setTab(id); setError(""); setNotice(""); }}
-          >
-            <Icon size={14} /> {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={TABS}
+        value={tab}
+        onChange={(id) => { setTab(id); setError(""); setNotice(""); }}
+        label="Recruiter sections"
+      />
 
       {tab === "students" && <TalentPool />}
       {tab === "notices" && <Announcements role="Company" drives={drives} />}
@@ -308,12 +304,13 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
   const unpublished = drive.applicationCount !== drive.applicationsReceived;
 
   return (
-    <div className="glass-card" style={{ padding: "16px 20px" }}>
+    <div className="glass-card is-interactive" style={{ padding: "16px 20px" }}>
       <div
         className="flex items-center justify-between"
         style={{ cursor: "pointer", flexWrap: "wrap", gap: 8 }}
         role="button"
         tabIndex={0}
+        aria-expanded={expanded}
         onClick={onToggle}
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
       >
@@ -323,7 +320,15 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
             {drive.collegeName} · batch {drive.batchYear} · {formatDate(drive.driveDate)}
           </div>
         </div>
-        <span className="badge badge-company">{drive.status}</span>
+        {/* Says what clicking does, instead of leaving a plain card that
+            happens to open. */}
+        <div className="flex items-center gap-12">
+          <span className="badge badge-company">{drive.status}</span>
+          <span className="card-action">
+            {expanded ? "Hide applicants" : `Manage applicants · ${drive.applicationsReceived ?? 0}`}
+            <ChevronRight size={15} className={expanded ? "chev open" : "chev"} aria-hidden="true" />
+          </span>
+        </div>
       </div>
 
       {expanded && (

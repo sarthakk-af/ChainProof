@@ -58,8 +58,9 @@ module.exports = {
     },
 
     // Named localhost network pointing to a running `npx hardhat node`
+    // LOCAL_RPC_URL lets a sandbox chain on another port be deployed to.
     localhost: {
-      url: "http://127.0.0.1:8545",
+      url: process.env.LOCAL_RPC_URL || "http://127.0.0.1:8545",
       chainId: 31337,
     },
 

@@ -161,6 +161,10 @@ a:hover { color: var(--accent-secondary); }
 
 /* --- Keyboard focus --- */
 a:focus-visible,
+/* Controls don't inherit the page font by default; make them. */
+button, input, select, textarea { font-family: inherit; }
+button.glass-card { color: inherit; font-size: inherit; }
+
 button:focus-visible,
 .btn:focus-visible,
 [role="radio"]:focus-visible,
@@ -178,10 +182,14 @@ button:focus-visible,
   transition: var(--transition);
 }
 
-.glass-card:hover {
+/* Only cards you can act on respond to the mouse. A card that lifts when hovered
+   says "click me"; doing that on plain information made pages feel jumpy and
+   suggested actions that were not there. */
+a.glass-card:hover,
+button.glass-card:hover,
+.glass-card.is-interactive:hover {
   border-color: var(--text-primary);
   box-shadow: var(--shadow-glow);
-  transform: translate(-1px, -1px);
 }
 
 /* --- Buttons --- */
@@ -403,6 +411,22 @@ button.pill:hover { border-color: var(--text-primary); }
   margin-bottom: 6px;
 }
 
+/* Headings inside a card. Eyebrows are for page-level labels only. */
+.card-title {
+  font-family: var(--font-head);
+  font-size: 1.05rem; font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+.card-lead { font-size: 0.85rem; color: var(--text-secondary); margin: 0 0 16px; }
+
+/* A form's submit button sits at its natural width, not stretched. */
+.glass-card.flex-col > .btn,
+.glass-card .flex-col > .btn,
+.glass-card form > .btn { align-self: flex-start; }
+.auth-page .flex-col > .btn,
+.auth-page form > .btn { align-self: stretch; }
+
 /* --- Mono Address --- */
 .mono-addr {
   font-family: var(--font-mono);
@@ -497,10 +521,11 @@ button.pill:hover { border-color: var(--text-primary); }
 .empty-state {
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 64px 24px; text-align: center; gap: 12px;
+  padding: 32px 20px; text-align: center; gap: 8px;
   color: var(--text-muted);
 }
-.empty-state-icon { font-size: 3rem; opacity: 0.5; margin-bottom: 8px; }
+.empty-state-icon { font-size: 2rem; opacity: 0.5; margin-bottom: 4px; }
+.empty-state svg { width: 32px; height: 32px; opacity: 0.6; }
 
 /* ============================================================
    Landing page — editorial sections (new, additive)
@@ -582,10 +607,13 @@ button.pill:hover { border-color: var(--text-primary); }
 .step-col h4 { font-size: 1rem; margin-bottom: 8px; }
 .step-col p { font-size: 0.82rem; }
 
-.stats-strip { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--cover); border-radius: var(--radius-sm); color: var(--cover-text-muted); }
+/* A normal card surface, like every other panel. It used the inverted "cover"
+   colours, which turned it into a cream slab in dark mode and a black one in
+   light mode — the one block on the page that ignored the theme. */
+.stats-strip { display: grid; grid-template-columns: repeat(4, 1fr); background: var(--bg-card); border: 1px solid var(--border-glow); border-radius: var(--radius-sm); color: var(--text-secondary); }
 .stats-strip .stat-item { padding: 28px 22px; }
-.stats-strip .stat-item + .stat-item { border-left: 1px solid var(--cover-border); }
-.stats-strip .stat-n { font-family: var(--font-mono); font-size: 1.7rem; color: var(--cover-text); display: block; margin-bottom: 6px; }
+.stats-strip .stat-item + .stat-item { border-left: 1px solid var(--border-card); }
+.stats-strip .stat-n { font-family: var(--font-head); font-size: 2rem; line-height: 1.1; color: var(--text-primary); display: block; margin-bottom: 6px; }
 .stats-strip .stat-l { font-size: 0.75rem; line-height: 1.5; }
 
 @media (max-width: 900px) {
@@ -612,9 +640,6 @@ button.pill:hover { border-color: var(--text-primary); }
 .kpi-n.accent { color: var(--accent-success); }
 .kpi-l { font-size: 0.72rem; color: var(--text-secondary); line-height: 1.4; }
 
-.board-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
-.board-sort { display: flex; align-items: center; gap: 8px; font-size: 0.78rem; color: var(--text-secondary); }
-.board-sort select { width: auto; }
 
 @media (max-width: 900px) {
   .kpi + .kpi { border-left: none; border-top: 1px solid var(--border-card); }
@@ -851,6 +876,38 @@ button.pill:hover { border-color: var(--text-primary); }
 
 /* Section tabs scroll sideways on a phone rather than wrapping into two ragged rows. */
 @media (max-width: 720px) {
-  .pub-tabs .seg { display: flex; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
-  .pub-tabs .seg button { white-space: nowrap; flex: 0 0 auto; }
+  .pub-tabs .seg, .seg.tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; }
+  .pub-tabs .seg button, .seg.tabs button { white-space: nowrap; flex: 0 0 auto; }
 }
+
+/* Sign-in and sign-up pages: one narrow, centred card. */
+.auth-page { max-width: 460px; padding-top: 56px; }
+.auth-switch { text-align: center; font-size: 0.88rem; color: var(--text-secondary); margin: 4px 0 0; }
+.auth-switch a { font-weight: 600; }
+
+/* Marks the page you are on in the top bar. */
+.navbar .btn.nav-current { border-color: var(--text-primary); color: var(--text-primary); }
+
+/* A button that reads as a text link — for small secondary actions inside forms. */
+.link-button {
+  align-self: flex-end;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--accent-primary);
+  cursor: pointer;
+}
+.link-button:hover { text-decoration: underline; }
+
+/* Dashboard tab bar — the same joined control the public page uses. */
+.tabs-row { margin: 4px 0 24px; }
+.seg.tabs button { display: inline-flex; align-items: center; gap: 7px; padding: 9px 16px; font-size: 0.84rem; }
+.seg.tabs button svg { opacity: 0.8; }
+.seg.tabs button[aria-selected="true"] svg { opacity: 1; }
+
+/* The "what happens if I click" hint on a card that opens. */
+.card-action { display: inline-flex; align-items: center; gap: 4px; font-size: 0.8rem; color: var(--accent-primary); white-space: nowrap; }
+.card-action .chev { transition: transform 0.15s ease; }
+.card-action .chev.open { transform: rotate(90deg); }

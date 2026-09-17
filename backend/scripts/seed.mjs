@@ -51,7 +51,11 @@ const { generateWallet } = await import(src("wallets.js"));
 const { fundWallet } = await import(src("treasury.js"));
 const { actorRegistryAsVerifier, provider } = await import(src("chain.js"));
 const { DEPLOYMENT } = await import(
-  pathToFileURL(path.resolve(BACKEND_ROOT, "../frontend/src/contracts/deployment.js")).href
+  pathToFileURL(
+    process.env.DEPLOYMENT_MANIFEST
+      ? path.resolve(process.env.DEPLOYMENT_MANIFEST)
+      : path.resolve(BACKEND_ROOT, "../frontend/src/contracts/deployment.js")
+  ).href
 );
 
 const BASE = process.env.API_URL || `http://127.0.0.1:${config.port}`;

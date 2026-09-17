@@ -24,6 +24,7 @@ import {
 import ResumeEditor from "./student/ResumeEditor.jsx";
 import ClassmateLookup from "./student/ClassmateLookup.jsx";
 import Announcements from "./shared/Announcements.jsx";
+import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import { formatDate } from "../utils/format.js";
@@ -39,7 +40,7 @@ const TABS = [
 
 export default function StudentDashboard() {
   const { verification, profile } = useAuth();
-  const [tab, setTab] = useState("open");
+  const [tab, setTab] = useUrlTab(TABS.map((t) => t.id), "open");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -60,18 +61,12 @@ export default function StudentDashboard() {
 
       {!verified && <VerificationBanner verification={verification} />}
 
-      <div className="board-toolbar" style={{ flexWrap: "wrap", marginBottom: 24 }}>
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            type="button"
-            className={tab === id ? "btn btn-primary btn-sm" : "btn btn-ghost btn-sm"}
-            onClick={() => { setTab(id); setError(""); setNotice(""); }}
-          >
-            <Icon size={14} /> {label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={TABS}
+        value={tab}
+        onChange={(id) => { setTab(id); setError(""); setNotice(""); }}
+        label="Student sections"
+      />
 
       {error && (
         <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>
@@ -351,7 +346,7 @@ function ProfilePanel({ onError, onNotice }) {
 
       {verified && profile?.rollNumber && (
         <div className="glass-card p-24" style={{ marginBottom: 20 }}>
-          <div className="section-eyebrow" style={{ marginBottom: 12 }}>From your college's roster</div>
+          <h3 className="card-title" style={{ marginBottom: 12 }}>From your college's roster</h3>
           <div style={{ fontSize: "0.88rem", lineHeight: 1.8 }}>
             <div>Roll number: <span className="mono-addr">{profile.rollNumber}</span></div>
             <div>Name: {profile.fullName}</div>
@@ -365,17 +360,26 @@ function ProfilePanel({ onError, onNotice }) {
       )}
 
       <form onSubmit={save} className="glass-card p-24 flex flex-col gap-16">
-        <div className="section-eyebrow" style={{ marginBottom: 0 }}>Your details</div>
+        <h3 className="card-title">Your details</h3>
         {fields.map((f) => (
           <div className="form-group" key={f.key}>
             <label htmlFor={`p-${f.key}`}>
               {f.label} {!f.required && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>}
             </label>
-            <input
-              id={`p-${f.key}`}
-              value={values[f.key] ?? ""}
-              onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-            />
+            {f.multiline ? (
+              <textarea
+                id={`p-${f.key}`}
+                rows={4}
+                value={values[f.key] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              />
+            ) : (
+              <input
+                id={`p-${f.key}`}
+                value={values[f.key] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+              />
+            )}
             {f.help && <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4 }}>{f.help}</p>}
           </div>
         ))}
