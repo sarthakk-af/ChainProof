@@ -7,8 +7,8 @@ const path = require("path");
  * ==============================
  * Deploys ActorRegistry, then PlacementDrive (registry address), then
  * DriveOutcomes (both addresses), then PreparationLog (registry address).
- * After deployment, writes a deployment manifest (addresses + ABIs) directly to the
- * frontend/src/contracts directory so the Vite app can import them without extra build steps.
+ * After deployment, writes a manifest (addresses + ABIs) to
+ * frontend/src/contracts/deployment.js, which the backend reads on start-up.
  *
  * Usage:
  *   npx hardhat run scripts/deploy.js --network localhost
@@ -127,11 +127,6 @@ async function main() {
 // Network: ${network}
 
 export const DEPLOYMENT = ${JSON.stringify(deploymentManifest, null, 2)};
-
-export const ACTOR_REGISTRY_ADDRESS = "${registryAddress}";
-export const PLACEMENT_DRIVE_ADDRESS = "${driveAddress}";
-export const DRIVE_OUTCOMES_ADDRESS = "${outcomesAddress}";
-export const PREPARATION_LOG_ADDRESS = "${preparationAddress}";
 `;
 
   const manifestPath = path.join(contractsDir, "deployment.js");
@@ -153,7 +148,7 @@ export const PREPARATION_LOG_ADDRESS = "${preparationAddress}";
   console.log(`  Network:           ${network}`);
   console.log("=".repeat(60));
   console.log("\n  Next Steps:");
-  console.log("  1. cd backend && npm run dev   (see backend/.env.example)");
+  console.log("  1. cd backend && npm start     (see backend/.env.example)");
   console.log("  2. cd frontend && npm run dev");
   console.log("  No wallet/MetaMask needed — sign up with email/password in the app.");
   console.log("=".repeat(60) + "\n");

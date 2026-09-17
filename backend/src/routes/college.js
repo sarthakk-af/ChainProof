@@ -413,6 +413,16 @@ collegeRouter.post("/batches", registerLimiter, async (req, res) => {
     return res.status(400).json({ error: "Batch strength must be between 1 and 100000." });
   }
 
+  // Declaring the size a cohort already has would still write a permanent
+  // "revised from 180 to 180" event, which reads as a change that never
+  // happened. Refused before any gas is spent.
+  const current = listBatches(req.user.address).find(
+    (b) => b.course_code === code && b.batch_year === year
+  );
+  if (current && current.strength === size) {
+    return res.status(409).json({ error: `${code} ${year} is already declared as ${size}.` });
+  }
+
   try {
     const receipt = await withWalletLock(req.user.address, async (nonce) => {
       const registry = actorRegistryAsSigner(getUserSigner(req.user.id));

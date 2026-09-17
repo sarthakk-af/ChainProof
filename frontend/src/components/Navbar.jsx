@@ -7,7 +7,7 @@
  */
 
 import React, { useState, useEffect } from "react";
-import { Link2, Sun, Moon, ArrowLeft, BarChart3, LayoutDashboard, User, LogOut } from "lucide-react";
+import { Link2, Sun, Moon, ArrowLeft, BarChart3, LayoutDashboard, User, LogOut, Info } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { shortAddr } from "../utils/format.js";
 
@@ -46,11 +46,11 @@ export default function Navbar() {
           <Link2 size={20} aria-hidden="true" /> ChainProof
         </a>
         <span
-          className="badge badge-warning"
+          className="badge badge-warning nav-testnet"
           style={{ fontSize: "0.68rem" }}
           title="Running on a private practice blockchain for development/demo purposes — not a public or production network"
         >
-          <span aria-hidden="true">●</span> Test Network
+          <span aria-hidden="true">●</span> <span className="nav-label">Test Network</span>
         </span>
       </div>
 
@@ -65,33 +65,52 @@ export default function Navbar() {
         >
           {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
         </button>
+        {/* On a phone the labels hide and the icons remain; each link keeps its
+            name for screen readers and as a tooltip, so nothing becomes a
+            mystery button. */}
         {path !== "/about" && (
-          <a href="/about" className="btn btn-ghost btn-sm">How It Works</a>
+          <a href="/about" className="btn btn-ghost btn-sm" aria-label="How it works" title="How it works">
+            <Info size={14} /> <span className="nav-label">How It Works</span>
+          </a>
         )}
         {path === "/public" ? (
-          <a href="/" className="btn btn-ghost btn-sm"><ArrowLeft size={14} /> Back to App</a>
+          <a href="/" className="btn btn-ghost btn-sm" aria-label="Back to app" title="Back to app">
+            <ArrowLeft size={14} /> <span className="nav-label">Back to App</span>
+          </a>
         ) : (
-          <a href="/public" className="btn btn-ghost btn-sm"><BarChart3 size={14} /> Public Dashboard</a>
+          <a href="/public" className="btn btn-ghost btn-sm" aria-label="Public dashboard" title="Public dashboard">
+            <BarChart3 size={14} /> <span className="nav-label">Public Dashboard</span>
+          </a>
         )}
         {status === "authenticated" && user && (
           <>
             {path !== "/" && (
-              <a href="/" className="btn btn-ghost btn-sm"><LayoutDashboard size={14} /> Dashboard</a>
+              <a href="/" className="btn btn-ghost btn-sm" aria-label="Dashboard" title="Dashboard">
+                <LayoutDashboard size={14} /> <span className="nav-label">Dashboard</span>
+              </a>
             )}
             {path !== "/profile" && (
-              <a href="/profile" className="btn btn-ghost btn-sm"><User size={14} /> Profile</a>
+              <a href="/profile" className="btn btn-ghost btn-sm" aria-label="Profile" title="Profile">
+                <User size={14} /> <span className="nav-label">Profile</span>
+              </a>
             )}
             {actor && (
-              <span className={`badge ${ROLE_BADGE_CLASS[actor.role] || "badge-none"}`}>
+              <span className={`badge nav-hide-sm ${ROLE_BADGE_CLASS[actor.role] || "badge-none"}`}>
                 {actor.role}
                 {actor.status !== "Active" ? ` · ${actor.status}` : ""}
               </span>
             )}
-            <span className="mono-addr" title={`${user.email} · ${user.address}`}>
+            <span className="mono-addr nav-hide-sm" title={`${user.email} · ${user.address}`}>
               {shortAddr(user.address)}
             </span>
-            <button id="navbar-logout-btn" className="btn btn-ghost btn-sm" onClick={logout}>
-              <LogOut size={14} /> Sign Out
+            <button
+              id="navbar-logout-btn"
+              className="btn btn-ghost btn-sm"
+              onClick={logout}
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <LogOut size={14} /> <span className="nav-label">Sign Out</span>
             </button>
           </>
         )}

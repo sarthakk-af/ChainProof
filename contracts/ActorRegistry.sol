@@ -12,11 +12,15 @@ pragma solidity ^0.8.20;
  *      - Uses custom errors instead of `require(string)` for gas efficiency.
  *      - All state-changing functions emit indexed events for off-chain indexing.
  *      - Registration is permissionless but role-locked; an address can only hold one role.
- *      - Colleges and Companies must be approved by the platform `verifier` before they are
- *        considered `Active` — this is what stops any wallet from self-declaring as
- *        "IIT Bombay" and being treated as a legitimate, trusted institution. Students remain
- *        instantly self-serve since there is little incentive to falsely claim a role with no
- *        issuing power.
+ *      - Colleges and Companies start `Pending` and must be admitted before they are
+ *        `Active`: the platform `verifier` admits a College, and an Active College admits
+ *        the Companies that recruit on its campus. This is what stops any wallet from
+ *        self-declaring as "IIT Bombay" and being treated as a trusted institution.
+ *      - Students are `Active` on registration. The contract cannot check a roll number,
+ *        so the platform only submits a student's registration after matching them to
+ *        their college's roster, off-chain.
+ *      - An Active actor can be `Suspended` and reinstated. Suspension stops an account
+ *        acting; it never alters anything that account already recorded.
  *      - Students declare their College at registration time. This is what makes per-college
  *        placement statistics possible — without it, accountability could only ever be computed
  *        platform-wide, which defeats the purpose of holding individual institutions accountable.
@@ -41,7 +45,7 @@ contract ActorRegistry {
     /**
      * @notice Verification lifecycle state for a registered actor.
      * @dev Students move straight to `Active`. Colleges and Companies start `Pending` and
-     *      must be approved by the `verifier` before they can issue credentials or otherwise
+     *      must be approved before they can post drives, record outcomes or otherwise
      *      act with authority on the platform.
      */
     enum Status {
@@ -170,8 +174,8 @@ contract ActorRegistry {
     address public verifier;
 
     /// @notice Tracks how many students have successfully registered under each College.
-    ///         Keyed by College address. Used by CredentialIssuer for per-college
-    ///         placement percentage calculations.
+    ///         Keyed by College address. Read directly from the chain, it gives anyone
+    ///         the registered-student count without trusting the platform's database.
     mapping(address => uint256) public totalRegisteredStudents;
 
     /**
@@ -377,8 +381,8 @@ contract ActorRegistry {
 
     /**
      * @notice Approves a Pending College or Company, activating their platform privileges.
-     * @dev    Verifier-only. This is the trust gate that prevents unverified institutions
-     *         from issuing credentials or otherwise acting with authority.
+     * @dev    The trust gate that stops an unadmitted institution from acting with
+     *         authority. Who may call it depends on the target — see `_checkMayDecide`.
      * @param _actor The address of the Pending actor to approve.
      */
     function approveActor(address _actor) external {
@@ -392,7 +396,7 @@ contract ActorRegistry {
 
     /**
      * @notice Rejects a Pending College or Company registration.
-     * @dev    Verifier-only. A rejected address may resubmit via `register` — this isn't
+     * @dev    Same authority as `approveActor`. A rejected address may resubmit via `register` — this isn't
      *         a permanent ban — but `rejectionCount` permanently records that it happened.
      * @param _actor The address of the Pending actor to reject.
      */
@@ -561,8 +565,8 @@ contract ActorRegistry {
 
     /**
      * @notice Returns the Role enum value for a given address.
-     * @dev    This is the primary cross-contract call used by CredentialIssuer.sol
-     *         to validate issuer and recipient privileges before credential issuance.
+     * @dev    Used by PlacementDrive, DriveOutcomes and PreparationLog, alongside
+     *         `isActive`, to check who is calling before accepting a write.
      *         Being a `view` function, this does NOT cost gas when called externally
      *         off-chain (e.g., from a frontend).
      *

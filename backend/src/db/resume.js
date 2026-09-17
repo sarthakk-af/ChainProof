@@ -114,13 +114,6 @@ export function listResumeItems(address) {
   return grouped;
 }
 
-/** How many entries each student in a set has. Used to show "profile 60% complete". */
-export function countResumeItems(address) {
-  return db
-    .prepare("SELECT COUNT(*) AS c FROM student_resume_items WHERE address = ?")
-    .get(norm(address)).c;
-}
-
 // --- skills -----------------------------------------------------------------
 
 /**

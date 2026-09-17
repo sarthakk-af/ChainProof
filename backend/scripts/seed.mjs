@@ -12,8 +12,11 @@
  * declared cohort, a roster, one admitted company, and — optionally — a drive
  * with students partway through it.
  *
- *   npm run seed            college + cohort + roster + company
- *   npm run seed -- --full  the above, plus students, a drive and a funnel
+ *   npm run seed        college + cohort + roster + company
+ *   npm run seed:full   the above, plus students, resumes, a drive and a funnel
+ *
+ * (A separate script rather than `npm run seed -- --full`: PowerShell strips the
+ * `--`, so npm swallows the flag and the full seed silently never runs.)
  *
  * Every account it creates uses the same password, printed at the end. It is a
  * development convenience and refuses to run against anything but a local chain.
@@ -246,6 +249,33 @@ if (companyActor.companies.find((c) => c.address.toLowerCase() === company.addre
 }
 console.log("    company admitted by the college");
 
+// Everything after this point adds records that cannot be removed from a chain:
+// drives, stages, preparation sessions. Running the seed a second time used to
+// add a second identical set, which on the public page looked like invented
+// data. If this company already has a drive here, the chain is already seeded.
+const { drives: existingDrives } = await call("GET", "/drives/mine", { token: company.token });
+if (existingDrives.length > 0) {
+  console.log("\nThis chain is already seeded — nothing new was added.");
+  if (FULL) {
+    // Students are still confirmed, so their logins below work even if the
+    // chain was reset since they last were.
+    for (let i = 0; i < 5; i++) {
+      const s = await account(`student${i + 1}@seed.local`);
+      try {
+        await call("POST", "/me/claim-roll-number", {
+          token: s.token,
+          body: { collegeAddress: college.address, rollNumber: roster[i].rollNumber },
+        });
+      } catch (err) {
+        if (!/already verified/.test(err.message)) throw err;
+      }
+    }
+  }
+  printSummary("Already seeded.");
+  db.close();
+  process.exit(0);
+}
+
 step(5, "Recording what the college did to prepare students");
 const daysAgo = (n) => Math.floor(Date.now() / 1000) - n * 86400;
 const PREPARATION = [
@@ -417,22 +447,25 @@ if (FULL) {
 
 // --- summary -----------------------------------------------------------------
 
+printSummary("Seeded.");
+db.close();
+process.exit(0);
+
+function printSummary(headline) {
 console.log(`\n${"=".repeat(64)}`);
-console.log("Seeded. Sign in at http://localhost:5173 with:\n");
+console.log(`${headline} Sign in at http://localhost:5173 with:\n`);
 console.log(`  Admin     ${config.adminUsername} / your ADMIN_PASSWORD   — at /admin`);
 console.log(`  College   ${COLLEGE_LOGIN_EMAIL.padEnd(22)} ${PASSWORD}`);
 console.log(`  Company   company@seed.local     ${PASSWORD}`);
 if (FULL) {
-  for (let i = 0; i < students.length; i++) {
+  for (let i = 0; i < 5; i++) {
     console.log(`  Student   student${i + 1}@seed.local    ${PASSWORD}${i === 4 ? "   (below the CGPA cutoff)" : ""}`);
   }
   console.log("\nStudent 1 has an offer waiting — sign in as them to accept it and");
   console.log("watch the placement figure move on the public dashboard.");
 } else {
-  console.log("\nRun with --full to also create students, a drive and a part-run funnel.");
+  console.log("\nRun `npm run seed:full` to also create students, a drive and a part-run funnel.");
 }
 console.log(`\nPublic dashboard (no sign-in): http://localhost:5173/public`);
 console.log(`${"=".repeat(64)}\n`);
-
-db.close();
-process.exit(0);
+}

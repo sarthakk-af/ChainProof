@@ -1,75 +1,134 @@
 /**
  * PublicDashboard.jsx — the page a parent reads.
  *
- * No login. The question it answers is specific: what happens when a company
- * comes to this college, and what are the odds. So it shows a funnel per drive
- * and a rate per cohort, with the denominator on display rather than assumed —
- * "92% placed" means nothing until you know 92% of what.
+ * No login. It answers a small number of specific questions, in the order a
+ * parent asks them:
+ *
+ *   1. How many students in this batch actually got placed — out of how many?
+ *   2. Which companies came, and what did they pay?
+ *   3. What did the college do to prepare students?
+ *   4. Is there anything I should be wary of in these figures?
+ *
+ * So the page leads with one batch's headline figures, each shown beside the
+ * number it is a share of, and puts the detail behind tabs rather than in one
+ * long scroll. The selected batch and tab live in the URL, so a parent can
+ * send someone the exact view they were looking at.
  *
  * No individual ever appears here. Accountability is owed by the institution,
  * not by the student who didn't get picked.
  */
 
-import React, { useState, useEffect, useCallback } from "react";
-import {
-  Landmark,
-  AlertCircle,
-  Users,
-  TrendingUp,
-  Building2,
-  GraduationCap,
-  Megaphone,
-  CalendarDays,
-  Ban,
-} from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertCircle, ChevronRight } from "lucide-react";
 import { api } from "../utils/api.js";
-import { formatDate } from "../utils/format.js";
+import { formatDate, formatLPA } from "../utils/format.js";
 
-function pct(n, d) {
-  return d === 0 ? 0 : Math.round((n / d) * 1000) / 10;
+const TABS = [
+  { id: "companies", label: "Companies" },
+  { id: "preparation", label: "Preparation" },
+  { id: "notices", label: "Notices" },
+  { id: "guide", label: "How to read this" },
+];
+
+function readUrlState() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    batch: params.get("batch") ? Number(params.get("batch")) : null,
+    tab: TABS.some((t) => t.id === params.get("tab")) ? params.get("tab") : "companies",
+  };
+}
+
+function writeUrlState({ batch, tab }) {
+  const params = new URLSearchParams(window.location.search);
+  if (batch) params.set("batch", String(batch));
+  else params.delete("batch");
+  params.set("tab", tab);
+  window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
+}
+
+function median(values) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
 export default function PublicDashboard() {
-  const [colleges, setColleges] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [placement, setPlacement] = useState(null);
-  const [drives, setDrives] = useState([]);
-  const [recruiters, setRecruiters] = useState([]);
-  const [preparation, setPreparation] = useState(null);
-  const [notices, setNotices] = useState([]);
+  const initial = useMemo(readUrlState, []);
+  const [college, setCollege] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [batches, setBatches] = useState([]);
+  const [drives, setDrives] = useState([]);
+  const [notices, setNotices] = useState([]);
+  const [preparation, setPreparation] = useState(null);
+
+  const [batch, setBatch] = useState(initial.batch);
+  const [tab, setTab] = useState(initial.tab);
+
+  // This build hosts one college, so the page is about that college rather
+  // than asking a parent to pick one from a list of one.
   useEffect(() => {
-    api.get("/public/colleges")
-      .then((d) => {
-        setColleges(d.colleges);
-        if (d.colleges.length > 0) setSelected(d.colleges[0].address);
+    api
+      .get("/public/colleges")
+      .then(async ({ colleges }) => {
+        const c = colleges[0];
+        if (!c) return;
+        setCollege(c);
+        const [p, d, n] = await Promise.all([
+          api.get(`/public/colleges/${c.address}/placement`),
+          api.get(`/public/colleges/${c.address}/drives`),
+          api.get(`/public/colleges/${c.address}/announcements`),
+        ]);
+        setBatches(p.batches);
+        setDrives(d.drives);
+        setNotices(n.announcements);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
 
-  const loadCollege = useCallback((address) => {
-    if (!address) return;
-    Promise.all([
-      api.get(`/public/colleges/${address}/placement`),
-      api.get(`/public/colleges/${address}/drives`),
-      api.get(`/public/colleges/${address}/recruiters`),
-      api.get(`/public/colleges/${address}/preparation`),
-      api.get(`/public/colleges/${address}/announcements`),
-    ])
-      .then(([p, d, r, prep, ann]) => {
-        setPlacement(p);
-        setDrives(d.drives);
-        setRecruiters(r.recruiters);
-        setPreparation(prep);
-        setNotices(ann.announcements);
-      })
-      .catch((e) => setError(e.message));
-  }, []);
+  // The batches worth offering: any the college declared, plus any a drive was
+  // aimed at, newest first.
+  const years = useMemo(() => {
+    const all = new Set([...batches.map((b) => b.batchYear), ...drives.map((d) => d.batchYear)]);
+    return [...all].sort((a, b) => b - a);
+  }, [batches, drives]);
 
-  useEffect(() => { loadCollege(selected); }, [selected, loadCollege]);
+  useEffect(() => {
+    if (years.length === 0) return;
+    if (!batch || !years.includes(batch)) setBatch(years[0]);
+  }, [years, batch]);
+
+  useEffect(() => {
+    writeUrlState({ batch, tab });
+  }, [batch, tab]);
+
+  const loadPreparation = useCallback(() => {
+    if (!college || !batch) return;
+    api
+      .get(`/public/colleges/${college.address}/preparation?batchYear=${batch}`)
+      .then(setPreparation)
+      .catch((e) => setError(e.message));
+  }, [college, batch]);
+
+  useEffect(loadPreparation, [loadPreparation]);
+
+  // Drives that ran come first, newest first; called-off ones sink to the end,
+  // where they stay visible without leading the list.
+  const batchDrives = useMemo(
+    () =>
+      drives
+        .filter((d) => d.batchYear === batch)
+        .sort(
+          (a, b) =>
+            Number(a.status === "Cancelled") - Number(b.status === "Cancelled") ||
+            b.driveDate - a.driveDate
+        ),
+    [drives, batch]
+  );
+  const batchFigures = batches.find((b) => b.batchYear === batch) ?? null;
 
   if (loading) {
     return (
@@ -79,47 +138,122 @@ export default function PublicDashboard() {
     );
   }
 
+  // A failed request must not read as "nothing to show" — a parent would take
+  // that as the college having no results, which is a claim, not an outage.
+  if (!college && error) {
+    return (
+      <div className="page-container animate-fade-in-up">
+        <div className="alert alert-danger" role="alert" style={{ marginTop: 40 }}>
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>
+            The placement record couldn't be loaded right now ({error}). Please try again in
+            a moment.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!college) {
+    return (
+      <div className="page-container animate-fade-in-up">
+        <div className="pub-empty" style={{ marginTop: 40 }}>
+          <strong>Nothing published yet</strong>
+          The college hasn't been set up on this platform yet. Figures appear here as soon as
+          it declares its first batch.
+        </div>
+      </div>
+    );
+  }
+
+  const counts = {
+    companies: batchDrives.length,
+    preparation: preparation?.summary?.standing ?? 0,
+    notices: notices.length,
+  };
+
   return (
     <div className="page-container animate-fade-in-up">
-      <div className="section-eyebrow">Public · No Sign-In Required</div>
-      <h2 style={{ marginBottom: 4 }}>Placement, in the open</h2>
-      <p style={{ marginBottom: 28, maxWidth: 680 }}>
-        Every figure below was written by the party with nothing to gain from it — the
-        company records who it selected, the student confirms they accepted, and the
-        college's declared batch size is on the public record with each revision visible.
-      </p>
+      <header className="pub-head">
+        <div className="section-eyebrow">Public record · no sign-in needed</div>
+        <h1>{college.name}</h1>
+        <p>
+          Placement results as each party recorded them: companies record their offers,
+          students record whether they accepted, and the college records its batch sizes
+          and training. None of it can be edited afterwards.
+        </p>
+      </header>
 
       {error && (
-        <div className="alert alert-danger" role="alert" style={{ marginBottom: 20 }}>
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: 18 }}>
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{error}</span>
         </div>
       )}
 
-      {colleges.length > 1 && (
-        <div className="board-toolbar" style={{ marginBottom: 20, flexWrap: "wrap" }}>
-          <div className="board-sort">
-            <span>College</span>
-            <select value={selected ?? ""} onChange={(e) => setSelected(e.target.value)}>
-              {colleges.map((c) => <option key={c.address} value={c.address}>{c.name}</option>)}
-            </select>
-          </div>
-        </div>
-      )}
-
-      {colleges.length === 0 ? (
-        <div className="empty-state glass-card">
-          <Landmark size={48} className="empty-state-icon" />
-          <h3>Nothing published yet</h3>
-          <p style={{ fontSize: "0.85rem" }}>Figures appear once a college publishes its cohorts.</p>
+      {years.length === 0 ? (
+        <div className="pub-empty">
+          <strong>No batches published yet</strong>
+          Results will appear once the college declares a batch or a company runs a drive.
         </div>
       ) : (
         <>
-          <Notices notices={notices} />
-          <PlacementByBatch placement={placement} />
-          <Preparation preparation={preparation} />
-          <Recruiters recruiters={recruiters} />
-          <Drives drives={drives} />
+          <div className="pub-controls">
+            <span className="label">Batch</span>
+            <div className="seg" role="tablist" aria-label="Graduating batch">
+              {years.map((y) => (
+                <button
+                  key={y}
+                  type="button"
+                  role="tab"
+                  aria-selected={y === batch}
+                  onClick={() => setBatch(y)}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Headline figures={batchFigures} drives={batchDrives} preparation={preparation} />
+
+          {batchFigures?.declaredStrengthRevisions > 0 && (
+            <div className="alert alert-warning" role="status" style={{ fontSize: "0.82rem" }}>
+              <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>
+                The college has changed the declared size of this batch{" "}
+                {batchFigures.declaredStrengthRevisions === 1
+                  ? "once"
+                  : `${batchFigures.declaredStrengthRevisions} times`}
+                . A smaller batch makes the same number of placements look like a higher
+                percentage, so every change is kept on the public record.
+              </span>
+            </div>
+          )}
+
+          <div className="pub-tabs">
+            <div className="seg" role="tablist" aria-label="Section">
+              {TABS.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={t.id === tab}
+                  onClick={() => setTab(t.id)}
+                >
+                  {t.label}
+                  {counts[t.id] !== undefined && <span className="count">{counts[t.id]}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div role="tabpanel">
+            {tab === "companies" && <Companies drives={batchDrives} batch={batch} />}
+            {tab === "preparation" && <Preparation preparation={preparation} batch={batch} />}
+            {tab === "notices" && <Notices notices={notices} />}
+            {tab === "guide" && <Guide />}
+          </div>
         </>
       )}
     </div>
@@ -129,189 +263,90 @@ export default function PublicDashboard() {
 // ---------------------------------------------------------------------------
 
 /**
- * What the college did to prepare students.
+ * The four figures a parent came for, each beside what it is a share of.
  *
- * The other half of the story. Every other figure on this page holds the college
- * to account for results, and a poor year can always be blamed on a slow market —
- * until now there was nothing in the record to check that against. These entries
- * were written to the blockchain as the year went and cannot be topped up
- * afterwards, which is the only reason they are worth reading.
+ * "Placed" is shown against the batch the college declared, not against the
+ * students who happened to sign up — the second number is always smaller, and
+ * quoting a rate against it is the usual way a placement figure flatters
+ * itself. The sign-up figure is still shown, underneath, so both are visible.
  */
-function Preparation({ preparation }) {
-  if (!preparation || preparation.events.length === 0) return null;
-  const { summary, events } = preparation;
+function Headline({ figures, drives: allDrives, preparation }) {
+  // A drive that was called off never recruited anyone, so it must not raise
+  // the company count or pull the median package towards an offer nobody got.
+  const drives = allDrives.filter((d) => d.status !== "Cancelled");
+  const calledOff = allDrives.length - drives.length;
+  const packages = drives.map((d) => d.annualPackage).filter((p) => p > 0);
+  const companies = new Set(drives.map((d) => d.companyAddress)).size;
+  const offered = drives.reduce((sum, d) => sum + (d.funnel?.offered ?? 0), 0);
+  const summary = preparation?.summary;
 
   return (
-    <section style={{ marginBottom: 36 }}>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>
-        How the college prepared students
+    <section className="pub-kpis" aria-label="Headline figures">
+      <div className="pub-kpi">
+        <div className="k-label">Placed</div>
+        {figures ? (
+          <>
+            <span className="k-value">
+              {figures.placed} <small>of {figures.declaredStrength}</small>
+            </span>
+            <div className="pub-meter" aria-hidden="true">
+              <span style={{ width: `${Math.min(figures.placementRateOfBatch, 100)}%` }} />
+            </div>
+            <div className="k-note">
+              <strong>{figures.placementRateOfBatch}%</strong> of the batch.{" "}
+              {figures.registered} signed up here; {figures.placementRateOfRegistered}% of
+              those were placed.
+            </div>
+          </>
+        ) : (
+          <>
+            <span className="k-value">—</span>
+            <div className="k-note">
+              The college hasn't declared this batch's size, so no percentage can be
+              given.
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="glass-card p-24" style={{ marginBottom: 16 }}>
-        <div className="flex gap-28" style={{ flexWrap: "wrap" }}>
-          <div>
-            <div style={{ fontFamily: "var(--font-head)", fontSize: "1.8rem" }}>{summary.standing}</div>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Sessions held</div>
-          </div>
-          <div>
-            <div style={{ fontFamily: "var(--font-head)", fontSize: "1.8rem" }}>{summary.attendances}</div>
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Total attendance</div>
-          </div>
-          {summary.cancelled > 0 && (
-            <div>
-              <div
-                style={{ fontFamily: "var(--font-head)", fontSize: "1.8rem", color: "var(--text-muted)" }}
-              >
-                {summary.cancelled}
-              </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Called off</div>
-            </div>
+      <div className="pub-kpi">
+        <div className="k-label">Companies</div>
+        <span className="k-value">{companies}</span>
+        <div className="k-note">
+          {drives.length} drive{drives.length === 1 ? "" : "s"} · {offered} offer
+          {offered === 1 ? "" : "s"} made
+          {calledOff > 0 && ` · ${calledOff} called off`}
+        </div>
+      </div>
+
+      <div className="pub-kpi">
+        <div className="k-label">Highest package</div>
+        <span className="k-value">{packages.length ? formatLPA(Math.max(...packages)) : "—"}</span>
+        <div className="k-note">
+          {packages.length ? (
+            <>
+              Median <strong>{formatLPA(median(packages))}</strong>, across drives — as each
+              company advertised it.
+            </>
+          ) : (
+            "No drives for this batch yet."
           )}
         </div>
-
-        {summary.byKind.length > 0 && (
-          <div className="flex gap-8" style={{ flexWrap: "wrap", marginTop: 16 }}>
-            {summary.byKind
-              .filter((k) => k.standing > 0)
-              .map((k) => (
-                <span key={k.kind} className="pill" style={{ fontSize: "0.72rem" }}>
-                  {k.kind} · {k.standing}
-                </span>
-              ))}
-          </div>
-        )}
-
-        <p style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: 14 }}>
-          Attendance is counted per session, so a student attending three sessions counts
-          three times. Sessions the college later said did not happen stay on the record
-          and stop counting.
-        </p>
       </div>
 
-      <div className="flex flex-col gap-10">
-        {events.slice(0, 12).map((e) => (
-          <div
-            key={e.id}
-            className="glass-card"
-            style={{ padding: "14px 20px", opacity: e.cancelled ? 0.65 : 1 }}
-          >
-            <div className="flex items-center justify-between gap-12" style={{ flexWrap: "wrap" }}>
-              <div style={{ minWidth: 0 }}>
-                <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
-                  <GraduationCap size={14} style={{ flexShrink: 0 }} />
-                  <strong style={{ fontSize: "0.9rem" }}>{e.title}</strong>
-                  <span className="pill pill-muted" style={{ fontSize: "0.66rem" }}>{e.kind}</span>
-                  {e.cancelled && (
-                    <span className="pill" style={{ fontSize: "0.66rem" }}>
-                      <Ban size={10} /> Did not happen
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: 4 }}>
-                  <CalendarDays size={11} style={{ verticalAlign: "-1px" }} /> {formatDate(e.heldOn)} ·{" "}
-                  {e.attendance} attended · by {e.conductedBy}
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-/**
- * Notices the college addressed to everyone.
- *
- * Marked as what they are: announcements, which can be edited and withdrawn,
- * unlike every other figure on this page. Saying so is the difference between a
- * page that can be trusted and one that merely looks official.
- */
-function Notices({ notices }) {
-  if (!notices || notices.length === 0) return null;
-
-  return (
-    <section style={{ marginBottom: 36 }}>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>From the placement cell</div>
-      <div className="flex flex-col gap-10">
-        {notices.slice(0, 5).map((n) => (
-          <div key={n.id} className="glass-card" style={{ padding: "16px 20px" }}>
-            <div className="flex items-center gap-8" style={{ marginBottom: 6 }}>
-              <Megaphone size={14} style={{ flexShrink: 0 }} />
-              <strong style={{ fontSize: "0.92rem" }}>{n.title}</strong>
-            </div>
-            <p style={{ fontSize: "0.85rem", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{n.body}</p>
-            <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 8 }}>
-              {n.authorName} · {formatDate(Math.floor(n.createdAt / 1000))}
-              {n.editedAt && " · edited"}
-            </div>
-          </div>
-        ))}
-      </div>
-      <p style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: 10 }}>
-        Notices are announcements — they can be edited or withdrawn. The drives, sessions
-        and results elsewhere on this page are on the blockchain and cannot be.
-      </p>
-    </section>
-  );
-}
-
-function PlacementByBatch({ placement }) {
-  if (!placement) return null;
-  if (placement.batches.length === 0) {
-    return (
-      <div className="empty-state glass-card" style={{ marginBottom: 32 }}>
-        <TrendingUp size={48} className="empty-state-icon" />
-        <h3>No cohorts published</h3>
-        <p style={{ fontSize: "0.85rem" }}>
-          A placement rate needs a batch size to divide by, and this college hasn't
-          declared one yet.
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <section style={{ marginBottom: 36 }}>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>Placement by batch</div>
-      <div className="flex flex-col gap-10">
-        {placement.batches.map((b) => (
-          <div key={b.batchYear} className="glass-card" style={{ padding: "16px 20px" }}>
-            <div className="flex items-center justify-between" style={{ marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-              <strong style={{ fontFamily: "var(--font-head)" }}>Batch {b.batchYear}</strong>
-              <span className="badge badge-college">{b.placementRateOfBatch}% of the batch</span>
-            </div>
-
-            <div className="progress-bar-wrap">
-              <div className="progress-bar-fill" style={{ width: `${Math.min(b.placementRateOfBatch, 100)}%` }} />
-            </div>
-
-            {/* Both denominators, side by side. A rate quoted against the students
-                who signed up rather than the whole batch is the usual way a
-                placement figure flatters itself. */}
-            <div className="grid-2" style={{ gap: 12, marginTop: 14, fontSize: "0.8rem" }}>
-              <div>
-                <div style={{ color: "var(--text-muted)" }}>Of the declared batch</div>
-                <div><strong>{b.placed} of {b.declaredStrength}</strong> — {b.placementRateOfBatch}%</div>
-              </div>
-              <div>
-                <div style={{ color: "var(--text-muted)" }}>Of students who signed up</div>
-                <div><strong>{b.placed} of {b.registered}</strong> — {b.placementRateOfRegistered}%</div>
-              </div>
-            </div>
-
-            {b.declaredStrengthRevisions > 0 && (
-              <div className="alert alert-warning" style={{ fontSize: "0.78rem", marginTop: 12 }}>
-                <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
-                <span>
-                  This college has revised the declared size of this batch{" "}
-                  {b.declaredStrengthRevisions} time{b.declaredStrengthRevisions === 1 ? "" : "s"}.
-                  Every revision is on the public record.
-                </span>
-              </div>
-            )}
-          </div>
-        ))}
+      <div className="pub-kpi">
+        <div className="k-label">Preparation</div>
+        <span className="k-value">{summary ? summary.standing : "—"}</span>
+        <div className="k-note">
+          {summary && summary.standing > 0 ? (
+            <>
+              sessions held · <strong>{summary.attendances.toLocaleString("en-IN")}</strong>{" "}
+              attendances
+            </>
+          ) : (
+            "No training or mock interviews recorded yet."
+          )}
+        </div>
       </div>
     </section>
   );
@@ -319,109 +354,312 @@ function PlacementByBatch({ placement }) {
 
 // ---------------------------------------------------------------------------
 
-function Recruiters({ recruiters }) {
-  if (recruiters.length === 0) return null;
-  return (
-    <section style={{ marginBottom: 36 }}>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>
-        Who recruits here ({recruiters.length})
-      </div>
-      <div className="flex flex-col gap-8">
-        {recruiters.map((r) => (
-          <div key={r.companyName} className="glass-card flex items-center justify-between" style={{ padding: "12px 18px", flexWrap: "wrap", gap: 8 }}>
-            <span className="flex items-center gap-8">
-              <Building2 size={15} style={{ color: "var(--accent-primary)" }} />
-              <strong style={{ fontFamily: "var(--font-head)", fontSize: "0.9rem" }}>{r.companyName}</strong>
-            </span>
-            <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              {r.driveCount} drive{r.driveCount === 1 ? "" : "s"} · up to ₹{r.highestPackage.toLocaleString("en-IN")}
-            </span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
+function Companies({ drives, batch }) {
+  const [open, setOpen] = useState(null);
 
-// ---------------------------------------------------------------------------
-
-function Drives({ drives }) {
   if (drives.length === 0) {
     return (
-      <div className="empty-state glass-card">
-        <Users size={48} className="empty-state-icon" />
-        <h3>No drives yet</h3>
-        <p style={{ fontSize: "0.85rem" }}>Drives appear here once a company has run one.</p>
+      <div className="pub-empty">
+        <strong>No drives for the {batch} batch yet</strong>
+        Companies appear here once the college agrees to host their drive.
       </div>
     );
   }
 
   return (
-    <section>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>Every drive ({drives.length})</div>
-      <div className="flex flex-col gap-10">
-        {drives.map((d) => <DriveFunnel key={d.id} drive={d} />)}
+    <>
+      <div className="pub-ledger">
+        <div className="pub-row-head" aria-hidden="true">
+          <span>Company &amp; role</span>
+          <span>Package</span>
+          <span>Cutoff</span>
+          <span>Applied → offered → accepted</span>
+          <span />
+        </div>
+        {drives.map((d) => (
+          <div className="pub-item" key={d.id}>
+            <button
+              type="button"
+              className="pub-row"
+              aria-expanded={open === d.id}
+              onClick={() => setOpen(open === d.id ? null : d.id)}
+            >
+              <span>
+                <span className="company">
+                  {d.companyName}
+                  {d.status === "Cancelled" && <span className="pub-tag warn">Called off</span>}
+                </span>
+                <span className="role" style={{ display: "block" }}>
+                  {d.roleTitle} · {formatDate(d.driveDate)}
+                </span>
+              </span>
+              <span className="money cell-pay">{formatLPA(d.annualPackage)}</span>
+              <span className="muted cell-cutoff">
+                {d.minCgpa ? `CGPA ${d.minCgpa.toFixed(2)}` : "No cutoff"}
+              </span>
+              <span className="cell-flow">
+                {d.status === "Cancelled" ? (
+                  <span className="pub-flow">
+                    <span className="pending">called off before any results</span>
+                  </span>
+                ) : (
+                  <Flow funnel={d.funnel} />
+                )}
+              </span>
+              <ChevronRight size={16} className="chev" aria-hidden="true" />
+            </button>
+            {open === d.id && <DriveDetail drive={d} />}
+          </div>
+        ))}
       </div>
-    </section>
+      <p className="pub-note">
+        Every figure in a row is the company's own, recorded on the blockchain. A student
+        counts as placed only once they accept — an offer that was declined or withdrawn
+        doesn't count.
+      </p>
+    </>
   );
 }
 
-function DriveFunnel({ drive }) {
-  const f = drive.funnel;
-  // "Applied" is the company's own signed figure. Null means it hasn't published
-  // one, which is a different fact from nobody applying — so say so rather than
-  // showing a zero that isn't true.
-  const steps = [
-    { label: "Applied", value: f.applied, unpublished: f.applied === null },
-    { label: "Shortlisted", value: f.shortlisted },
-    { label: "Assessed", value: f.assessed },
-    { label: "Interviewed", value: f.interviewed },
-    { label: "Offered", value: f.offered },
-    { label: "Accepted", value: f.accepted },
-  ].filter((s) => s.unpublished || s.value > 0);
+/** Applied → offered → accepted, in one line. */
+function Flow({ funnel }) {
+  const applied = funnel?.applied;
+  return (
+    <span className="pub-flow">
+      {applied === null || applied === undefined ? (
+        <span className="pending">applicants not yet published</span>
+      ) : (
+        <span className="step">
+          {applied}
+          <small>applied</small>
+        </span>
+      )}
+      <span className="arrow" aria-hidden="true">→</span>
+      <span className="step">
+        {funnel?.offered ?? 0}
+        <small>offered</small>
+      </span>
+      <span className="arrow" aria-hidden="true">→</span>
+      <span className="step final">
+        {funnel?.accepted ?? 0}
+        <small>accepted</small>
+      </span>
+    </span>
+  );
+}
 
-  const widest = Math.max(1, ...steps.map((s) => s.value ?? 0));
+function DriveDetail({ drive }) {
+  const f = drive.funnel ?? {};
+  // Middle stages are optional — plenty of companies run no written assessment
+  // — so a zero there means "this company didn't have that round", not "nobody
+  // passed it". Showing an empty bar would say the second.
+  const steps = [
+    ["Applied", f.applied, false],
+    ["Shortlisted", f.shortlisted, true],
+    ["Assessment", f.assessed, true],
+    ["Interviewed", f.interviewed, true],
+    ["Offered", f.offered, false],
+    ["Accepted", f.accepted, false],
+  ]
+    .filter(([, value, optional]) => !(optional && !value))
+    .map(([label, value]) => [label, value]);
+  // Bars are scaled against applicants when the company has published that
+  // figure, otherwise against the widest stage — so a missing total never
+  // renders every bar as full.
+  const base = f.applied || Math.max(1, ...steps.map(([, v]) => v ?? 0));
+  const selectionRate =
+    f.applied && f.accepted !== undefined
+      ? Math.round((f.accepted / f.applied) * 1000) / 10
+      : null;
 
   return (
-    <div className="glass-card" style={{ padding: "16px 20px" }}>
-      <div className="flex items-center justify-between" style={{ marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
-        <strong style={{ fontFamily: "var(--font-head)" }}>{drive.companyName} — {drive.roleTitle}</strong>
-        <span className="badge badge-company">₹{drive.annualPackage.toLocaleString("en-IN")}</span>
+    <div className="pub-detail">
+      <div className="pub-detail-grid">
+        <div>
+          {steps.map(([label, value]) => (
+            <div className="pub-bar" key={label}>
+              <div className="row">
+                <span>{label}</span>
+                <span>{value === null || value === undefined ? "not published" : value}</span>
+              </div>
+              <div className="track">
+                <span style={{ width: `${value ? Math.min((value / base) * 100, 100) : 0}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <dl className="pub-facts">
+          <dt>Role</dt>
+          <dd>{drive.roleTitle}</dd>
+          <dt>Package</dt>
+          <dd>₹{drive.annualPackage.toLocaleString("en-IN")} a year</dd>
+          <dt>Eligibility</dt>
+          <dd>
+            Batch {drive.batchYear}
+            {drive.minCgpa ? `, CGPA ${drive.minCgpa.toFixed(2)} or above` : ", no CGPA cutoff"}
+          </dd>
+          <dt>Drive date</dt>
+          <dd>{formatDate(drive.driveDate)}</dd>
+          <dt>Applications closed</dt>
+          <dd>{formatDate(drive.applicationDeadline)}</dd>
+          {selectionRate !== null && (
+            <>
+              <dt>Selection rate</dt>
+              <dd>
+                {f.accepted} of {f.applied} applicants ({selectionRate}%)
+              </dd>
+            </>
+          )}
+          {drive.status === "Cancelled" && (
+            <>
+              <dt>Status</dt>
+              <dd>Called off after it was announced</dd>
+            </>
+          )}
+        </dl>
       </div>
-      <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 14 }}>
-        {formatDate(drive.driveDate)} · batch {drive.batchYear}
-        {drive.minCgpa ? ` · CGPA ${drive.minCgpa.toFixed(2)}+` : ""}
-        {drive.status === "Cancelled" && <span style={{ color: "var(--accent-warning)" }}> · cancelled</span>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/**
+ * What the college did to prepare students.
+ *
+ * The other half of the story. Everything else on this page holds the college
+ * to account for results, and a weak year can always be blamed on the market.
+ * These sessions were recorded as the year went and cannot be added
+ * afterwards, which is the only reason they are worth reading. Sessions the
+ * college later said did not happen stay visible, struck through.
+ */
+function Preparation({ preparation, batch }) {
+  if (!preparation) return <p className="pub-note">Loading…</p>;
+  const { summary, events } = preparation;
+
+  if (events.length === 0) {
+    return (
+      <div className="pub-empty">
+        <strong>No preparation recorded for {batch}</strong>
+        Training sessions, mock interviews and workshops appear here as the college
+        records them.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="pub-kinds">
+        {summary.byKind
+          .filter((k) => k.standing > 0)
+          .map((k) => (
+            <span key={k.kind} className="pill">
+              {k.kind} · {k.standing}
+            </span>
+          ))}
+        {summary.cancelled > 0 && (
+          <span className="pill pill-muted">Called off · {summary.cancelled}</span>
+        )}
       </div>
 
-      <div className="flex flex-col gap-8">
-        {steps.map((s) => (
-          <div key={s.label}>
-            <div className="flex items-center justify-between" style={{ fontSize: "0.78rem", marginBottom: 3 }}>
-              <span>{s.label}</span>
-              <span style={{ color: "var(--text-muted)" }}>
-                {s.unpublished ? "not published" : s.value}
-              </span>
+      <div className="pub-events">
+        {events.map((e) => (
+          <div key={e.id} className={`pub-event${e.cancelled ? " cancelled" : ""}`}>
+            <span className="date">{formatDate(e.heldOn)}</span>
+            <div>
+              <div className="title">
+                {e.title}
+                {e.cancelled && <span className="pub-tag muted">Did not happen</span>}
+              </div>
+              <div className="by">
+                {e.kind} · {e.conductedBy}
+                {!e.batchYear && " · open to all batches"}
+                {e.cancelled && e.cancelReason ? ` · ${e.cancelReason}` : ""}
+              </div>
             </div>
-            <div className="progress-bar-wrap">
-              <div
-                className="progress-bar-fill"
-                style={{
-                  width: s.unpublished ? "0%" : `${pct(s.value, widest)}%`,
-                  opacity: s.unpublished ? 0.3 : 1,
-                }}
-              />
-            </div>
+            <span className="n">{e.cancelled ? "—" : `${e.attendance} attended`}</span>
           </div>
         ))}
       </div>
 
-      {f.applied === null && (
-        <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 10 }}>
-          The applicant total is published by the company, not by the college — this one
-          hasn't confirmed it yet.
-        </p>
-      )}
+      <p className="pub-note">
+        Attendance is counted per session, so one student at three sessions counts three
+        times. Sessions open to every batch are included here too.
+      </p>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function Notices({ notices }) {
+  if (notices.length === 0) {
+    return (
+      <div className="pub-empty">
+        <strong>No public notices</strong>
+        The placement cell hasn't posted anything for the public yet.
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {notices.map((n) => (
+        <article key={n.id} className="pub-notice">
+          <h4>{n.title}</h4>
+          <p>{n.body}</p>
+          <div className="meta">
+            {n.authorName} · {formatDate(Math.floor(n.createdAt / 1000))}
+            {n.editedAt && " · edited"}
+          </div>
+        </article>
+      ))}
+      <p className="pub-note">
+        Notices are announcements and can be edited or withdrawn — an edited one is marked.
+        Everything under Companies and Preparation is on the blockchain and cannot be.
+      </p>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+function Guide() {
+  const items = [
+    [
+      "Placed means accepted",
+      "A student counts as placed only once they accept an offer themselves. An offer that was declined, or that the company later withdrew, does not count.",
+    ],
+    [
+      "Out of the whole batch",
+      "The main percentage is placements divided by the batch size the college declared. The share of students who signed up here is shown too, but it is always the smaller, kinder denominator.",
+    ],
+    [
+      "Who wrote each figure",
+      "Companies record their own terms, applicants and results. Students record their own answers. The college records batch sizes and its training. Nobody can write a figure on another party's behalf — not even the site's administrator.",
+    ],
+    [
+      "Nothing is quietly changed",
+      "Figures are stored on a blockchain, so they cannot be edited later. A correction is a new entry beside the old one: a withdrawn offer, a revised batch size and a cancelled session all stay visible.",
+    ],
+    [
+      "No one is named",
+      "This page never shows an individual student. Accountability belongs to the institution, not to the student who wasn't picked.",
+    ],
+    [
+      "Packages are as advertised",
+      "Each package is the figure the company published when it posted the drive, in rupees a year. It is not a guarantee of any individual's final salary.",
+    ],
+  ];
+
+  return (
+    <div className="pub-explain">
+      {items.map(([title, body]) => (
+        <div key={title}>
+          <h4>{title}</h4>
+          <p>{body}</p>
+        </div>
+      ))}
     </div>
   );
 }

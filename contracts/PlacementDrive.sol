@@ -9,11 +9,11 @@ import "./ActorRegistry.sol";
  * @notice The permanent record of a recruitment drive: what a company came to offer,
  *         who it said was eligible, and the fact that the college agreed to host it.
  *
- * @dev Replaces PlacementTracker, which recorded a *college's* announcement that a
- *      company would visit. That had the wrong author. A college describing an offer
- *      on a company's behalf is exactly the self-reporting this platform exists to
- *      remove — the college could state any package it liked. Here the company posts
- *      its own opening and the college only agrees to host it.
+ * @dev The first version of this project had the college announce a company's
+ *      visit. That was the wrong author: a college describing an offer on a company's
+ *      behalf is exactly the self-reporting this platform exists to remove, since the
+ *      college could state any package it liked. Here the company posts its own
+ *      opening and the college only agrees to host it.
  *
  *      The division of authority, which the whole design rests on:
  *        - the **company** writes the opening, the package, and the criteria;

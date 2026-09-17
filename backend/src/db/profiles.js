@@ -51,22 +51,6 @@ export function getProfile(address) {
     .get(address);
 }
 
-export function listProfiles(collegeAddress, { batchYear, courseCode } = {}) {
-  const clauses = ["college_address = ?"];
-  const params = [collegeAddress.toLowerCase()];
-  if (batchYear !== undefined && batchYear !== null) {
-    clauses.push("batch_year = ?");
-    params.push(batchYear);
-  }
-  if (courseCode) {
-    clauses.push("course_code = ?");
-    params.push(courseCode);
-  }
-  return db
-    .prepare(`SELECT * FROM student_profiles WHERE ${clauses.join(" AND ")} ORDER BY roll_number`)
-    .all(...params);
-}
-
 /**
  * Whether a student meets a drive's stated criteria.
  * @dev Returns the reason rather than a bare boolean: a student turned away is

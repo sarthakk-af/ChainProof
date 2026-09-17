@@ -228,6 +228,13 @@ check("Four students matched the roster", students.length === 4);
   check("Matching the roster wrote them on-chain", me.data?.verification?.verified === true,
     JSON.stringify(me.data?.verification?.missing));
 
+  // The chain is public and permanent; a student's real name must never reach
+  // it, or anyone could map a wallet address back to a person.
+  const { actorRegistryRead } = await import(src("chain.js"));
+  const onChain = await actorRegistryRead.getActor(students[0].address);
+  check("A student's real name is not written on-chain",
+    onChain.name !== NAME(1) && !NAME_RE.test(onChain.name), JSON.stringify(onChain.name));
+
   const dup = await account();
   const r2 = await call("POST", "/me/claim-roll-number", {
     token: dup.token,

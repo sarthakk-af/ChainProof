@@ -9,16 +9,33 @@ import { db } from "./connection.js";
  * can show "revised from 180" without re-reading the event log every time.
  */
 
+/**
+ * Whether an incoming event is a genuine revision of what is already stored.
+ *
+ * Two conditions, both of which used to be missing:
+ *   - the event is newer than the stored one. The same event arrives twice in
+ *     normal operation — once when the route syncs its own receipt, and again
+ *     from the live listener — and each arrival was counted, so a cohort that
+ *     was declared once showed on the public page as "revised";
+ *   - the size actually changed. Re-declaring 180 as 180 is not a revision, and
+ *     telling parents it was would be exactly the kind of false signal this
+ *     figure exists to prevent.
+ */
+const IS_REVISION =
+  "excluded.block_number > batches.block_number AND excluded.strength <> batches.strength";
+
 export function upsertBatch({ collegeAddress, courseCode, batchYear, strength, previousStrength, blockNumber }) {
   db.prepare(
     `INSERT INTO batches
        (college_address, course_code, batch_year, strength, previous_strength, revision_count, block_number)
      VALUES (?, ?, ?, ?, ?, 0, ?)
      ON CONFLICT(college_address, course_code, batch_year) DO UPDATE SET
-       strength          = excluded.strength,
-       previous_strength = excluded.previous_strength,
-       revision_count    = batches.revision_count + 1,
-       block_number      = excluded.block_number`
+       strength          = CASE WHEN excluded.block_number >= batches.block_number
+                                THEN excluded.strength ELSE batches.strength END,
+       previous_strength = CASE WHEN ${IS_REVISION} THEN excluded.previous_strength
+                                ELSE batches.previous_strength END,
+       revision_count    = batches.revision_count + CASE WHEN ${IS_REVISION} THEN 1 ELSE 0 END,
+       block_number      = MAX(batches.block_number, excluded.block_number)`
   ).run(
     collegeAddress.toLowerCase(),
     courseCode,
@@ -27,14 +44,6 @@ export function upsertBatch({ collegeAddress, courseCode, batchYear, strength, p
     previousStrength ?? null,
     blockNumber
   );
-}
-
-export function getBatch(collegeAddress, courseCode, batchYear) {
-  return db
-    .prepare(
-      "SELECT * FROM batches WHERE college_address = ? AND course_code = ? AND batch_year = ?"
-    )
-    .get(collegeAddress.toLowerCase(), courseCode, batchYear);
 }
 
 export function listBatches(collegeAddress, { batchYear } = {}) {
@@ -50,28 +59,4 @@ export function listBatches(collegeAddress, { batchYear } = {}) {
       "SELECT * FROM batches WHERE college_address = ? AND batch_year = ? ORDER BY course_code"
     )
     .all(collegeAddress.toLowerCase(), batchYear);
-}
-
-/**
- * Total declared strength for a cohort year, across every course.
- * @dev The on-chain placement count is keyed by college and year, not by course,
- *      because a drive states a year and profiles are off-chain. Summing the
- *      per-course declarations is what makes the two comparable.
- */
-export function totalStrengthForYear(collegeAddress, batchYear) {
-  const row = db
-    .prepare(
-      "SELECT COALESCE(SUM(strength), 0) AS total FROM batches WHERE college_address = ? AND batch_year = ?"
-    )
-    .get(collegeAddress.toLowerCase(), batchYear);
-  return row.total;
-}
-
-/** Cohorts whose declared size has been revised at least once. */
-export function revisedBatches(collegeAddress) {
-  return db
-    .prepare(
-      "SELECT * FROM batches WHERE college_address = ? AND revision_count > 0 ORDER BY batch_year DESC"
-    )
-    .all(collegeAddress.toLowerCase());
 }

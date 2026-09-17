@@ -21,7 +21,9 @@ const TEST_DB_PATH = path.join(__dirname, "test-auth.sqlite");
 function cleanupDbFiles() {
   for (const suffix of ["", "-journal", "-wal", "-shm"]) {
     const file = TEST_DB_PATH + suffix;
-    if (fs.existsSync(file)) fs.rmSync(file);
+    // Retries because Windows can hold a just-closed SQLite file for a moment,
+    // which otherwise fails the run with EBUSY after every test has passed.
+    if (fs.existsSync(file)) fs.rmSync(file, { force: true, maxRetries: 10, retryDelay: 50 });
   }
 }
 
@@ -31,7 +33,6 @@ process.env.RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
 process.env.VERIFIER_PRIVATE_KEY =
   process.env.VERIFIER_PRIVATE_KEY ||
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-process.env.ADMIN_API_KEY = "test-admin-key";
 process.env.JWT_SECRET = "test-jwt-secret";
 process.env.WALLET_ENCRYPTION_KEY =
   "236d277256c4ac74368580b5be214189ace6dff26eb4e5efe448dbf1c2a1158c"; // 32 bytes hex, test-only

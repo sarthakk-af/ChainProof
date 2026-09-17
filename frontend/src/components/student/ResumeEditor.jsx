@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from "react";
-import { Plus, Pencil, Trash2, X, AlertCircle, ExternalLink, Tag } from "lucide-react";
+import { Plus, Pencil, Trash2, X, ExternalLink, Tag } from "lucide-react";
 import { api } from "../../utils/api.js";
 
 export default function ResumeEditor({ onError, onNotice }) {

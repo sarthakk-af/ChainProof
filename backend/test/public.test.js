@@ -23,7 +23,9 @@ const TEST_DB_PATH = path.join(__dirname, "test-public.sqlite");
 function cleanupDbFiles() {
   for (const suffix of ["", "-journal", "-wal", "-shm"]) {
     const file = TEST_DB_PATH + suffix;
-    if (fs.existsSync(file)) fs.rmSync(file);
+    // Retries because Windows can hold a just-closed SQLite file for a moment,
+    // which otherwise fails the run with EBUSY after every test has passed.
+    if (fs.existsSync(file)) fs.rmSync(file, { force: true, maxRetries: 10, retryDelay: 50 });
   }
 }
 cleanupDbFiles();
@@ -32,7 +34,6 @@ process.env.RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
 process.env.VERIFIER_PRIVATE_KEY =
   process.env.VERIFIER_PRIVATE_KEY ||
   "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
-process.env.ADMIN_API_KEY = "test-admin-key";
 process.env.JWT_SECRET = "test-jwt-secret";
 process.env.WALLET_ENCRYPTION_KEY =
   "236d277256c4ac74368580b5be214189ace6dff26eb4e5efe448dbf1c2a1158c";
@@ -242,6 +243,27 @@ test("a cancelled drive IS published", async () => {
   const res = await request(app).get("/public/drives/4");
   assert.equal(res.status, 200);
   assert.equal(res.body.drive.status, "Cancelled");
+});
+
+test("a declined company never appears among the recruiters", async () => {
+  // The drive list withholds a rejected drive; the recruiter summary beside it
+  // used to count the same drive anyway, publishing the company and its offer.
+  const declined = ethers.Wallet.createRandom().address;
+  upsertActor({
+    address: declined, role: ROLE.Company, status: STATUS.Active, name: "Declined Ltd",
+    college: null, registeredAtBlock: 1, updatedAtBlock: 1,
+  });
+  upsertDrive({
+    id: 9, companyAddress: declined, collegeAddress: college, roleTitle: "Turned Down",
+    annualPackage: 9900000, minCgpaScaled: 0, batchYear: 2026,
+    applicationDeadline: 1900000000, driveDate: 1900100000, ipfsHash: "QmTest9",
+    status: DRIVE_STATUS.Rejected, postedAt: 90, blockNumber: 90,
+  });
+
+  const res = await request(app).get(`/public/colleges/${college}/recruiters`);
+  const blob = JSON.stringify(res.body);
+  assert.ok(!blob.includes("Declined Ltd"), "a declined company was published");
+  assert.ok(!blob.includes("9900000"), "a declined offer was published");
 });
 
 test("recruiters are summarised with what they actually offered", async () => {

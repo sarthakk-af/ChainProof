@@ -40,12 +40,6 @@ export function getVerification(userId) {
   return db.prepare("SELECT * FROM student_verifications WHERE user_id = ?").get(userId);
 }
 
-export function getVerificationByAddress(address) {
-  return db
-    .prepare("SELECT * FROM student_verifications WHERE LOWER(address) = LOWER(?)")
-    .get(address);
-}
-
 export function setVerificationStatus(userId, status, reason = null) {
   db.prepare(
     "UPDATE student_verifications SET status = ?, reason = ?, decided_at = ? WHERE user_id = ?"
@@ -63,14 +57,6 @@ export function listPendingVerifications(collegeAddress) {
         ORDER BY v.created_at ASC`
     )
     .all(collegeAddress.toLowerCase(), VERIFICATION.Pending);
-}
-
-export function countPendingVerifications(collegeAddress) {
-  return db
-    .prepare(
-      "SELECT COUNT(*) AS c FROM student_verifications WHERE college_address = ? AND status = ?"
-    )
-    .get(collegeAddress.toLowerCase(), VERIFICATION.Pending).c;
 }
 
 /**

@@ -1,13 +1,13 @@
 /**
- * ProjectExplainer.jsx — The plain-language "what is this and how does it work" content.
+ * ProjectExplainer.jsx — the plain-language "what is this and how does it work".
  *
- * Shared by LandingPage.jsx (shown to logged-out visitors, above the sign-in
+ * Shared by LandingPage.jsx (shown to signed-out visitors, above the sign-in
  * form) and the standalone /about route (reachable from the navbar at all
- * times, logged in or not) — so there is always a way back to "wait, what am
- * I looking at?" without having to sign out.
+ * times), so there is always a way back to "wait, what am I looking at?".
  *
- * The stats strip pulls real numbers from the public dashboard's own API
- * (no auth needed) rather than showing made-up figures.
+ * The stats strip reads real numbers from the public API rather than showing
+ * invented ones, and deliberately shows no platform-wide placement rate: a rate
+ * needs a denominator, and the honest one is per cohort, on the public page.
  */
 
 import React, { useState, useEffect } from "react";
@@ -18,28 +18,44 @@ const ROLES = [
   {
     tag: "FOR STUDENTS",
     Icon: GraduationCap,
-    title: "Your history, provable to anyone",
-    body: "Get linked to your college and watch a permanent timeline build as you get shortlisted, interviewed, and offered — visible to anyone who checks, without a single phone call to verify it.",
+    title: "Apply, and own your answer",
+    body: "Build a resume, apply to the drives you're eligible for, and follow each stage as the company records it. Nothing counts as a placement until you accept the offer yourself.",
   },
   {
-    tag: "FOR COLLEGES",
+    tag: "FOR THE COLLEGE",
     Icon: Landmark,
-    title: "A placement rate that speaks for itself",
-    body: "Announce recruiter visits, issue credentials to your own students, and let your placement percentage update itself automatically, straight from that same activity as it happens.",
+    title: "Accountable for effort, not just results",
+    body: "Confirm your students and the companies that recruit here, host their drives, and keep a permanent record of the training and mock interviews you ran — without ever being able to write a result yourself.",
   },
   {
     tag: "FOR COMPANIES",
     Icon: Briefcase,
-    title: "Hiring activity that speaks for itself",
-    body: "Move candidates through shortlist, interview, and offer, issuing each step directly — a public, permanent record of how your hiring process actually ran.",
+    title: "See who's here before you visit",
+    body: "Browse the college's students by course, CGPA and skills, post your own terms, and record each candidate's stage. Contact details appear once a student applies to you.",
   },
 ];
 
 const STEPS = [
-  { n: "01", title: "Sign up", body: "Email and password. Choose Student, College, or Company — that's the only setup required." },
-  { n: "02", title: "Get verified", body: "Colleges and companies are checked by an administrator before they can act. Students skip this — they just name their college." },
-  { n: "03", title: "Records get written", body: "A visit, a shortlist, an interview, an offer — each becomes a permanent record the moment it happens." },
-  { n: "04", title: "Anyone can check", body: "Placement percentages update automatically and sit on a public page open to everyone, no login." },
+  {
+    n: "01",
+    title: "Sign up",
+    body: "Email and password — you're in straight away. Students confirm their roll number against the college's roster; companies are approved by the placement cell.",
+  },
+  {
+    n: "02",
+    title: "Each party signs its own part",
+    body: "The company writes its offer terms and results. The college declares its cohort size and preparation sessions. The student accepts or declines.",
+  },
+  {
+    n: "03",
+    title: "The record can't be rewritten",
+    body: "Each of those is written to a blockchain the moment it happens. Nobody — not even the administrator — can edit it afterwards.",
+  },
+  {
+    n: "04",
+    title: "Anyone can check",
+    body: "Funnels, placement figures and the college's preparation record sit on a public page, no login needed, with no individual student named.",
+  },
 ];
 
 function useLiveStats() {
@@ -59,13 +75,12 @@ export default function ProjectExplainer({ onGetStarted }) {
       <div className="hero-grid" style={{ display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 48, alignItems: "center", marginBottom: 64 }}>
         <div>
           <div className="eyebrow-pill" style={{ marginBottom: 22 }}>
-            <span className="dot" /> Public ledger · no login required to verify
+            <span className="dot" /> Public record · no login required to check
           </div>
-          <h1 style={{ marginBottom: 20 }}>Every placement claim, provable.</h1>
+          <h1 style={{ marginBottom: 20 }}>A placement record nobody can fudge.</h1>
           <p style={{ fontSize: "1.05rem", maxWidth: 460, marginBottom: 28 }}>
-            Every step of the placement process — an interview, a visit, an offer — is written
-            directly by whoever's actually doing it, straight to a shared record that stays
-            exactly as it was created.
+            An internal placement platform for one college, where each figure is signed by the
+            party with nothing to gain from inflating it — and then can never be changed.
           </p>
           <div className="flex gap-12" style={{ flexWrap: "wrap" }}>
             {onGetStarted ? (
@@ -78,33 +93,33 @@ export default function ProjectExplainer({ onGetStarted }) {
             <a href="/public" className="btn btn-ghost btn-lg">View the public dashboard</a>
           </div>
           <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 16 }}>
-            Free to use. No wallet or crypto knowledge needed to sign up.
+            No wallet or crypto knowledge needed.
           </p>
         </div>
 
         <div className="ledger-card">
           <div className="ledger-card-head">
-            <span>SAMPLE COLLEGE — ILLUSTRATIVE ENTRIES</span>
+            <span>SAMPLE ENTRIES — ILLUSTRATIVE</span>
             <span>#4,281–4,284</span>
           </div>
           <div className="ledger-row">
-            <span className="tag">REGISTER</span>
-            <span className="who">A. Verma joined as Student</span>
+            <span className="tag">COHORT</span>
+            <span className="who">College declared CSE 2026: 180 students</span>
             <span className="hash">0x9f2…c31</span>
           </div>
           <div className="ledger-row">
-            <span className="tag">VISIT</span>
-            <span className="who">College announced a company visit</span>
+            <span className="tag">DRIVE</span>
+            <span className="who">Company posted SDE, 6.5 LPA, CGPA 7.0+</span>
             <span className="hash">0x7a1…88e</span>
           </div>
           <div className="ledger-row">
-            <span className="tag">CREDENTIAL</span>
-            <span className="who">Company marked A. Verma — Interviewed</span>
-            <span className="hash">0x4d0…12f</span>
+            <span className="tag">STAGE</span>
+            <span className="who">Company recorded 0x4d0…12f — Offered</span>
+            <span className="hash">0x51b…e07</span>
           </div>
           <div className="ledger-row">
-            <span className="tag">CREDENTIAL</span>
-            <span className="who">Company marked A. Verma — Offer</span>
+            <span className="tag">ACCEPT</span>
+            <span className="who">Student 0x4d0…12f accepted the offer</span>
             <span className="stamp-badge">IMMUTABLE</span>
           </div>
         </div>
@@ -115,24 +130,23 @@ export default function ProjectExplainer({ onGetStarted }) {
         <div style={{ maxWidth: 620, marginBottom: 24 }}>
           <h2 style={{ marginBottom: 8 }}>A placement number is only as good as the record behind it.</h2>
           <p style={{ fontSize: "0.92rem" }}>
-            There's a real difference between a number compiled after the fact and one built
-            directly from a permanent record, as it happens — and today, almost nobody has
-            access to the second kind.
+            "92% placed" means nothing until you know 92% of what, who counted, and whether
+            anyone could have changed it since.
           </p>
         </div>
         <div className="compare">
           <div className="compare-col bad">
-            <h3>Before ChainProof</h3>
-            <div className="compare-item bad"><span className="mk">✕</span> Placement activity lives across many separate conversations and spreadsheets</div>
-            <div className="compare-item bad"><span className="mk">✕</span> There's no easy way to independently verify a placement claim afterward</div>
-            <div className="compare-item bad"><span className="mk">✕</span> The final percentage depends on manual compilation, gathered after the fact</div>
-            <div className="compare-item bad"><span className="mk">✕</span> No outside party has a simple way to check the underlying activity</div>
+            <h3>Usually</h3>
+            <div className="compare-item bad"><span className="mk">✕</span> The college reports its own results, compiled after the season ends</div>
+            <div className="compare-item bad"><span className="mk">✕</span> The batch size behind a percentage can be quietly shrunk</div>
+            <div className="compare-item bad"><span className="mk">✕</span> An offer that was made and later withdrawn still gets counted</div>
+            <div className="compare-item bad"><span className="mk">✕</span> Nobody outside can check any of it</div>
           </div>
           <div className="compare-col good">
             <h3>With ChainProof</h3>
-            <div className="compare-item good"><span className="mk">✓</span> Every step — a visit, a shortlist, an offer — is written directly by whoever did it</div>
-            <div className="compare-item good"><span className="mk">✓</span> A student's full history stays visible in one place, offer or not</div>
-            <div className="compare-item good"><span className="mk">✓</span> The percentage is calculated automatically from that same activity</div>
+            <div className="compare-item good"><span className="mk">✓</span> Only the company can record an offer, and only the student can accept it</div>
+            <div className="compare-item good"><span className="mk">✓</span> The declared batch size is public, with every revision visible</div>
+            <div className="compare-item good"><span className="mk">✓</span> A withdrawn offer takes the student back out of the count</div>
             <div className="compare-item good"><span className="mk">✓</span> Anyone can check it on a public page, no account needed</div>
           </div>
         </div>
@@ -142,7 +156,7 @@ export default function ProjectExplainer({ onGetStarted }) {
       <div style={{ marginBottom: 64 }}>
         <div style={{ maxWidth: 620, marginBottom: 32 }}>
           <h2 style={{ marginBottom: 8 }}>How a record gets made</h2>
-          <p style={{ fontSize: "0.92rem" }}>No wallet, no crypto knowledge — it works like any website. The blockchain part happens behind the scenes.</p>
+          <p style={{ fontSize: "0.92rem" }}>It works like any website. The blockchain part happens behind the scenes.</p>
         </div>
         <div className="steps-grid">
           {STEPS.map((s) => (
@@ -158,8 +172,8 @@ export default function ProjectExplainer({ onGetStarted }) {
       {/* Who uses it */}
       <div style={{ marginBottom: 64 }}>
         <div style={{ maxWidth: 620, marginBottom: 24 }}>
-          <h2 style={{ marginBottom: 8 }}>Built for three kinds of people</h2>
-          <p style={{ fontSize: "0.92rem" }}>Each role sees a different dashboard, but writes to the same permanent record.</p>
+          <h2 style={{ marginBottom: 8 }}>Three roles, each signing only its own part</h2>
+          <p style={{ fontSize: "0.92rem" }}>Parents and anyone else can read the result without an account.</p>
         </div>
         <div className="grid-3 stagger-children">
           {ROLES.map((r) => (
@@ -178,45 +192,45 @@ export default function ProjectExplainer({ onGetStarted }) {
         <div style={{ marginBottom: 64 }}>
           <div className="stats-strip">
             <div className="stat-item">
-              <span className="stat-n">{stats.totalColleges}</span>
-              <span className="stat-l">Colleges verified and active</span>
+              <span className="stat-n">{stats.companies}</span>
+              <span className="stat-l">Companies approved to recruit</span>
             </div>
             <div className="stat-item">
-              <span className="stat-n">{stats.totalStudents}</span>
-              <span className="stat-l">Students registered on-chain</span>
+              <span className="stat-n">{stats.drives}</span>
+              <span className="stat-l">Drives posted</span>
             </div>
             <div className="stat-item">
-              <span className="stat-n">{stats.totalPlaced}</span>
-              <span className="stat-l">Students placed, verifiably</span>
+              <span className="stat-n">{stats.students}</span>
+              <span className="stat-l">Students verified</span>
             </div>
             <div className="stat-item">
-              <span className="stat-n">{stats.overallPlacementPercentage}%</span>
-              <span className="stat-l">Real placement rate, calculated live</span>
+              <span className="stat-n">{stats.placed}</span>
+              <span className="stat-l">Students who accepted an offer</span>
             </div>
           </div>
         </div>
       )}
 
       {/* What makes it trustworthy */}
-      <div className="grid-2" style={{ gap: 16 }}>
+      <div className="grid-2" style={{ gap: 16, marginBottom: 24 }}>
         <div className="glass-card p-24">
-          <h3 style={{ marginBottom: 8, fontSize: "1rem" }}>A Complete, Open History</h3>
+          <h3 style={{ marginBottom: 8, fontSize: "1rem" }}>Mistakes stay visible</h3>
           <p style={{ fontSize: "0.85rem" }}>
-            Every action stays visible permanently. If something changes later, it's reflected
-            with a new, clearly linked record — the full history stays right there alongside it.
+            A withdrawn offer, a revised batch size, a session that didn't happen — each is a
+            new entry beside the original, never an edit that hides it.
           </p>
         </div>
         <div className="glass-card p-24">
-          <h3 style={{ marginBottom: 8, fontSize: "1rem" }}>Numbers, Not Guesswork</h3>
+          <h3 style={{ marginBottom: 8, fontSize: "1rem" }}>People stay private</h3>
           <p style={{ fontSize: "0.85rem" }}>
-            Placement percentages are calculated automatically from real, recorded activity —
-            always kept in sync as new records are added.
+            The blockchain holds events, not people. Names, roll numbers and resumes stay in the
+            college's own database, and companies browse students without seeing who they are.
           </p>
         </div>
       </div>
 
       <p className="text-center" style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-        Curious what "permanent record" actually means for your data?{" "}
+        Want to know exactly what is stored, and where?{" "}
         <a href="/privacy">Read the Privacy &amp; Data page →</a>
       </p>
     </div>

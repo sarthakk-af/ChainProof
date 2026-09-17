@@ -164,23 +164,45 @@ adminRouter.post("/college", async (req, res) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
     return res.status(400).json({ error: "Enter a valid email for the placement cell login." });
   }
-  if (getUserByEmail(loginEmail)) {
-    return res.status(409).json({ error: "An account with that email already exists." });
-  }
   if (!validatePassword(password)) {
     return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
   }
 
-  try {
-    const { address, encryptedPrivateKey } = generateWallet();
-    await fundWallet(address);
+  // An existing login is refused unless it is the college's own, left without
+  // an on-chain identity by a chain reset. That case used to be a dead end: the
+  // login survived in the database, the college did not survive on the chain,
+  // and every attempt to recreate it was told the email was already taken.
+  // Checked against the chain itself rather than the mirror, which a redeploy
+  // has just emptied.
+  const existingUser = getUserByEmail(loginEmail);
+  if (existingUser) {
+    const onChain = await actorRegistryRead.getActor(existingUser.wallet_address);
+    if (!existingUser.is_college_login || Number(onChain.role) !== ROLE.None) {
+      return res.status(409).json({ error: "An account with that email already exists." });
+    }
+  }
 
-    const user = createUser({
-      email: loginEmail,
-      passwordHash: await hashPassword(password),
-      walletAddress: address,
-      encryptedPrivateKey,
-    });
+  try {
+    let user;
+    let address;
+    if (existingUser) {
+      user = existingUser;
+      address = existingUser.wallet_address;
+      setPasswordHash(user.id, await hashPassword(password));
+      await fundWallet(address);
+      logger.info("college_login_reused", { email: loginEmail, address });
+    } else {
+      const wallet = generateWallet();
+      address = wallet.address;
+      await fundWallet(address);
+      user = createUser({
+        email: loginEmail,
+        passwordHash: await hashPassword(password),
+        walletAddress: address,
+        encryptedPrivateKey: wallet.encryptedPrivateKey,
+      });
+      db.prepare("UPDATE users SET is_college_login = 1 WHERE id = ?").run(user.id);
+    }
     // The admin vouched for this account by creating it; there is nobody else
     // to confirm it with.
     setEmailVerified(user.id);
@@ -259,11 +281,22 @@ adminRouter.get("/accounts", (req, res) => {
   // The login behind each on-chain identity, so a suspension is about a person
   // the owner can actually contact rather than a hex string.
   const emailFor = db.prepare("SELECT email FROM users WHERE LOWER(wallet_address) = LOWER(?)");
+  // A student is registered on-chain under a placeholder rather than their name
+  // (see studentVerification.js), so the name the owner needs comes from the
+  // off-chain profile instead.
+  const profileNameFor = db.prepare(
+    "SELECT full_name, roll_number FROM student_profiles WHERE address = LOWER(?)"
+  );
   res.json({
-    accounts: rows.map((row) => ({
-      ...serializeActor(row),
-      email: emailFor.get(row.address)?.email ?? null,
-    })),
+    accounts: rows.map((row) => {
+      const account = { ...serializeActor(row), email: emailFor.get(row.address)?.email ?? null };
+      if (row.role === ROLE.Student) {
+        const profile = profileNameFor.get(row.address);
+        if (profile?.full_name) account.name = profile.full_name;
+        account.rollNumber = profile?.roll_number ?? null;
+      }
+      return account;
+    }),
   });
 });
 

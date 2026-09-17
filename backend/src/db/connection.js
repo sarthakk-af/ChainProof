@@ -25,13 +25,12 @@ db.exec(`
     rejection_reason TEXT,
     rejection_count INTEGER NOT NULL DEFAULT 0,
     website_reachable INTEGER,
-    join_code TEXT,
     registration_number TEXT
   );
 
   -- Every dashboard load and public-stats query filters actors by role/status
-  -- and/or groups by college (see routes/students.js, routes/colleges.js,
-  -- routes/public.js) — this table had no index beyond its address primary key.
+  -- and/or groups by college — this table had no index beyond its address
+  -- primary key.
   CREATE INDEX IF NOT EXISTS idx_actors_role_status ON actors(role, status);
   CREATE INDEX IF NOT EXISTS idx_actors_college ON actors(college);
 
@@ -51,12 +50,14 @@ db.exec(`
     encrypted_private_key TEXT NOT NULL,
     token_version INTEGER NOT NULL DEFAULT 0,
     email_verified INTEGER NOT NULL DEFAULT 0,
+    is_college_login INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL
   );
 
-  -- A signup isn't usable (can't log in, see routes/auth.js's /login) until
-  -- the OTP emailed here is entered back — see routes/auth.js's /verify-email.
-  -- Only one row per user at a time: a fresh OTP replaces whatever came before.
+  -- The code emailed at signup. Confirming it is one of the two conditions for
+  -- a student to be verified (see studentVerification.js); it no longer blocks
+  -- signing in. Only one row per user at a time: a fresh OTP replaces whatever
+  -- came before.
   CREATE TABLE IF NOT EXISTS email_otps (
     user_id INTEGER PRIMARY KEY,
     otp_hash TEXT NOT NULL,
@@ -91,12 +92,9 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_reg_claims_address ON registration_number_claims(address);
 
-  -- Named admin accounts — replaces relying solely on one shared secret for
-  -- every approval decision (see routes/admin.js's /auth/login and
-  -- /admins). The shared ADMIN_API_KEY still exists, but only to bootstrap
-  -- these accounts — actual approve/reject actions require a real admin
-  -- session tied to one of these rows, so a decision can be attributed to
-  -- an actual person, not just "someone with the key."
+  -- The platform owner's login, created on first start from ADMIN_USERNAME and
+  -- ADMIN_PASSWORD (see server.js). A row rather than a shared secret, so every
+  -- admin action can be attributed to an account.
   CREATE TABLE IF NOT EXISTS admins (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
@@ -104,11 +102,11 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
 
-  -- Every verification decision (approve/reject) is logged here, permanently,
-  -- in the same spirit as the on-chain records — the goal is "someone can
-  -- always answer who decided what and when," not just "the app enforced
-  -- some rule." admin_username records exactly which admin account made the
-  -- call (nullable only for decisions logged before named admins existed).
+  -- Every account decision — a company admitted or declined by the college, an
+  -- account suspended or reinstated by the owner — logged permanently, in the
+  -- same spirit as the on-chain records: someone can always answer who decided
+  -- what and when. The owner's own actions are shown back to them in the admin
+  -- panel rather than kept in a log nobody reads.
   CREATE TABLE IF NOT EXISTS admin_actions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     actor_address TEXT NOT NULL,
@@ -368,6 +366,14 @@ if (!userColumns.includes("token_version")) {
 if (!userColumns.includes("email_verified")) {
   db.exec("ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0");
 }
+// Marks the one login the administrator created for the placement cell. A local
+// chain reset erases the college's on-chain identity but not this row, and the
+// flag is what lets the administrator put that same login back on-chain rather
+// than being told its email is already taken — without being able to do the
+// same to any other account.
+if (!userColumns.includes("is_college_login")) {
+  db.exec("ALTER TABLE users ADD COLUMN is_college_login INTEGER NOT NULL DEFAULT 0");
+}
 
 // Same pattern for a database file created before rejection_reason existed.
 const actorColumns = db.prepare("PRAGMA table_info(actors)").all().map((c) => c.name);
@@ -383,8 +389,11 @@ if (!actorColumns.includes("rejection_count")) {
 if (!actorColumns.includes("website_reachable")) {
   db.exec("ALTER TABLE actors ADD COLUMN website_reachable INTEGER");
 }
-if (!actorColumns.includes("join_code")) {
-  db.exec("ALTER TABLE actors ADD COLUMN join_code TEXT");
+// join_code belonged to v1, where a student joined a college by typing a code
+// the college handed out. Verification is by roll number now and nothing reads
+// or writes the column, so it is dropped from databases that still carry it.
+if (actorColumns.includes("join_code")) {
+  db.exec("ALTER TABLE actors DROP COLUMN join_code");
 }
 if (!actorColumns.includes("registration_number")) {
   db.exec("ALTER TABLE actors ADD COLUMN registration_number TEXT");
@@ -495,10 +504,11 @@ export function resetMirrorForNewDeployment(fingerprint) {
   // The roster itself is the college's own data and is deliberately kept.
   db.exec("DELETE FROM student_verifications;");
   db.exec("UPDATE roster_entries SET claimed_by = NULL, claimed_at = NULL WHERE claimed_by IS NOT NULL;");
-  // Announcements survive a redeploy — they are the platform's own notices, not
-  // a mirror — but any drive they point at has been renumbered from zero, so the
-  // link is dropped rather than left pointing at an unrelated company's drive.
-  db.exec("UPDATE announcements SET drive_id = NULL WHERE drive_id IS NOT NULL;");
+  // Notices go too. Every one of them is about a season on the old chain — a
+  // drive that no longer exists, a college identity that has been erased — and
+  // keeping them meant each reset-and-seed left another copy of the same notice
+  // under the college's reused login, which read like invented data.
+  db.exec("DELETE FROM announcements;");
   db.prepare(
     "UPDATE indexer_state SET last_synced_block = 0, deployment_fingerprint = ? WHERE id = 1"
   ).run(fingerprint);

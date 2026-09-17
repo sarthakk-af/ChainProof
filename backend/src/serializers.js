@@ -76,17 +76,6 @@ export function serializeOutcome(row) {
   };
 }
 
-export function parseEnumQueryParam(value, enumMap, paramName) {
-  if (value === undefined) return undefined;
-  const numeric = enumMap[value];
-  if (numeric === undefined) {
-    throw new Error(
-      `Invalid ${paramName}: "${value}". Expected one of: ${Object.keys(enumMap).join(", ")}`
-    );
-  }
-  return numeric;
-}
-
 /** One resume entry, as the API returns it. */
 export function serializeResumeItem(row) {
   if (!row) return null;

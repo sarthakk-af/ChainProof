@@ -41,12 +41,6 @@ export function upsertActor(actor) {
   ).run(row);
 }
 
-export function updateActorStatus(address, status, updatedAtBlock, rejectionReason = null) {
-  db.prepare(
-    "UPDATE actors SET status = ?, updated_at_block = ?, rejection_reason = ? WHERE address = ?"
-  ).run(status, updatedAtBlock, rejectionReason, normalizeAddress(address));
-}
-
 /** Called specifically when a genuine new registration/resubmission succeeds. */
 export function clearRejectionReason(address) {
   db.prepare("UPDATE actors SET rejection_reason = NULL WHERE address = ?").run(normalizeAddress(address));
@@ -65,18 +59,6 @@ export function setWebsiteReachable(address, reachable) {
     reachable === null ? null : reachable ? 1 : 0,
     normalizeAddress(address)
   );
-}
-
-/**
- * The code a College hands to its own students so a registration actually
- * proves *some* real-world contact with that institution, rather than just
- * picking a name off a public dropdown — see routes/me.js's /register and
- * routes/colleges.js's join-code endpoints. Off-chain only: it's an access
- * control detail the college manages, not a durable identity fact worth
- * spending gas to record permanently.
- */
-export function setJoinCode(address, code) {
-  db.prepare("UPDATE actors SET join_code = ? WHERE address = ?").run(code, normalizeAddress(address));
 }
 
 /**

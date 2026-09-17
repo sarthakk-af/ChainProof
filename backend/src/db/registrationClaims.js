@@ -53,20 +53,3 @@ export function claimRegistrationNumber(registrationNumber, address) {
 export function releaseClaimsForAddress(address) {
   db.prepare("DELETE FROM registration_number_claims WHERE LOWER(address) = LOWER(?)").run(address);
 }
-
-/**
- * Display names that more than one actor currently uses, lowercased. Powers
- * the admin queue's "shared name" flag — a shared name isn't blocked, but an
- * admin should see it before approving.
- */
-export function findDuplicateNames() {
-  const rows = db
-    .prepare(
-      `SELECT LOWER(TRIM(name)) AS normalized
-       FROM actors
-       GROUP BY LOWER(TRIM(name))
-       HAVING COUNT(*) > 1`
-    )
-    .all();
-  return new Set(rows.map((r) => r.normalized));
-}

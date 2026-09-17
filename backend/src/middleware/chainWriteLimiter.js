@@ -37,12 +37,14 @@ export const registerLimiter = byUser(
   "Too many registration attempts. Please try again later."
 );
 
-// A college issuing results at the end of a term is the heaviest genuine use
-// of this endpoint, so the ceiling has to clear a realistic batch.
+// A company recording a whole drive's results in one sitting — a stage for each
+// of a hundred-odd applicants — is the heaviest genuine use, so the ceiling has
+// to clear a realistic batch. Also covers a student answering an offer and the
+// company publishing its applicant count.
 export const issueLimiter = byUser(
   60 * 60 * 1000,
   200,
-  "Too many credentials issued in a short period. Please wait a few minutes and try again."
+  "Too many results recorded in a short period. Please wait a few minutes and try again."
 );
 
 // A college entering a term's preparation record in one sitting — twenty
@@ -57,10 +59,10 @@ export const recordLimiter = byUser(
   "Too many records in a short period. Please wait a few minutes and try again."
 );
 
-// Announcements are occasional by nature — a placement cell posts a handful a
-// week, not hundreds.
+// Posting a drive is occasional by nature — a company runs a handful a season,
+// not hundreds.
 export const announceLimiter = byUser(
   60 * 60 * 1000,
   50,
-  "Too many visit announcements in a short period. Please wait a few minutes and try again."
+  "Too many drives posted in a short period. Please wait a few minutes and try again."
 );

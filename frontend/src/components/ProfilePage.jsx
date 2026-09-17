@@ -10,7 +10,12 @@ import React from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 
 const ROLE_BADGE_CLASS = { Student: "badge-student", College: "badge-college", Company: "badge-company" };
-const STATUS_BADGE_CLASS = { Active: "badge-success", Pending: "badge-warning", Rejected: "badge-danger" };
+const STATUS_BADGE_CLASS = {
+  Active: "badge-success",
+  Pending: "badge-warning",
+  Rejected: "badge-danger",
+  Suspended: "badge-warning",
+};
 
 function Row({ label, children }) {
   return (
@@ -24,7 +29,7 @@ function Row({ label, children }) {
 }
 
 export default function ProfilePage() {
-  const { user, actor } = useAuth();
+  const { user, actor, profile } = useAuth();
 
   return (
     <div className="page-container animate-fade-in-up" style={{ maxWidth: 640 }}>
@@ -40,7 +45,9 @@ export default function ProfilePage() {
 
         {actor ? (
           <>
-            <Row label="Name">{actor.name}</Row>
+            {/* A student's on-chain name is a placeholder by design; the real
+                one comes from the college's roster, kept off-chain. */}
+            <Row label="Name">{actor.role === "Student" ? profile?.fullName ?? "—" : actor.name}</Row>
             <Row label="Role">
               <span className={`badge ${ROLE_BADGE_CLASS[actor.role] || "badge-none"}`}>{actor.role}</span>
             </Row>

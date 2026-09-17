@@ -28,7 +28,9 @@ const TEST_DB_PATH = path.join(__dirname, "test-preparation.sqlite");
 function cleanupDbFiles() {
   for (const suffix of ["", "-journal", "-wal", "-shm"]) {
     const file = TEST_DB_PATH + suffix;
-    if (fs.existsSync(file)) fs.rmSync(file);
+    // Retries because Windows can hold a just-closed SQLite file for a moment,
+    // which otherwise fails the run with EBUSY after every test has passed.
+    if (fs.existsSync(file)) fs.rmSync(file, { force: true, maxRetries: 10, retryDelay: 50 });
   }
 }
 cleanupDbFiles();

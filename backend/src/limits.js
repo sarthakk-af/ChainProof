@@ -1,8 +1,8 @@
 /**
  * limits.js — The byte-length bounds enforced on-chain, mirrored here.
  *
- * These match the `MAX_*` constants in contracts/ActorRegistry.sol,
- * contracts/CredentialIssuer.sol, and contracts/PlacementTracker.sol. The
+ * These match the `MAX_*` constants in contracts/ActorRegistry.sol and
+ * contracts/PlacementDrive.sol. The
  * contracts are the real enforcement (anyone can call them directly, skipping
  * this backend entirely) — these exist so a user gets a clear, specific
  * message instead of a raw revert bubbling up from a failed transaction.
@@ -16,7 +16,6 @@
 
 export const MAX_NAME_BYTES = 100;
 export const MAX_METADATA_BYTES = 200;
-export const MAX_COMPANY_NAME_BYTES = 150;
 export const MAX_IPFS_HASH_BYTES = 200;
 
 export function byteLength(value) {

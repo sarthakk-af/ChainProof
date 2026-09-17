@@ -1,16 +1,14 @@
 /**
- * PrivacyPage.jsx — Plain-language explanation of what data this app keeps,
- * where, and the real tension between "permanent, verifiable record" (the
- * whole point of the project) and a user's usual expectation of being able
- * to delete their data later.
+ * PrivacyPage.jsx — plain-language explanation of what this app keeps, where,
+ * and who can see it.
  *
- * Reachable at /privacy at all times, same plain-pathname pattern as /about —
- * this isn't a binding legal document (that would need an actual lawyer and
- * a live, funded product to make sense), it's an honest explanation of the
- * tradeoffs, written for someone who isn't a blockchain person.
+ * Reachable at /privacy at all times. Not a legal document — it is an honest
+ * account of the trade-offs, written for someone who isn't a blockchain person.
+ * It has to stay true to the code: a privacy page that describes an older
+ * version of the app is worse than none.
  */
 import React from "react";
-import { Link2, HardDrive, Scale, Globe } from "lucide-react";
+import { Link2, HardDrive, Eye, Scale } from "lucide-react";
 
 function SectionHeading({ Icon, children }) {
   return (
@@ -25,65 +23,76 @@ export default function PrivacyPage() {
   return (
     <div className="page-container animate-fade-in-up" style={{ maxWidth: 760 }}>
       <div className="section-eyebrow">Privacy &amp; Data</div>
-      <h2 style={{ marginBottom: 8 }}>What This App Stores, and Why It's Different</h2>
+      <h2 style={{ marginBottom: 8 }}>What This App Stores, and Who Sees It</h2>
       <p style={{ marginBottom: 32 }}>
-        This is a plain-language explanation, not a legal document — this project is a local demo,
-        not a live product with real users to protect. But the underlying tension is real, and worth
-        understanding honestly rather than glossing over.
+        A plain-language explanation, not a legal document. The short version: the record of
+        the placement season is permanent and public; everything about you as a person is
+        not.
       </p>
 
       <div className="glass-card p-24" style={{ marginBottom: 20 }}>
         <SectionHeading Icon={Link2}>What goes on the blockchain — and never comes off</SectionHeading>
         <p style={{ marginBottom: 8 }}>
-          Your role, name, college link, and every credential (a shortlist, an interview, an offer)
-          are written to the blockchain. That's the entire point: a record that can't be quietly
-          edited or deleted later is what makes it trustworthy to someone who wasn't there when it
-          happened.
+          The facts of the placement season: which companies came, the terms they offered,
+          how many applied, each recruitment stage, whether an offer was accepted, the size of
+          each cohort, and the preparation sessions the college ran. That permanence is the
+          point — a record nobody can quietly edit later is what makes it worth trusting.
         </p>
         <p style={{ margin: 0 }}>
-          The flip side: <strong>it genuinely cannot be deleted</strong>, by you or by us. A mistake
-          gets <em>corrected</em> — a new record explicitly superseding the old one — but the original
-          stays visible, permanently, alongside the correction. There's no "erase my account" button
-          that could ever fully work here, and it would be dishonest to pretend otherwise.
+          For a student, the blockchain holds only a wallet address.{" "}
+          <strong>Your name, roll number, CGPA and resume are never written there</strong>, so
+          nothing about you as a person becomes permanent. Colleges and companies are
+          registered under their own names, because those are public organisations.
         </p>
       </div>
 
       <div className="glass-card p-24" style={{ marginBottom: 20 }}>
-        <SectionHeading Icon={HardDrive}>What stays off-chain — and can be deleted</SectionHeading>
+        <SectionHeading Icon={HardDrive}>What stays off-chain — and can be changed or deleted</SectionHeading>
         <p style={{ marginBottom: 8 }}>
-          Your email address and password (hashed, never stored in plain text) live in this app's own
-          database, not on the blockchain. So does a local cache of on-chain data, kept only so the
-          app doesn't have to re-read the blockchain on every click.
+          Your email, your password (stored only as a hash), your roll number and the details
+          your college's roster holds, your resume, your skills, and the list of drives you
+          applied to all live in this app's own database.
         </p>
         <p style={{ margin: 0 }}>
-          This part <em>can</em> be deleted — closing this local deployment, or wiping its database
-          file, removes it. It's just not the part that makes the placement record verifiable.
+          You can edit your resume whenever you like. Placement notices are off-chain too, which
+          is why they can be edited or withdrawn — an edited notice is always marked as edited.
         </p>
       </div>
 
       <div className="glass-card p-24" style={{ marginBottom: 20 }}>
-        <SectionHeading Icon={Scale}>The real tension: permanence vs. "right to erasure"</SectionHeading>
-        <p style={{ marginBottom: 8 }}>
-          Data protection law (India's DPDP Act, and similar rules elsewhere) generally expects a
-          person to be able to ask for their personal data to be deleted. A public, immutable ledger
-          structurally can't fully honor that for anything already written to it — this is a known,
-          debated limitation of blockchain-based systems in general, not something specific to this
-          project or something we're claiming to have solved.
-        </p>
-        <p style={{ margin: 0 }}>
-          A production version of something like this would need to think carefully about what
-          actually goes on-chain (perhaps just a hash or reference, with the real personal data kept
-          off-chain and genuinely deletable) rather than putting names and identifying details
-          directly into permanent storage the way this demo does for simplicity.
-        </p>
+        <SectionHeading Icon={Eye}>Who can see what</SectionHeading>
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.8 }}>
+          <li>
+            <strong>Companies</strong> can browse this college's students by course, batch,
+            CGPA and skills — without names, emails or phone numbers. Your contact details
+            reach a company only when you apply to one of its drives.
+          </li>
+          <li>
+            <strong>Other students</strong> can open your profile only if they know both your
+            roll number and the email you signed up with.
+          </li>
+          <li>
+            <strong>Your college</strong> sees its own roster and the verification requests
+            sent to it.
+          </li>
+          <li>
+            <strong>The public</strong> sees totals and funnels only — never an individual.
+          </li>
+          <li>
+            <strong>The administrator</strong> can suspend an account, but cannot read your
+            password or change anything already recorded.
+          </li>
+        </ul>
       </div>
 
       <div className="glass-card p-24">
-        <SectionHeading Icon={Globe}>About the credential metadata (IPFS)</SectionHeading>
+        <SectionHeading Icon={Scale}>The trade-off, honestly</SectionHeading>
         <p style={{ margin: 0 }}>
-          Each credential's title and description are stored via IPFS — either genuinely uploaded to
-          the public IPFS network (if configured), or kept as a local browser-only placeholder
-          otherwise. See the "How It Works" page for what that means for verifiability specifically.
+          Data protection law (India's DPDP Act, and similar rules elsewhere) expects people to
+          be able to have their personal data erased, and a public blockchain cannot erase
+          anything. That is exactly why personal details are kept off it. What remains on-chain
+          is a record of events tied to a wallet address, which says nothing about who you are
+          to anyone who doesn't already have access to this app's database.
         </p>
       </div>
     </div>

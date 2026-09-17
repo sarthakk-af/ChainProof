@@ -11,12 +11,10 @@ export {
 } from "./connection.js";
 export {
   upsertActor,
-  updateActorStatus,
   getActor,
   listActors,
   clearRejectionReason,
   setWebsiteReachable,
-  setJoinCode,
   setRegistrationNumber,
 } from "./actors.js";
 export {
@@ -35,10 +33,8 @@ export {
   VERIFICATION,
   upsertVerification,
   getVerification,
-  getVerificationByAddress,
   setVerificationStatus,
   listPendingVerifications,
-  countPendingVerifications,
   rollNumberPending,
 } from "./verifications.js";
 export {
@@ -54,15 +50,11 @@ export {
   upsertProfile,
   patchProfile,
   getProfile,
-  listProfiles,
   checkEligibility,
 } from "./profiles.js";
 export {
   upsertBatch,
-  getBatch,
   listBatches,
-  totalStrengthForYear,
-  revisedBatches,
 } from "./batches.js";
 export {
   upsertDrive,
@@ -80,15 +72,10 @@ export {
   addOutcome,
   getOutcomeHistory,
   getCurrentStages,
-  getDriveFunnel,
-  countReachedStage,
   setOfferResponse,
   getOfferResponse,
-  countAcceptedOffers,
   setPlacement,
   isPlaced,
-  countPlaced,
-  listPlacedByBatch,
 } from "./outcomes.js";
 export {
   getDriveFunnelStats,
@@ -103,7 +90,6 @@ export {
   deleteResumeItem,
   reorderResumeItems,
   listResumeItems,
-  countResumeItems,
   setSkills,
   listSkills,
   skillsForAddresses,
@@ -136,10 +122,8 @@ export {
   getContactDetails,
 } from "./directory.js";
 export { logAdminAction, listAdminActions } from "./adminActions.js";
-export { createAdmin, getAdminByUsername, getAdminById, listAdmins } from "./admins.js";
 export {
   getRegistrationNumberClaim,
   claimRegistrationNumber,
   releaseClaimsForAddress,
-  findDuplicateNames,
 } from "./registrationClaims.js";

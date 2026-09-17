@@ -4,7 +4,7 @@ import { byteLength, MAX_IPFS_HASH_BYTES } from "./limits.js";
  * Validates that a value actually looks like an IPFS content identifier.
  *
  * The old check here was "non-empty and short enough," which meant any string
- * at all could be written into a credential — and that value goes on-chain
+ * at all could be written into a drive record — and that value goes on-chain
  * permanently. A record pointing at a hash that resolves nowhere is worse than
  * no record: it looks verifiable and isn't, which is the one thing this
  * project cannot afford to get wrong.

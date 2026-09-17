@@ -104,8 +104,14 @@ export function getOverviewCounts({ roleCollege, roleCompany, roleStudent, statu
  * Companies that have actually run a drive here, with what they offered.
  * @dev The package is the company's own published figure, so "what do companies
  *      pay at this college" is answerable without the college being the source.
+ *
+ *      Only drives the public may see are counted. This used to count every
+ *      drive, so a company the college turned down — and the package it had
+ *      proposed — appeared on the public page even though the drive list beside
+ *      it correctly withheld the same drive.
  */
-export function getRecruiterSummary(collegeAddress) {
+export function getRecruiterSummary(collegeAddress, visibleStatuses) {
+  const placeholders = visibleStatuses.map(() => "?").join(", ");
   return db
     .prepare(
       `SELECT d.company_address,
@@ -116,9 +122,9 @@ export function getRecruiterSummary(collegeAddress) {
               MAX(d.drive_date)       AS latest_drive
          FROM drives d
          LEFT JOIN actors a ON a.address = d.company_address
-        WHERE d.college_address = ?
+        WHERE d.college_address = ? AND d.status IN (${placeholders})
         GROUP BY d.company_address, a.name
         ORDER BY latest_drive DESC`
     )
-    .all(collegeAddress.toLowerCase());
+    .all(collegeAddress.toLowerCase(), ...visibleStatuses);
 }

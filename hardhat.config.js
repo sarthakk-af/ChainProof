@@ -8,8 +8,9 @@ require("dotenv").config();
  * ---------------------------------
  * - Solidity 0.8.20 compiler with optimizer enabled (200 runs = balance of
  *   deployment cost vs. runtime execution cost)
- * - Artifacts output directly to frontend/src/contracts so ABI imports work
- *   without extra copy scripts
+ * - Build output goes to artifacts/; scripts/deploy.js writes the deployed
+ *   addresses and ABIs to frontend/src/contracts/deployment.js, which the
+ *   backend reads on start-up
  * - Network configs load from .env for security (never hardcode private keys)
  */
 module.exports = {
@@ -71,15 +72,6 @@ module.exports = {
       chainId: 11155111,
     },
 
-    // Arbitrum Sepolia Testnet
-    arbitrumSepolia: {
-      url: process.env.ARBITRUM_SEPOLIA_RPC_URL || "",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY
-        ? [process.env.DEPLOYER_PRIVATE_KEY]
-        : [],
-      chainId: 421614,
-    },
-
     // Polygon Amoy Testnet — used for the live demo deployment
     amoy: {
       url: process.env.AMOY_RPC_URL || "",
@@ -107,7 +99,6 @@ module.exports = {
   etherscan: {
     apiKey: {
       sepolia: process.env.ETHERSCAN_API_KEY || "",
-      arbitrumSepolia: process.env.ARBISCAN_API_KEY || "",
     },
   },
 

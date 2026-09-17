@@ -10,7 +10,7 @@ import "./PlacementDrive.sol";
  * @notice What actually happened to each student in a drive, written only by the
  *         company running it — and whether the student took the offer.
  *
- * @dev Replaces CredentialIssuer. The placement percentage every parent reads is
+ * @dev The placement percentage every parent reads is
  *      derived from here, so the rules about who may write what are the point of
  *      the contract, not a detail of it:
  *

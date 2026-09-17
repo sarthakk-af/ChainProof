@@ -33,6 +33,19 @@ import { logger } from "./logger.js";
  * divided by.
  */
 
+/**
+ * The name a student is registered under on-chain.
+ *
+ * Deliberately not their name. The chain is public and permanent, and a
+ * student's real name written there could never be removed — which would also
+ * quietly undo the talent pool's anonymity, since anyone reading the chain
+ * could map a wallet address back to a person. The contract requires a
+ * non-empty name, so this satisfies it without saying anything. Who the student
+ * is lives in the roster and the profile, off-chain, where it can be corrected
+ * and erased.
+ */
+export const ON_CHAIN_STUDENT_NAME = "Student";
+
 /** Everything the UI needs to tell a student what is still missing. */
 export function verificationState(user) {
   const actor = getActor(user.wallet_address);
@@ -265,7 +278,7 @@ export async function tryComplete(userId) {
       const registry = actorRegistryAsSigner(getUserSigner(userId));
       const tx = await registry.register(
         ROLE.Student,
-        rosterRow.full_name,
+        ON_CHAIN_STUDENT_NAME,
         "",
         request.college_address,
         { nonce }

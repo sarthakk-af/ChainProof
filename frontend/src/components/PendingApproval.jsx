@@ -1,5 +1,8 @@
 /**
- * PendingApproval.jsx — Shown to a College/Company waiting on admin verification.
+ * PendingApproval.jsx — Shown to a company waiting for the college to admit it.
+ *
+ * Only companies reach this screen: a college is created already active by the
+ * platform administrator, and a student is written on-chain only once verified.
  *
  * A Rejected actor can resubmit (the backend/contract both allow this — see
  * ActorRegistry.sol's `register` and routes/me.js's registration check), so
@@ -45,17 +48,16 @@ export default function PendingApproval() {
             Your registration as <strong>{actor?.name}</strong> was reviewed and not approved.
             {actor?.rejectionReason && (
               <>
-                {" "}The administrator's note: <em>"{actor.rejectionReason}"</em>
+                {" "}The placement cell's note: <em>"{actor.rejectionReason}"</em>
               </>
             )}{" "}
             You're welcome to submit a corrected application below.
           </>
         ) : (
           <>
-            Thanks for registering, <strong>{actor?.name}</strong>. A platform administrator
-            confirms every college and company on the platform is genuinely who they say they
-            are before they can issue credentials or announce visits — a quick check that
-            applies equally to everyone.
+            Thanks for registering, <strong>{actor?.name}</strong>. The college's placement
+            cell confirms every company recruiting on its campus before that company can post
+            a drive or browse students — a quick check that applies equally to everyone.
           </>
         )}
       </p>

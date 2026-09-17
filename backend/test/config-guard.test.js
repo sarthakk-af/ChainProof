@@ -38,7 +38,6 @@ function startWith(env) {
       cwd: BACKEND_ROOT,
       env: {
         ...process.env,
-        ADMIN_API_KEY: "test-admin-key",
         ...env,
       },
       encoding: "utf8",

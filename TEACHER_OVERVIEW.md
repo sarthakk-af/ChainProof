@@ -2,56 +2,74 @@
 
 ## 1. What is ChainProof?
 
-ChainProof is a website that keeps a permanent, shared record of a college's placement activity — who got hired, by which company, and when — that stays exactly as it was created, for everyone involved to rely on.
+ChainProof is a placement website for a single college. Students, the college and recruiting companies each use it for their own part of the placement season. Parents, and anyone else, can look at the results without an account.
 
-## 2. The Problem It Solves
+What makes it different: every placement figure is written down by the one party that has no reason to exaggerate it, and once written it can never be changed.
 
-When a college shares its placement numbers, there is usually no independent way to verify them — the underlying activity lives across many separate conversations, spreadsheets, and records that nobody outside the college can easily check. This is not any one party's fault; it is simply how placement tracking has always worked. Students do not have an independent, portable record of their own achievements. Companies do not have an easy way to confirm that a student's claimed interviews or offers actually took place.
+## 2. The problem it solves
 
-What is missing is a neutral, shared record that students, colleges, and companies can all rely on equally.
+When a college says "92% of our students were placed", there is usually no way to check it:
 
-## 3. The Core Idea, Explained Simply
+- **Who counted?** The college reports its own results.
+- **92% of what?** If the batch size quietly shrinks from 180 to 60, the same number of placements looks far better.
+- **Does an offer count?** An offer that was withdrawn, or that the student turned down, is sometimes still counted.
+- **Can it be changed later?** Records kept in spreadsheets can be edited after the fact.
 
-Imagine a notebook that anyone involved can write a new entry into, but nobody — including the person who wrote it — can ever erase or edit an old entry. If something changes later (say, a job offer gets withdrawn), the only way to reflect that is to write a brand new entry explaining the change. The old entry stays visible forever, right next to the update.
+ChainProof answers each of these by deciding *who is allowed to write each fact*, and by keeping every fact permanently.
 
-That is what a blockchain is being used for here. It is not a magic word — it is simply a shared record book with one unusual rule: entries are permanent.
+## 3. The core idea
 
-Because of that one rule, the placement percentage is always calculated from the same activity everyone can see — it updates automatically as real steps happen, rather than being compiled and reported separately.
+Imagine a register where anyone can add a line, but nobody — not even the person who wrote it — can erase or change an old line. If something changes, a new line is added and the old one stays visible beside it.
 
-## 4. Who Uses It
+That is what the blockchain is used for here. It is simply a shared register with one unusual rule: entries are permanent.
 
-- **Students** — sign up, get linked to their college, and receive permanent records of things like being shortlisted, interviewed, or receiving an offer.
-- **Colleges** — publish which companies are visiting, and issue those permanent records to their own students.
-- **Companies** — issue the same kind of records directly (shortlist, interview, offer, rejection) to the students they interact with.
-- **An administrator** — confirms that a college or company signing up is genuinely who they say they are before letting them act on the platform.
-- **The public** — anyone, without logging in, can visit a public page and see real, verified placement statistics for every college on the platform.
+The second idea matters just as much: **each fact is written by whoever would be embarrassed by a lie.**
 
-## 5. How It Actually Works, Step by Step
+| Fact | Who writes it | Why that stops cheating |
+|---|---|---|
+| A job offer | The company | The college cannot invent offers for its own students |
+| Accepting an offer | The student | A company cannot claim it hired someone who said no |
+| The batch size | The college | It is public, and every change stays visible |
+| Training sessions held | The college | They are recorded as they happen and cannot be added later |
 
-1. Someone signs up with just an email and password — no technical or crypto knowledge needed at all.
-2. They choose a role: Student, College, or Company.
-3. If they chose College or Company, an administrator checks they are a genuine institution before approving them. Students do not need this check — they only need to indicate which college they belong to.
-4. Once approved, a college can announce that a company is coming to visit, and can issue records (such as "shortlisted," "interviewed," or "offer made") directly to a student.
-5. A company can do the same — it can view the registered students and issue the same kinds of records as it moves a candidate through its own hiring process.
-6. Every one of these records becomes permanent the moment it is created. A student can watch their own history build up over time on their personal dashboard.
-7. Behind the scenes, the moment a student receives an "Offer" record, they are automatically counted as placed. Nobody manually updates a placement count.
-8. Anyone at all — a parent, a journalist, another student deciding where to apply — can visit the public dashboard with no login and see real placement percentages for every college, calculated directly from these permanent records.
+## 4. Who uses it
 
-## 6. What Makes It Trustworthy
+- **Students** — sign up, confirm they study at the college using their roll number, build a resume, apply to drives, and accept or decline their own offers. They can also look up a classmate, if they know both the classmate's roll number and email address.
+- **The college (placement cell)** — uploads the list of its students, declares how many students are in each batch, decides which companies may recruit on campus, agrees to host each drive, records training and mock interviews, and posts placement notices.
+- **Companies** — sign up and, once the college approves them, post drives with their own terms (role, salary, CGPA cutoff). They browse the college's students anonymously, and record how each applicant progressed.
+- **The administrator** (the project owner) — creates the college's account and can suspend or restore an account if something goes wrong. The administrator **cannot** create or change any placement record.
+- **The public** — sees each batch's results, the companies that came, and the college's preparation record. No student is ever named.
 
-- **Nothing is ever deleted or edited.** Every action — a registration, a credential, a visit announcement — stays visible permanently.
-- **Mistakes are corrected openly, as part of the record.** If something needs to change later, it happens by adding a new, clearly linked record. The original stays visible right alongside it, so the full history is always there to see.
-- **Placement percentages are calculated automatically**, directly from these records, rather than being compiled and reported by hand.
-- **A rejected college or company is not permanently shut out.** If a registration is denied by mistake, they can simply try again — and the earlier attempt still remains part of the honest record either way.
+## 5. How a placement season works, step by step
 
-## 7. What It's Built On
+1. The administrator creates the college's account.
+2. The college uploads its student list and declares the batch size — for example, "CSE 2026: 180 students".
+3. A student signs up with an email and password, then enters their roll number. If it is on the college's list they are confirmed straight away. If not, the placement cell checks it by hand. Until then, the student can look around but cannot apply.
+4. A company signs up and waits for the college to approve it.
+5. The company posts a drive, and the college agrees to host it.
+6. Before visiting, the company can browse the college's students by course, CGPA and skills. It sees their resumes, but **not their names or contact details**.
+7. Eligible students apply. A student below the CGPA cutoff is told exactly why they can't. Applying is what gives the company that student's contact details.
+8. The company records each applicant's progress: shortlisted, interviewed, offered, or not selected.
+9. The student accepts or declines their offer. **Only an accepted offer counts as a placement.** If the company later withdraws it, the student stops counting as placed.
+10. Throughout, the college records its training sessions and mock interviews.
+11. The public dashboard updates automatically from all of this.
 
-Three simple layers work together:
+## 6. What makes it trustworthy
 
-- **A blockchain** — this is where every important action gets permanently recorded. Think of it as the platform's memory, which nobody is able to rewrite.
-- **A normal website** — built so that using the platform feels exactly like using any other website. Nobody needs to install anything, understand cryptocurrency, or manage a digital wallet themselves. That complexity is handled invisibly behind the scenes.
-- **A small, fast lookup helper** — a lightweight local database that keeps a quick copy of what is already on the blockchain, purely so the website loads quickly. It is not where the real information lives — it is only a convenience layer. The blockchain is always the actual source of truth.
+- **Nothing is edited or deleted.** A withdrawn offer, a changed batch size and a cancelled training session are each added as a new entry, and the original stays visible.
+- **Nobody can write another party's facts.** This is enforced by the blockchain itself, not just by the website.
+- **Even the administrator can't change results.** The administrator can only suspend or restore accounts, and every such action is recorded.
+- **The percentage is honest about its denominator.** It is shown against the whole declared batch, with the number of students who signed up shown beside it. If the college changed the batch size, the public page says so.
+- **Personal details stay private.** Names, roll numbers and resumes are never written to the blockchain, because anything written there can never be removed. The blockchain only records events, tied to anonymous account codes.
 
-## 8. Where It Stands Today
+## 7. What it's built on
 
-ChainProof is fully built and working end to end — signing up, registering a role, administrator approval, issuing credentials, publishing visit announcements, and the public dashboard are all functioning and tested. It currently runs on a free, public test version of a real blockchain network, which means every record it creates can be independently verified by anyone, on a public website, entirely separate from ChainProof itself.
+- **A blockchain** — the permanent register. Four small programs ("smart contracts") on it enforce who may write what.
+- **A normal website** — people sign in with an email and password, as on any site. Nobody needs a crypto wallet or any technical knowledge; the website handles the blockchain behind the scenes.
+- **A regular database** — holds personal information (names, resumes, contact details), which can be corrected or deleted. It also keeps a quick copy of the blockchain records so pages load fast. The blockchain remains the source of truth for placement records.
+
+## 8. Where it stands today
+
+The whole placement season described above is built and working, and backed by about 390 automated tests plus live end-to-end checks.
+
+It currently runs on a private practice blockchain on a single computer. The next step is to publish it on a public test network (Polygon Amoy), so that anyone can check the records independently of ChainProof itself.

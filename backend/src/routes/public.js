@@ -233,7 +233,11 @@ publicRouter.get("/colleges/:address/recruiters", (req, res) => {
     return res.status(404).json({ error: "No such college" });
   }
   res.json({
-    recruiters: getRecruiterSummary(address).map((r) => ({
+    recruiters: getRecruiterSummary(address, [
+      DRIVE_STATUS.Approved,
+      DRIVE_STATUS.Closed,
+      DRIVE_STATUS.Cancelled,
+    ]).map((r) => ({
       companyName: r.company_name,
       driveCount: r.drive_count,
       highestPackage: r.highest_package,

@@ -38,13 +38,15 @@ const TABS = [
 ];
 
 export default function StudentDashboard() {
-  const { actor, verification, profile } = useAuth();
+  const { verification, profile } = useAuth();
   const [tab, setTab] = useState("open");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const verified = !!verification?.verified;
-  const displayName = actor?.name || profile?.fullName || "Your account";
+  // The roster name, never the on-chain one: a student is registered on-chain
+  // under a placeholder so their real name is not written anywhere permanent.
+  const displayName = profile?.fullName || "Your account";
 
   return (
     <div className="page-container animate-fade-in-up">

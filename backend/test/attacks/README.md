@@ -1,6 +1,6 @@
 # Live attack suites
 
-Two scripts that drive the real HTTP API against a running stack and try to
+Three scripts that drive the real HTTP API against a running stack and try to
 make the system do something it shouldn't.
 
 ```
@@ -9,7 +9,7 @@ npm run test:attacks
 
 ## Why these are separate from `npm test`
 
-`npm test` is 105 unit and route tests that run against a temporary SQLite file
+`npm test` is 177 unit and route tests that run against a temporary SQLite file
 with nothing else switched on. These are different: they need all three
 services up, they write real transactions to the chain, and they create real
 accounts. Mixing the two would mean `npm test` could only ever be run by
@@ -21,6 +21,7 @@ someone with the full stack running, which defeats the point of it.
 |---|---|
 | `v2-journey.mjs` | A whole placement season: the owner creates the college → cohort and roster → students claim roll numbers (both orderings) → a company is admitted and posts its own terms → applications and the CGPA cutoff → the funnel → offers answered → the public page → a withdrawn offer → a revised cohort size |
 | `hostile-input.mjs` | Forged tokens, injection, garbage types, malformed bodies, prototype pollution, URLs that shouldn't answer |
+| `ui-contract.mjs` | Every field the dashboards actually read, checked against the live API. Needs a seeded database (`npm run seed:full`) |
 
 Each prints `PASS` / `FAIL` per check and exits non-zero if anything fails.
 

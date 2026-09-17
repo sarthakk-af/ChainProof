@@ -267,14 +267,13 @@ function DrivesPanel({ onError, onNotice }) {
 
 function RosterPanel({ onError, onNotice }) {
   const [roster, setRoster] = useState([]);
-  const [counts, setCounts] = useState([]);
   const [raw, setRaw] = useState("");
   const [busy, setBusy] = useState(false);
   const [rowErrors, setRowErrors] = useState([]);
 
   const load = useCallback(() => {
     api.get("/college/roster")
-      .then((d) => { setRoster(d.roster); setCounts(d.counts); })
+      .then((d) => setRoster(d.roster))
       .catch((e) => onError(e.message));
   }, [onError]);
 
