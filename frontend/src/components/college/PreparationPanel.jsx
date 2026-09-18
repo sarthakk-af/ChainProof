@@ -12,7 +12,7 @@
  * permanent record that surprises its author is a bad record.
  */
 
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   GraduationCap,
   Plus,
@@ -23,6 +23,7 @@ import {
   CalendarDays,
 } from "lucide-react";
 import { api } from "../../utils/api.js";
+import { getIdempotencyKey } from "../../utils/idempotency.js";
 import { formatDate } from "../../utils/format.js";
 
 export default function PreparationPanel({ onError, onNotice }) {
@@ -153,6 +154,7 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
     batchYear: "",
   });
   const [busy, setBusy] = useState(false);
+  const keyRef = useRef(null);
 
   const set = (k) => (e) => setValues((v) => ({ ...v, [k]: e.target.value }));
 
@@ -162,13 +164,19 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
     setBusy(true);
     onError("");
     try {
-      await api.post("/college/events", {
+      const payload = {
         kind: values.kind,
         title: values.title,
         conductedBy: values.conductedBy,
         heldOn: Math.floor(new Date(`${values.date}T12:00:00`).getTime() / 1000),
         attendance: values.attendance === "" ? 0 : Number(values.attendance),
         batchYear: values.batchYear === "" ? 0 : Number(values.batchYear),
+      };
+      // A session is permanent and cannot be edited, so a retry after a lost
+      // response must not write it twice.
+      await api.post("/college/events", {
+        ...payload,
+        idempotencyKey: getIdempotencyKey(keyRef, JSON.stringify(payload)),
       });
       onSaved();
     } catch (err) {

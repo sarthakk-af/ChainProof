@@ -33,7 +33,14 @@ const nonces = new Map(); // lowercase address -> next nonce to use
 async function reserveNonce(address) {
   const key = address.toLowerCase();
   if (!nonces.has(key)) {
-    nonces.set(key, await provider.getTransactionCount(address, "latest"));
+    // "pending", not "latest". The cache is dropped whenever a send fails, and
+    // tx.wait() fails on a dropped connection long after the node accepted the
+    // transaction. Re-seeding from "latest" then ignores that still-unmined
+    // transaction and hands its nonce to the next request, which either
+    // replaces it — discarding an action the chain had already accepted — or is
+    // rejected as underpriced. Invisible against a local node that mines
+    // instantly; a real network is where it would show up.
+    nonces.set(key, await provider.getTransactionCount(address, "pending"));
   }
   const nonce = nonces.get(key);
   nonces.set(key, nonce + 1);

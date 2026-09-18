@@ -3,7 +3,6 @@ import {
   getActor,
   getRosterEntry,
   claimRosterEntry,
-  releaseRosterClaim,
   upsertProfile,
   upsertVerification,
   getVerification,
@@ -16,6 +15,8 @@ import { actorRegistryAsSigner, ROLE, STATUS } from "./chain.js";
 import { syncActor } from "./indexer.js";
 import { withWalletLock } from "./txQueue.js";
 import { parseField, parseFields, SELF_FIELDS } from "./studentProfile.js";
+import { normalizeEmail } from "./limits.js";
+import { db } from "./db/connection.js";
 import { logger } from "./logger.js";
 
 /**
@@ -83,6 +84,41 @@ export function verificationState(user) {
  * the claim is queued for the placement cell — which is the case the first
  * build had no answer to at all.
  */
+/**
+ * Verifying a claim writes three rows — the verification, the profile and (by
+ * then) the roster claim. All three or none: a split left the roster row taken
+ * by an account the platform did not consider verified.
+ */
+const recordVerifiedClaim = db.transaction(
+  ({ userId, address, collegeAddress, rosterRow, selfValues }) => {
+    upsertVerification({
+      userId,
+      address,
+      collegeAddress,
+      rollNumber: rosterRow.roll_number,
+      status: VERIFICATION.Verified,
+    });
+    upsertProfile(address, collegeAddress, {
+      roll_number: rosterRow.roll_number,
+      full_name: rosterRow.full_name,
+      course_code: rosterRow.course_code,
+      batch_year: rosterRow.batch_year,
+      ...selfValues,
+    });
+  }
+);
+
+/** The same, for a student the placement cell approves by hand. */
+const approveInDatabase = db.transaction(({ userId, address, collegeAddress, roll, rosterDetails }) => {
+  setVerificationStatus(userId, VERIFICATION.Verified);
+  upsertProfile(address, collegeAddress, {
+    roll_number: roll,
+    full_name: rosterDetails.full_name,
+    course_code: rosterDetails.course_code,
+    batch_year: rosterDetails.batch_year,
+  });
+});
+
 export async function claimRollNumber({ userId, collegeAddress, rollNumber, profileInput }) {
   const user = getUserById(userId);
   if (!user) return { error: "No such account." };
@@ -124,34 +160,49 @@ export async function claimRollNumber({ userId, collegeAddress, rollNumber, prof
 
   const rosterRow = getRosterEntry(collegeAddress, roll);
 
-  if (rosterRow) {
-    if (rosterRow.claimed_by && rosterRow.claimed_by.toLowerCase() !== user.wallet_address.toLowerCase()) {
+  // A roster row is only self-service when the college said which email it
+  // belongs to and this is that account. Otherwise the placement cell decides.
+  //
+  // A roll number used to be the whole proof, and roll numbers run in sequence:
+  // whoever typed a classmate's number first was verified as them, took their
+  // name, course and batch onto their own account, and left the real student
+  // permanently locked out with no way for the cell to undo it.
+  const rosterEmailMatches =
+    !!rosterRow?.email && normalizeEmail(rosterRow.email) === normalizeEmail(user.email);
+  const alreadyMine =
+    !!rosterRow?.claimed_by &&
+    rosterRow.claimed_by.toLowerCase() === user.wallet_address.toLowerCase();
+
+  if (rosterRow && (rosterEmailMatches || alreadyMine)) {
+    if (rosterRow.claimed_by && !alreadyMine) {
       return { error: "That roll number has already been claimed. Check it with your placement cell." };
     }
     if (!rosterRow.claimed_by && !claimRosterEntry(collegeAddress, roll, user.wallet_address)) {
       return { error: "That roll number has already been claimed. Check it with your placement cell." };
     }
 
-    upsertVerification({
+    // One unit of work: a crash between the claim and the profile used to leave
+    // the row taken by an account with no verification, which read to the
+    // student as "already claimed" against their own address, for good.
+    recordVerifiedClaim({
       userId,
       address: user.wallet_address,
       collegeAddress,
-      rollNumber: roll,
-      status: VERIFICATION.Verified,
-    });
-    upsertProfile(user.wallet_address, collegeAddress, {
-      roll_number: rosterRow.roll_number,
-      full_name: rosterRow.full_name,
-      course_code: rosterRow.course_code,
-      batch_year: rosterRow.batch_year,
-      ...selfValues,
+      rosterRow,
+      selfValues,
     });
 
     const result = await tryComplete(userId);
     return { matched: true, ...result };
   }
 
-  // Not on the roster — queue it rather than refuse.
+  if (rosterRow && rosterRow.claimed_by) {
+    return { error: "That roll number has already been claimed. Check it with your placement cell." };
+  }
+
+  // Not on the roster, or on it under a different email — queue it rather than
+  // refuse. A student whose college email changed, or whose row the college
+  // uploaded without one, still gets in; the cell just has to say so.
   if (rollNumberPending(collegeAddress, roll, userId)) {
     return { error: "Someone has already requested verification with that roll number." };
   }
@@ -166,7 +217,13 @@ export async function claimRollNumber({ userId, collegeAddress, rollNumber, prof
     upsertProfile(user.wallet_address, collegeAddress, selfValues);
   }
 
-  logger.info("verification_queued", { userId, collegeAddress, rollNumber: roll });
+  logger.info("verification_queued", {
+    userId,
+    collegeAddress,
+    rollNumber: roll,
+    onRoster: !!rosterRow,
+    rosterHasEmail: !!rosterRow?.email,
+  });
   return { matched: false, queued: true };
 }
 
@@ -202,12 +259,12 @@ export async function approveQueuedStudent({ userId, collegeAddress, rosterDetai
     return { error: "That roll number was claimed by someone else in the meantime." };
   }
 
-  setVerificationStatus(userId, VERIFICATION.Verified);
-  upsertProfile(user.wallet_address, collegeAddress, {
-    roll_number: roll,
-    full_name: rosterDetails.full_name,
-    course_code: rosterDetails.course_code,
-    batch_year: rosterDetails.batch_year,
+  approveInDatabase({
+    userId,
+    address: user.wallet_address,
+    collegeAddress,
+    roll,
+    rosterDetails,
   });
 
   const result = await tryComplete(userId);

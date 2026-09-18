@@ -64,16 +64,8 @@ module.exports = {
       chainId: 31337,
     },
 
-    // Ethereum Sepolia Testnet (requires .env variables)
-    sepolia: {
-      url: process.env.SEPOLIA_RPC_URL || "",
-      accounts: process.env.DEPLOYER_PRIVATE_KEY
-        ? [process.env.DEPLOYER_PRIVATE_KEY]
-        : [],
-      chainId: 11155111,
-    },
-
-    // Polygon Amoy Testnet — used for the live demo deployment
+    // Polygon Amoy Testnet — the intended target. Nothing is deployed there yet;
+    // everything runs on the local node above.
     amoy: {
       url: process.env.AMOY_RPC_URL || "",
       accounts: process.env.DEPLOYER_PRIVATE_KEY
@@ -97,9 +89,11 @@ module.exports = {
   // -------------------------------------------------------------------------
   // Etherscan / Block Explorer Verification
   // -------------------------------------------------------------------------
+  // Amoy, because that is where this project deploys. The only key here used to
+  // be Sepolia's, which no part of this project has ever deployed to.
   etherscan: {
     apiKey: {
-      sepolia: process.env.ETHERSCAN_API_KEY || "",
+      polygonAmoy: process.env.POLYGONSCAN_API_KEY || "",
     },
   },
 

@@ -19,6 +19,21 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 
+// These suites create accounts by writing to the database directly, as well as
+// through the API. Pointed at another backend (API_URL) without also being
+// pointed at that backend's database (DB_PATH), they write into the default
+// database while the server reads a different one: every token they mint is
+// then rejected as "signed out", and the default database — which on a
+// developer's machine is the real one — collects the test accounts. Refusing is
+// the only way that mistake announces itself.
+if (process.env.API_URL && !process.env.DB_PATH) {
+  throw new Error(
+    "API_URL is set but DB_PATH is not. Set DB_PATH to the database the backend at " +
+      `${process.env.API_URL} is using, or unset API_URL to test the default stack.`
+  );
+}
+
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.API_URL || "http://127.0.0.1:4000";
 

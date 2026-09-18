@@ -24,13 +24,14 @@ import {
   ROLE,
   STATUS,
 } from "../chain.js";
-import { syncActor } from "../indexer.js";
+import { syncActor, syncAfterWrite } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
 import { serializeActor, STATUS_NAMES } from "../serializers.js";
 import { validateRegistrationNumber } from "../registrationNumber.js";
 import { adminSessionAuth } from "../middleware/adminSessionAuth.js";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
+import { publicChainError } from "../chainErrors.js";
 
 /**
  * admin.js — the platform owner.
@@ -175,9 +176,28 @@ adminRouter.post("/college", async (req, res) => {
   // Checked against the chain itself rather than the mirror, which a redeploy
   // has just emptied.
   const existingUser = getUserByEmail(loginEmail);
+  // Set when this login is already registered on-chain as the college but is
+  // missing from this database — the leftovers of an attempt that registered
+  // and then failed before it was approved or mirrored. That left the platform
+  // unbootstrappable: the mirror had no college so the check above passed, the
+  // chain had one so this check refused the email, and no route could approve
+  // it on its own. Picking up where it stopped is the only way back that
+  // doesn't involve editing the database.
+  let resumeFrom = null;
   if (existingUser) {
     const onChain = await actorRegistryRead.getActor(existingUser.wallet_address);
-    if (!existingUser.is_college_login || Number(onChain.role) !== ROLE.None) {
+    const onChainRole = Number(onChain.role);
+    if (!existingUser.is_college_login) {
+      return res.status(409).json({ error: "An account with that email already exists." });
+    }
+    if (onChainRole === ROLE.College) {
+      resumeFrom = { status: Number(onChain.status) };
+      logger.warn("college_creation_resumed", {
+        email: loginEmail,
+        address: existingUser.wallet_address,
+        onChainStatus: resumeFrom.status,
+      });
+    } else if (onChainRole !== ROLE.None) {
       return res.status(409).json({ error: "An account with that email already exists." });
     }
   }
@@ -207,25 +227,37 @@ adminRouter.post("/college", async (req, res) => {
     // to confirm it with.
     setEmailVerified(user.id);
 
-    await withWalletLock(address, async (nonce) => {
-      const registry = actorRegistryAsSigner(getUserSigner(user.id));
-      const tx = await registry.register(
-        ROLE.College,
-        collegeName,
-        String(website ?? "").trim(),
-        "0x0000000000000000000000000000000000000000",
-        { nonce }
-      );
-      await tx.wait();
-    });
+    // Skipped when the earlier attempt already registered it: the contract
+    // refuses a second registration, so retrying it would fail the recovery.
+    if (!resumeFrom) {
+      await withWalletLock(address, async (nonce) => {
+        const registry = actorRegistryAsSigner(getUserSigner(user.id));
+        const tx = await registry.register(
+          ROLE.College,
+          collegeName,
+          String(website ?? "").trim(),
+          "0x0000000000000000000000000000000000000000",
+          { nonce }
+        );
+        await tx.wait();
+      });
+    }
 
     // The platform verifier admits it immediately. This is the console command
     // that used to sit in the middle of the user's first five minutes.
-    const receipt = await withVerifierLock(async (nonce) => {
-      const approveTx = await actorRegistryAsVerifier.approveActor(address, { nonce });
-      return approveTx.wait();
-    });
-    await syncActor(address, receipt.blockNumber);
+    let blockNumber = null;
+    if (!resumeFrom || resumeFrom.status !== STATUS.Active) {
+      const receipt = await withVerifierLock(async (nonce) => {
+        const approveTx = await actorRegistryAsVerifier.approveActor(address, { nonce });
+        return approveTx.wait();
+      });
+      blockNumber = receipt.blockNumber;
+    } else {
+      blockNumber = await provider.getBlockNumber();
+    }
+    await syncAfterWrite("college registration", blockNumber, () =>
+      syncActor(address, blockNumber)
+    );
     setRegistrationNumber(address, regCheck.value);
 
     logger.info("college_created", { name: collegeName, address, email: loginEmail });
@@ -234,7 +266,7 @@ adminRouter.post("/college", async (req, res) => {
       login: { email: loginEmail },
     });
   } catch (err) {
-    const reason = err.reason || err.shortMessage || err.message;
+    const reason = publicChainError(err);
     logger.error("college_creation_failed", { reason });
     res.status(502).json({ error: `Could not create the college: ${reason}` });
   }
@@ -326,7 +358,9 @@ adminRouter.post("/accounts/:address/suspend", async (req, res) => {
       const tx = await actorRegistryAsVerifier.suspendActor(actor.address, reason, { nonce });
       return tx.wait();
     });
-    await syncActor(actor.address, receipt.blockNumber);
+    await syncAfterWrite("suspension", receipt.blockNumber, () =>
+      syncActor(actor.address, receipt.blockNumber)
+    );
 
     logAdminAction({
       actorAddress: actor.address,
@@ -339,7 +373,7 @@ adminRouter.post("/accounts/:address/suspend", async (req, res) => {
     logger.info("account_suspended", { address: actor.address, by: req.admin?.username, reason });
     res.json({ account: serializeActor(getActor(actor.address)), txHash: receipt.hash });
   } catch (err) {
-    const detail = err.reason || err.shortMessage || err.message;
+    const detail = publicChainError(err);
     logger.error("account_suspend_failed", { address, detail });
     res.status(502).json({ error: `Could not suspend that account: ${detail}` });
   }
@@ -359,7 +393,9 @@ adminRouter.post("/accounts/:address/reinstate", async (req, res) => {
       const tx = await actorRegistryAsVerifier.reinstateActor(actor.address, { nonce });
       return tx.wait();
     });
-    await syncActor(actor.address, receipt.blockNumber);
+    await syncAfterWrite("reinstatement", receipt.blockNumber, () =>
+      syncActor(actor.address, receipt.blockNumber)
+    );
 
     logAdminAction({
       actorAddress: actor.address,
@@ -372,7 +408,7 @@ adminRouter.post("/accounts/:address/reinstate", async (req, res) => {
     logger.info("account_reinstated", { address: actor.address, by: req.admin?.username });
     res.json({ account: serializeActor(getActor(actor.address)), txHash: receipt.hash });
   } catch (err) {
-    const detail = err.reason || err.shortMessage || err.message;
+    const detail = publicChainError(err);
     logger.error("account_reinstate_failed", { address, detail });
     res.status(502).json({ error: `Could not reinstate that account: ${detail}` });
   }

@@ -471,9 +471,9 @@ function RollNumberPanel({ verification, awaitingCell, onClaim, onError, onNotic
       <div>
         <h3 className="card-title">Confirm you study here</h3>
         <p className="card-lead">
-          Your roll number is what ties this account to a real student. If the roster is
-          already uploaded you are confirmed instantly; if not, your placement cell gets
-          it to check.
+          Your roll number is what ties this account to a real student. You're confirmed
+          instantly if your college listed this roll number against the email you signed
+          up with; otherwise your placement cell gets it to check.
         </p>
       </div>
 

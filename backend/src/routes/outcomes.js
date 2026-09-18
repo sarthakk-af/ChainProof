@@ -7,9 +7,6 @@ import {
   getOutcomeHistory,
   getCurrentStages,
   getOfferResponse,
-  addOutcome,
-  setOfferResponse,
-  setPlacement,
 } from "../db.js";
 import { getUserSigner } from "../wallets.js";
 import {
@@ -21,9 +18,15 @@ import {
   STAGE,
   OFFER_RESPONSE,
 } from "../chain.js";
-import { syncStageRecorded, syncOfferAnswered, syncPlacementChanged, findEventInReceipt } from "../indexer.js";
+import {
+  syncStageRecorded,
+  syncOfferAnswered,
+  syncPlacementChanged,
+  findEventInReceipt,
+  syncAfterWrite,
+} from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
-import { serializeOutcome, STAGE_NAMES, OFFER_RESPONSE_NAMES } from "../serializers.js";
+import { serializeOutcome, OFFER_RESPONSE_NAMES } from "../serializers.js";
 import { validateIpfsHash } from "../ipfsHash.js";
 import { byteLength } from "../limits.js";
 import {
@@ -31,9 +34,11 @@ import {
   fingerprintPayload,
   IdempotencyPendingError,
   IdempotencyKeyConflictError,
+  IdempotencyUnresolvedError,
 } from "../idempotency.js";
 import { issueLimiter } from "../middleware/chainWriteLimiter.js";
 import { logger } from "../logger.js";
+import { publicChainError } from "../chainErrors.js";
 
 /**
  * outcomes.js — what happened to each student, and what they said about it.
@@ -107,28 +112,42 @@ outcomesRouter.post("/:driveId/stage", issueLimiter, async (req, res) => {
 
   try {
     const fingerprint = fingerprintPayload(["stage", driveId, studentAddress, stageNumber, cleanLabel, cleanHash]);
-    const receipt = await withIdempotency(req.user.id, idempotencyKey, fingerprint, () =>
+    const answer = await withIdempotency(req.user.id, idempotencyKey, fingerprint, ({ markBroadcast }) =>
       withWalletLock(req.user.address, async (nonce) => {
         const outcomes = driveOutcomesAsSigner(getUserSigner(req.user.id));
         const tx = await outcomes.recordStage(driveId, studentAddress, stageNumber, cleanLabel, cleanHash, { nonce });
-        return tx.wait();
+        markBroadcast();
+        const receipt = await tx.wait();
+
+        const staged = findEventInReceipt(driveOutcomesRead, "StageRecorded", receipt);
+        if (staged) {
+          await syncAfterWrite("recorded stage", receipt.blockNumber, () =>
+            syncStageRecorded(staged, receipt)
+          );
+        }
+        // Withdrawing an offer a student had accepted un-places them in the same
+        // transaction, so mirror that here rather than waiting for the listener.
+        const placement = findEventInReceipt(driveOutcomesRead, "PlacementChanged", receipt);
+        if (placement) {
+          await syncAfterWrite("placement change", receipt.blockNumber, () =>
+            syncPlacementChanged(placement, receipt)
+          );
+        }
+        return { txHash: receipt.hash };
       })
     );
 
-    const staged = findEventInReceipt(driveOutcomesRead, "StageRecorded", receipt);
-    if (staged) syncStageRecorded(staged, receipt);
-    // Withdrawing an offer a student had accepted un-places them in the same
-    // transaction, so mirror that here rather than waiting for the listener.
-    const placement = findEventInReceipt(driveOutcomesRead, "PlacementChanged", receipt);
-    if (placement) syncPlacementChanged(placement, receipt);
-
     logger.info("stage_recorded", { driveId, student: studentAddress, stage, company: req.user.address });
-    res.status(201).json({ txHash: receipt.hash });
+    res.status(201).json(answer);
   } catch (err) {
-    if (err instanceof IdempotencyPendingError || err instanceof IdempotencyKeyConflictError) {
+    if (
+      err instanceof IdempotencyPendingError ||
+      err instanceof IdempotencyKeyConflictError ||
+      err instanceof IdempotencyUnresolvedError
+    ) {
       return res.status(409).json({ error: err.message });
     }
-    const reason = err.reason || err.shortMessage || err.message;
+    const reason = publicChainError(err);
     logger.error("stage_record_failed", { driveId, student: studentAddress, reason });
     res.status(400).json({ error: `On-chain update failed: ${reason}` });
   }
@@ -144,7 +163,9 @@ outcomesRouter.post("/:driveId/stage", issueLimiter, async (req, res) => {
  */
 outcomesRouter.post("/:driveId/answer", issueLimiter, async (req, res) => {
   const caller = getActor(req.user.address);
-  if (!caller || caller.role !== ROLE.Student) {
+  // The contract refuses a suspended student too, but only after the gas is
+  // spent and with a revert the reader can't interpret.
+  if (!caller || caller.role !== ROLE.Student || caller.status !== STATUS.Active) {
     return res.status(403).json({ error: "Only the student can answer their own offer." });
   }
 
@@ -175,14 +196,22 @@ outcomesRouter.post("/:driveId/answer", issueLimiter, async (req, res) => {
     });
 
     const answered = findEventInReceipt(driveOutcomesRead, "OfferAnswered", receipt);
-    if (answered) syncOfferAnswered(answered, receipt);
+    if (answered) {
+      await syncAfterWrite("offer answer", receipt.blockNumber, () =>
+        syncOfferAnswered(answered, receipt)
+      );
+    }
     const placement = findEventInReceipt(driveOutcomesRead, "PlacementChanged", receipt);
-    if (placement) syncPlacementChanged(placement, receipt);
+    if (placement) {
+      await syncAfterWrite("placement change", receipt.blockNumber, () =>
+        syncPlacementChanged(placement, receipt)
+      );
+    }
 
     logger.info("offer_answered", { driveId, student: req.user.address, response });
     res.status(201).json({ txHash: receipt.hash, response });
   } catch (err) {
-    const reason = err.reason || err.shortMessage || err.message;
+    const reason = publicChainError(err);
     logger.error("offer_answer_failed", { driveId, student: req.user.address, reason });
     res.status(400).json({ error: `On-chain update failed: ${reason}` });
   }

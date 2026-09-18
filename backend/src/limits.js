@@ -18,6 +18,18 @@ export const MAX_NAME_BYTES = 100;
 export const MAX_METADATA_BYTES = 200;
 export const MAX_IPFS_HASH_BYTES = 200;
 
+/**
+ * The one email pattern the whole backend uses: signup, the roster, and the
+ * classmate lookup. Deliberately loose — the only real proof that an address
+ * belongs to someone is the code sent to it.
+ */
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Lower-cased and trimmed, the form every stored email takes. */
+export function normalizeEmail(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 export function byteLength(value) {
   return Buffer.byteLength(String(value ?? ""), "utf8");
 }

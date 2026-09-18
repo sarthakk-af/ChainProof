@@ -40,6 +40,15 @@ export function getVerification(userId) {
   return db.prepare("SELECT * FROM student_verifications WHERE user_id = ?").get(userId);
 }
 
+/**
+ * Removes a verification outright, for a claim the college takes back.
+ * Deleted rather than marked rejected: the student may well be a real student
+ * who claimed the wrong row, and a rejection would follow them around.
+ */
+export function clearVerificationForUser(userId) {
+  db.prepare("DELETE FROM student_verifications WHERE user_id = ?").run(userId);
+}
+
 export function setVerificationStatus(userId, status, reason = null) {
   db.prepare(
     "UPDATE student_verifications SET status = ?, reason = ?, decided_at = ? WHERE user_id = ?"

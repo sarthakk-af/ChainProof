@@ -7,10 +7,7 @@ import {
   setRegistrationNumber,
   claimRegistrationNumber,
   releaseClaimsForAddress,
-  getRosterEntry,
-  claimRosterEntry,
-  releaseRosterClaim,
-  getRosterEntryForAddress,
+  releaseOtherClaimsForAddress,
   upsertProfile,
   patchProfile,
   getProfile,
@@ -27,7 +24,7 @@ import {
 } from "../db.js";
 import { getUserSigner } from "../wallets.js";
 import { actorRegistryAsSigner, ROLE, STATUS } from "../chain.js";
-import { syncActor } from "../indexer.js";
+import { syncActor, syncAfterWrite } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
 import { serializeActor } from "../serializers.js";
 import { validateWebsiteFormat, checkWebsiteReachable } from "../websiteCheck.js";
@@ -35,10 +32,8 @@ import { validateRegistrationNumber } from "../registrationNumber.js";
 import { byteLength, MAX_NAME_BYTES, MAX_METADATA_BYTES } from "../limits.js";
 import { claimRollNumber, verificationState } from "../studentVerification.js";
 import {
-  ROSTER_FIELDS,
   SELF_FIELDS,
   parseField,
-  parseFields,
   serializeProfile,
   describeFields,
   publicKey,
@@ -52,6 +47,8 @@ import {
 import { serializeResume, serializeResumeItem } from "../serializers.js";
 import { registerLimiter } from "../middleware/chainWriteLimiter.js";
 import { logger } from "../logger.js";
+import { requireNotSuspended } from "../middleware/notSuspended.js";
+import { publicChainError } from "../chainErrors.js";
 
 export const meRouter = Router();
 
@@ -140,6 +137,7 @@ function studentProfileFor(address, userId) {
  *      would undo the only thing that establishes they belong here.
  */
 meRouter.patch("/profile", (req, res) => {
+  if (!requireNotSuspended(req, res)) return;
   const gate = studentProfileFor(req.user.address, req.user.id);
   if (gate.error) return res.status(403).json({ error: gate.error });
 
@@ -186,6 +184,7 @@ meRouter.get("/resume", (req, res) => {
  *      platform guarantees the placement record, not the resume.
  */
 meRouter.post("/resume/:kind", (req, res) => {
+  if (!requireNotSuspended(req, res)) return;
   const gate = studentProfileFor(req.user.address, req.user.id);
   if (gate.error) return res.status(403).json({ error: gate.error });
 
@@ -200,6 +199,7 @@ meRouter.post("/resume/:kind", (req, res) => {
 
 /** Rewrites one entry. */
 meRouter.patch("/resume/item/:id", (req, res) => {
+  if (!requireNotSuspended(req, res)) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid entry id." });
 
@@ -220,6 +220,7 @@ meRouter.patch("/resume/item/:id", (req, res) => {
 });
 
 meRouter.delete("/resume/item/:id", (req, res) => {
+  if (!requireNotSuspended(req, res)) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid entry id." });
   if (!deleteResumeItem(id, req.user.address)) {
@@ -230,6 +231,7 @@ meRouter.delete("/resume/item/:id", (req, res) => {
 
 /** Reorders one section. Ids that aren't the caller's are simply ignored. */
 meRouter.post("/resume/:kind/reorder", (req, res) => {
+  if (!requireNotSuspended(req, res)) return;
   const { kind } = req.params;
   if (!RESUME_KIND_KEYS.includes(kind)) {
     return res.status(400).json({ error: `Unknown section: "${kind}".` });
@@ -249,6 +251,7 @@ meRouter.post("/resume/:kind/reorder", (req, res) => {
  *      and a merge would leave no way to remove one.
  */
 meRouter.put("/skills", (req, res) => {
+  if (!requireNotSuspended(req, res)) return;
   const gate = studentProfileFor(req.user.address, req.user.id);
   if (gate.error) return res.status(403).json({ error: gate.error });
 
@@ -310,14 +313,21 @@ meRouter.post("/register", registerLimiter, async (req, res) => {
   if (regCheck.error) return res.status(400).json({ error: regCheck.error });
   const normalizedRegistrationNumber = regCheck.value;
 
-  releaseClaimsForAddress(req.user.address);
+  // Taken before anything is given up: the old order released this account's
+  // existing claims first, so a resubmission with a typo surrendered the
+  // identifier it actually owned and then failed anyway.
   if (!claimRegistrationNumber(normalizedRegistrationNumber, req.user.address)) {
     return res.status(409).json({
       error: "That CIN is already registered to another account. A company can only be registered once.",
     });
   }
+  releaseOtherClaimsForAddress(req.user.address, normalizedRegistrationNumber);
 
   const ALREADY_REGISTERED = Symbol("already-registered");
+  // Whether the transaction was accepted by the chain. Decides whether the
+  // failure path may give the CIN claim back: once the registration is on-chain
+  // it belongs to this company, whatever else went wrong afterwards.
+  let confirmed = false;
 
   try {
     await withWalletLock(req.user.address, async (nonce) => {
@@ -335,13 +345,29 @@ meRouter.post("/register", registerLimiter, async (req, res) => {
         { nonce }
       );
       const receipt = await tx.wait();
-      await syncActor(req.user.address, receipt.blockNumber);
+      confirmed = true;
+      await syncAfterWrite("company registration", receipt.blockNumber, () =>
+        syncActor(req.user.address, receipt.blockNumber)
+      );
       clearRejectionReason(req.user.address);
     });
 
     setRegistrationNumber(req.user.address, normalizedRegistrationNumber);
     logger.info("company_registered", { address: req.user.address, name: companyName });
-    res.status(201).json({ actor: serializeActor(getActor(req.user.address)) });
+    // The actor row comes from the mirror, which is normally updated above. If
+    // that update failed the registration still happened, so answer with what
+    // was asked for rather than null, and let reconciliation fill in the rest.
+    res.status(201).json({
+      actor:
+        serializeActor(getActor(req.user.address)) ?? {
+          address: req.user.address,
+          role: "Company",
+          status: "Pending",
+          name: companyName,
+          website: normalizedWebsite || null,
+          registrationNumber: normalizedRegistrationNumber,
+        },
+    });
 
     if (normalizedWebsite) {
       checkWebsiteReachable(normalizedWebsite)
@@ -354,24 +380,19 @@ meRouter.post("/register", registerLimiter, async (req, res) => {
     if (err === ALREADY_REGISTERED) {
       return res.status(409).json({ error: "This account is already registered on-chain" });
     }
-    // Nothing reached the chain, so don't leave the CIN locked away from the
-    // company it actually belongs to.
-    releaseClaimsForAddress(req.user.address);
-    const reason = err.reason || err.shortMessage || err.message;
-    logger.error("registration_failed", { address: req.user.address, reason });
+    // Only when nothing reached the chain: otherwise this company is registered
+    // under that CIN and handing it back would let another account claim it.
+    if (!confirmed) releaseClaimsForAddress(req.user.address);
+    const reason = publicChainError(err);
+    logger.error("registration_failed", { address: req.user.address, reason, confirmed });
+    if (confirmed) {
+      return res.status(500).json({
+        error:
+          "Your registration is on the blockchain, but recording it here did not finish. " +
+          "Reload — it should appear shortly. Don't register again.",
+      });
+    }
     res.status(400).json({ error: `On-chain registration failed: ${reason}` });
   }
 });
 
-/** What the roster says about this account, if it claimed a row. */
-meRouter.get("/roster-entry", (req, res) => {
-  const entry = getRosterEntryForAddress(req.user.address);
-  if (!entry) return res.status(404).json({ error: "No roster entry claimed by this account." });
-  res.json({
-    rollNumber: entry.roll_number,
-    fullName: entry.full_name,
-    courseCode: entry.course_code,
-    batchYear: entry.batch_year,
-    collegeAddress: entry.college_address,
-  });
-});

@@ -1,3 +1,7 @@
 node_modules/
 .env
-data/*.sqlite*
+# Every database file, including the dated backups under data/backups — the
+# old rule only matched the top level, so six database snapshots (≈6 MB of
+# accounts, password hashes and encrypted wallet keys, all of it test data)
+# were committed.
+data/**/*.sqlite*

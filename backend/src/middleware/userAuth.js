@@ -36,6 +36,10 @@ export function userAuth(req, res, next) {
     return res.status(401).json({ error: "Session has been signed out. Please log in again." });
   }
 
-  req.user = { id: payload.sub, address: payload.address };
+  // The address comes from the row that was just loaded, not from the token.
+  // Both are written by signToken and have always agreed, but authorization
+  // reads the address while signing reads the id — so they must be the same
+  // account by construction, not by convention.
+  req.user = { id: user.id, address: user.wallet_address };
   next();
 }

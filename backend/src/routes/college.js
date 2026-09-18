@@ -3,11 +3,13 @@ import { ethers } from "ethers";
 import {
   getActor,
   listActors,
+  getUserByAddress,
+  clearVerificationForUser,
+  releaseRosterClaimByRoll,
   upsertRosterEntries,
   listRoster,
   rosterCounts,
   listPendingVerifications,
-  upsertBatch,
   listBatches,
   getDrive,
   listDrives,
@@ -34,6 +36,7 @@ import {
   syncDriveStatus,
   syncPreparationRecorded,
   syncPreparationCancelled,
+  syncAfterWrite,
 } from "../indexer.js";
 import { findEventInReceipt } from "../indexer.js";
 import { placementDriveRead, actorRegistryRead, preparationLogRead } from "../chain.js";
@@ -44,10 +47,19 @@ import {
   serializePreparationEvent,
   STATUS_NAMES,
 } from "../serializers.js";
-import { ROSTER_FIELDS, parseFields, publicKey } from "../studentProfile.js";
+import { ROSTER_FIELDS, parseFields, parseField } from "../studentProfile.js";
+import { EMAIL_RE, normalizeEmail } from "../limits.js";
+import {
+  withIdempotency,
+  fingerprintPayload,
+  IdempotencyPendingError,
+  IdempotencyKeyConflictError,
+  IdempotencyUnresolvedError,
+} from "../idempotency.js";
 import { approveQueuedStudent, rejectQueuedStudent } from "../studentVerification.js";
 import { registerLimiter, recordLimiter } from "../middleware/chainWriteLimiter.js";
 import { logger } from "../logger.js";
+import { publicChainError } from "../chainErrors.js";
 
 /**
  * college.js — everything the placement cell does.
@@ -61,6 +73,16 @@ import { logger } from "../logger.js";
 export const collegeRouter = Router();
 
 /** Every route below requires an Active College. */
+export const INVALID_STATUS = Symbol("invalid-status");
+
+/** A ?status= filter, or undefined when absent, or INVALID_STATUS when junk. */
+function parseStatusFilter(raw) {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0 || value > 4) return INVALID_STATUS;
+  return value;
+}
+
 function requireActiveCollege(req, res) {
   const actor = getActor(req.user.address);
   if (!actor || actor.role !== ROLE.College || actor.status !== STATUS.Active) {
@@ -78,21 +100,6 @@ collegeRouter.use((req, res, next) => {
 // ============================================================================
 // Roster — the college's own list of who its students are
 // ============================================================================
-
-/**
- * The field list for a roster row, so the frontend and any CSV template are
- * generated from src/studentProfile.js rather than restating it.
- */
-collegeRouter.get("/roster/fields", (_req, res) => {
-  res.json({
-    fields: ROSTER_FIELDS.map((f) => ({
-      key: publicKey(f),
-      label: f.label,
-      required: f.required,
-      help: f.help ?? null,
-    })),
-  });
-});
 
 /**
  * Uploads or updates roster rows.
@@ -113,6 +120,7 @@ collegeRouter.post("/roster", (req, res) => {
   const parsed = [];
   const errors = [];
   const seen = new Set();
+  const seenEmails = new Set();
 
   entries.forEach((entry, index) => {
     const result = parseFields(ROSTER_FIELDS, entry);
@@ -126,7 +134,25 @@ collegeRouter.post("/roster", (req, res) => {
       return;
     }
     seen.add(roll);
-    parsed.push(result.values);
+
+    // The college email this row belongs to. Optional, because an older roster
+    // has none and a college may not have them all to hand — but a row without
+    // one cannot admit anybody by itself: that student waits in the queue
+    // below, where a person decides. With it, exactly one account matches.
+    const email = normalizeEmail(entry.email);
+    if (email) {
+      if (!EMAIL_RE.test(email)) {
+        errors.push({ row: index + 1, error: `That doesn't look like an email address: ${email}` });
+        return;
+      }
+      if (seenEmails.has(email)) {
+        errors.push({ row: index + 1, error: `Duplicate email in this upload: ${email}` });
+        return;
+      }
+      seenEmails.add(email);
+    }
+
+    parsed.push({ ...result.values, email: email || null });
   });
 
   if (errors.length > 0) {
@@ -141,10 +167,12 @@ collegeRouter.post("/roster", (req, res) => {
     added: result.added,
     updated: result.updated,
     skipped: result.skipped.length,
+    withEmail: parsed.filter((p) => p.email).length,
   });
   res.json({
     added: result.added,
     updated: result.updated,
+    withoutEmail: parsed.filter((p) => !p.email).length,
     // Rows already claimed by a real account are left alone: rewriting the name
     // or course under someone would silently change who their account says
     // they are.
@@ -161,10 +189,58 @@ collegeRouter.get("/roster", (req, res) => {
       fullName: r.full_name,
       courseCode: r.course_code,
       batchYear: r.batch_year,
+      email: r.email,
       claimed: !!r.claimed_by,
       claimedAt: r.claimed_at,
+      // Which account holds the row, so the cell can see at a glance whether
+      // the right person has it — and free it if not.
+      claimedBy: r.claimed_by,
+      claimedByEmail: r.claimed_by ? getUserByAddress(r.claimed_by)?.email ?? null : null,
     })),
     counts: rosterCounts(req.user.address),
+  });
+});
+
+/**
+ * Frees a roll number the wrong account is holding.
+ *
+ * The recovery that did not exist. A wrong claim used to be permanent: the real
+ * student was told their roll number was taken, and the only way back was
+ * editing the database. Releasing it also clears that account's verification,
+ * so it stops reading as a confirmed student of this college.
+ *
+ * What this cannot do is erase an on-chain registration — nothing can. If that
+ * account was already written to the chain as a student, the response says so,
+ * and stopping it is the platform owner's suspend button.
+ */
+collegeRouter.post("/roster/:rollNumber/release", (req, res) => {
+  const rollCheck = parseField("roll_number", req.params.rollNumber);
+  if (rollCheck.error) return res.status(400).json({ error: rollCheck.error });
+
+  const released = releaseRosterClaimByRoll(req.user.address, rollCheck.value);
+  if (!released) {
+    return res.status(404).json({ error: "No account is holding that roll number." });
+  }
+
+  const holder = getUserByAddress(released);
+  if (holder) clearVerificationForUser(holder.id);
+  const actor = getActor(released);
+  const registeredOnChain = !!actor && actor.role === ROLE.Student;
+
+  logger.info("roster_claim_released", {
+    college: req.user.address,
+    rollNumber: rollCheck.value,
+    releasedFrom: released,
+    registeredOnChain,
+  });
+
+  res.json({
+    rollNumber: rollCheck.value,
+    releasedFrom: holder?.email ?? released,
+    registeredOnChain,
+    note: registeredOnChain
+      ? "The roll number is free for the right student. That account is still registered on-chain as a student here — ask the platform administrator to suspend it, since nothing on the chain can be deleted."
+      : "The roll number is free for the right student, and that account is no longer verified here.",
   });
 });
 
@@ -257,7 +333,8 @@ collegeRouter.get("/events/kinds", (_req, res) => {
  * evidence of anything.
  */
 collegeRouter.post("/events", recordLimiter, async (req, res) => {
-  const { kind, title, conductedBy, heldOn, attendance, batchYear, ipfsHash } = req.body || {};
+  const { kind, title, conductedBy, heldOn, attendance, batchYear, ipfsHash, idempotencyKey } =
+    req.body || {};
 
   const kindValue = typeof kind === "string" ? EVENT_KIND[kind] : Number(kind);
   if (!kindValue || !EVENT_KIND_LABELS[kindValue]) {
@@ -286,6 +363,12 @@ collegeRouter.post("/events", recordLimiter, async (req, res) => {
   if (held > oneYearAhead) {
     return res.status(400).json({ error: "That date is more than a year away — check it." });
   }
+  // Only "greater than zero" before, so a mistyped year wrote a permanent,
+  // uneditable record dated 1970 into the college's own history.
+  const earliest = Date.UTC(2015, 0, 1) / 1000;
+  if (held < earliest) {
+    return res.status(400).json({ error: "That date is too far in the past — check the year." });
+  }
 
   const attended = attendance === undefined || attendance === null ? 0 : Number(attendance);
   if (!Number.isInteger(attended) || attended < 0 || attended > 100000) {
@@ -303,33 +386,62 @@ collegeRouter.post("/events", recordLimiter, async (req, res) => {
   }
 
   try {
-    const receipt = await withWalletLock(req.user.address, async (nonce) => {
-      const log = preparationLogAsSigner(getUserSigner(req.user.id));
-      const tx = await log.recordEvent(
-        kindValue,
-        titleText,
-        conductedByText,
-        held,
-        attended,
-        year,
-        cid,
-        { nonce }
-      );
-      return tx.wait();
-    });
+    // This route had no idempotency key, and a preparation record is permanent
+    // and deliberately not editable. A retry after a lost response therefore
+    // wrote the session a second time — "topping up" the very record the
+    // comment above says must not be toppable.
+    const fingerprint = fingerprintPayload([
+      "event",
+      kindValue,
+      titleText,
+      conductedByText,
+      held,
+      attended,
+      year,
+      cid,
+    ]);
+    const answer = await withIdempotency(req.user.id, idempotencyKey, fingerprint, ({ markBroadcast }) =>
+      withWalletLock(req.user.address, async (nonce) => {
+        const log = preparationLogAsSigner(getUserSigner(req.user.id));
+        const tx = await log.recordEvent(
+          kindValue,
+          titleText,
+          conductedByText,
+          held,
+          attended,
+          year,
+          cid,
+          { nonce }
+        );
+        markBroadcast();
+        const receipt = await tx.wait();
 
-    const args = findEventInReceipt(preparationLogRead, "PreparationRecorded", receipt);
-    if (args) await syncPreparationRecorded(args, receipt);
+        const args = findEventInReceipt(preparationLogRead, "PreparationRecorded", receipt);
+        if (args) {
+          await syncAfterWrite("preparation record", receipt.blockNumber, () =>
+            syncPreparationRecorded(args, receipt)
+          );
+        }
+        return { txHash: receipt.hash };
+      })
+    );
 
     logger.info("preparation_recorded", { college: req.user.address, title: titleText });
     res.status(201).json({
-      txHash: receipt.hash,
+      ...answer,
       events: listPreparationEvents(req.user.address).map((r) =>
         serializePreparationEvent(r, EVENT_KIND_LABELS)
       ),
     });
   } catch (err) {
-    const reason = err.reason || err.shortMessage || err.message;
+    if (
+      err instanceof IdempotencyPendingError ||
+      err instanceof IdempotencyKeyConflictError ||
+      err instanceof IdempotencyUnresolvedError
+    ) {
+      return res.status(409).json({ error: err.message });
+    }
+    const reason = publicChainError(err);
     logger.error("preparation_record_failed", { college: req.user.address, reason });
     res.status(400).json({ error: `On-chain update failed: ${reason}` });
   }
@@ -376,7 +488,11 @@ collegeRouter.post("/events/:id/cancel", recordLimiter, async (req, res) => {
     });
 
     const args = findEventInReceipt(preparationLogRead, "PreparationCancelled", receipt);
-    if (args) syncPreparationCancelled(args, receipt);
+    if (args) {
+      await syncAfterWrite("cancelled session", receipt.blockNumber, () =>
+        syncPreparationCancelled(args, receipt)
+      );
+    }
 
     logger.info("preparation_cancelled", { college: req.user.address, id, reason });
     res.json({ txHash: receipt.hash, cancelled: true });
@@ -431,12 +547,16 @@ collegeRouter.post("/batches", registerLimiter, async (req, res) => {
     });
 
     const args = findEventInReceipt(actorRegistryRead, "BatchStrengthRecorded", receipt);
-    if (args) syncBatchStrength(args, receipt);
+    if (args) {
+      await syncAfterWrite("cohort size", receipt.blockNumber, () =>
+        syncBatchStrength(args, receipt)
+      );
+    }
 
     logger.info("batch_strength_recorded", { college: req.user.address, code, year, size });
     res.status(201).json({ txHash: receipt.hash, batches: listBatches(req.user.address) });
   } catch (err) {
-    const reason = err.reason || err.shortMessage || err.message;
+    const reason = publicChainError(err);
     logger.error("batch_strength_failed", { college: req.user.address, reason });
     res.status(400).json({ error: `On-chain update failed: ${reason}` });
   }
@@ -460,7 +580,12 @@ collegeRouter.get("/batches", (req, res) => {
 // ============================================================================
 
 collegeRouter.get("/companies", (req, res) => {
-  const status = req.query.status ? Number(req.query.status) : undefined;
+  // Number("abc") is NaN, which used to go straight into the query as a bind
+  // parameter and match nothing, silently.
+  const status = parseStatusFilter(req.query.status);
+  if (status === INVALID_STATUS) {
+    return res.status(400).json({ error: "That status filter isn't a status." });
+  }
   const rows = listActors({ role: ROLE.Company, status });
   res.json({ companies: rows.map(serializeActor) });
 });
@@ -492,7 +617,9 @@ async function decideCompany(req, res, { method, event, expectedStatus, reason }
       return tx.wait();
     });
 
-    await syncActor(address, receipt.blockNumber);
+    await syncAfterWrite("company decision", receipt.blockNumber, () =>
+      syncActor(address, receipt.blockNumber)
+    );
     logAdminAction({
       actorAddress: address,
       actorName: company.name,
@@ -500,6 +627,7 @@ async function decideCompany(req, res, { method, event, expectedStatus, reason }
       reason: reason || null,
       txHash: receipt.hash,
       adminUsername: getActor(req.user.address)?.name || req.user.address,
+      decidedBy: req.user.address,
     });
     logger.info(event, { company: address, by: req.user.address });
     res.json({ company: serializeActor(getActor(address)), txHash: receipt.hash });
@@ -533,7 +661,12 @@ collegeRouter.post("/companies/:address/reject", (req, res) =>
 // ============================================================================
 
 collegeRouter.get("/drives", (req, res) => {
-  const status = req.query.status ? Number(req.query.status) : undefined;
+  // Number("abc") is NaN, which used to go straight into the query as a bind
+  // parameter and match nothing, silently.
+  const status = parseStatusFilter(req.query.status);
+  if (status === INVALID_STATUS) {
+    return res.status(400).json({ error: "That status filter isn't a status." });
+  }
   const rows = listDrives({ collegeAddress: req.user.address, status });
   res.json({
     drives: rows.map((d) => {
@@ -568,7 +701,11 @@ async function decideDrive(req, res, { method, event }) {
     });
 
     const args = findEventInReceipt(placementDriveRead, "DriveStatusChanged", receipt);
-    if (args) syncDriveStatus(args, receipt);
+    if (args) {
+      await syncAfterWrite("drive decision", receipt.blockNumber, () =>
+        syncDriveStatus(args, receipt)
+      );
+    }
 
     logger.info(event, { driveId, college: req.user.address });
     res.json({ drive: serializeDrive(getDrive(driveId)), txHash: receipt.hash });
@@ -576,7 +713,7 @@ async function decideDrive(req, res, { method, event }) {
     if (err === ALREADY_DECIDED) {
       return res.status(409).json({ error: "That drive is no longer awaiting a decision." });
     }
-    const reason = err.reason || err.shortMessage || err.message;
+    const reason = publicChainError(err);
     logger.error("drive_decision_failed", { driveId, reason });
     res.status(502).json({ error: `On-chain transaction failed: ${reason}` });
   }
@@ -592,6 +729,7 @@ collegeRouter.post("/drives/:id/reject", (req, res) =>
 
 /** The permanent record of every decision this college has made. */
 collegeRouter.get("/decisions", (req, res) => {
-  const limit = Math.min(Number(req.query.limit) || 50, 200);
-  res.json({ decisions: listAdminActions(limit) });
+  // Scoped to this college. Unscoped, it returned every row in the table —
+  // including the platform owner's suspensions and the reasons he gave.
+  res.json({ decisions: listAdminActions(req.query.limit, { decidedBy: req.user.address }) });
 });

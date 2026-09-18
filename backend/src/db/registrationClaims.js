@@ -53,3 +53,18 @@ export function claimRegistrationNumber(registrationNumber, address) {
 export function releaseClaimsForAddress(address) {
   db.prepare("DELETE FROM registration_number_claims WHERE LOWER(address) = LOWER(?)").run(address);
 }
+
+/**
+ * Releases this address's other claims, keeping the one it just registered
+ * under.
+ *
+ * Registration used to release every claim first and then try to take the new
+ * one. A company resubmitting with a mistyped identifier therefore gave up its
+ * valid claim before the new one was refused — leaving the identifier it really
+ * owns free for anyone else to take, while its own actor row still showed it.
+ */
+export function releaseOtherClaimsForAddress(address, keepRegistrationNumber) {
+  db.prepare(
+    "DELETE FROM registration_number_claims WHERE LOWER(address) = LOWER(?) AND registration_number != ?"
+  ).run(address, keepRegistrationNumber);
+}

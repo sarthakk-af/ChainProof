@@ -34,7 +34,8 @@ process.env.WALLET_ENCRYPTION_KEY =
   "236d277256c4ac74368580b5be214189ace6dff26eb4e5efe448dbf1c2a1158c";
 process.env.DB_PATH = TEST_DB_PATH;
 
-const { safeCursor } = await import("../src/indexer.js");
+const { safeCursor, recordSyncFailure, clearSyncFailure } = await import("../src/indexer.js");
+const { listSyncFailures } = await import("../src/db.js");
 const { db } = await import("../src/db.js");
 
 // Left behind, this file collides with the next run and produces a failure that
@@ -80,4 +81,40 @@ test("recovering the failed block releases the cursor", () => {
 
 test("a failure at the very block being confirmed still holds", () => {
   assert.equal(safeCursor(100, new Set([100])), 99);
+});
+
+// --- a block whose handler is still running ----------------------------------
+
+test("the cursor waits for a block still being handled", () => {
+  // The other half of the same bug. Fourteen listeners run independently: the
+  // one for block 101 writes to SQLite and returns, while block 100's handler
+  // is still reading back from the chain. Advancing to 101 and then restarting
+  // resumed at 102, and block 100's event was never mirrored.
+  assert.equal(safeCursor(101, new Set(), new Map([[100, 1]])), 99);
+});
+
+test("once every handler on a block is done, the cursor moves", () => {
+  const inFlight = new Map([[100, 2]]);
+  assert.equal(safeCursor(101, new Set(), inFlight), 99);
+  inFlight.set(100, 1);
+  assert.equal(safeCursor(101, new Set(), inFlight), 99);
+  inFlight.delete(100);
+  assert.equal(safeCursor(101, new Set(), inFlight), 101);
+});
+
+test("a failure and an in-flight block both hold it, whichever is lower", () => {
+  assert.equal(safeCursor(200, new Set([150]), new Map([[120, 1]])), 119);
+  assert.equal(safeCursor(200, new Set([110]), new Map([[160, 1]])), 109);
+});
+
+// --- surviving a restart -----------------------------------------------------
+
+test("a recorded gap is still known after a restart", () => {
+  // The set lived in memory, so a restart forgot the gap while the cursor in
+  // the database had already moved past it — unreachable, and unrecorded.
+  recordSyncFailure(4242, new Set(), "provider hiccup");
+  assert.deepEqual(listSyncFailures(), [4242]);
+
+  clearSyncFailure(4242, new Set());
+  assert.deepEqual(listSyncFailures(), []);
 });

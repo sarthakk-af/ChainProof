@@ -1,12 +1,44 @@
-import { test } from "node:test";
+import { test, after } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Its own database file: these records live in SQLite now (a crash between the
+// chain write and the response is the case the module exists for, and an
+// in-process Map forgot every key exactly then), so the tests must not write
+// into the real one.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const TEST_DB_PATH = path.join(__dirname, "test-idempotency.sqlite");
+function cleanupDbFiles() {
+  for (const suffix of ["", "-journal", "-wal", "-shm"]) {
+    const file = TEST_DB_PATH + suffix;
+    if (fs.existsSync(file)) fs.rmSync(file, { force: true, maxRetries: 10, retryDelay: 50 });
+  }
+}
+cleanupDbFiles();
+process.env.DB_PATH = TEST_DB_PATH;
+process.env.RPC_URL = process.env.RPC_URL || "http://127.0.0.1:8545";
+process.env.VERIFIER_PRIVATE_KEY =
+  process.env.VERIFIER_PRIVATE_KEY ||
+  "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+process.env.JWT_SECRET = "test-jwt-secret";
+process.env.WALLET_ENCRYPTION_KEY =
+  "236d277256c4ac74368580b5be214189ace6dff26eb4e5efe448dbf1c2a1158c";
 
 const {
   withIdempotency,
   fingerprintPayload,
   IdempotencyPendingError,
   IdempotencyKeyConflictError,
+  IdempotencyUnresolvedError,
 } = await import("../src/idempotency.js");
+const { db } = await import("../src/db/connection.js");
+
+after(() => {
+  db.close();
+  cleanupDbFiles();
+});
 
 /**
  * These exist because of one specific failure: a key reused with different
@@ -94,4 +126,63 @@ test("fingerprints track the values that matter", () => {
   assert.notEqual(fp("issue", "0xA", 3, "QmH"), fp("issue", "0xB", 3, "QmH"), "recipient");
   assert.notEqual(fp("issue", "0xA", 3, "QmH"), fp("issue", "0xA", 4, "QmH"), "credential type");
   assert.notEqual(fp("issue", "0xA", 3, "QmH"), fp("issue", "0xA", 3, "QmJ"), "document");
+});
+
+// --- a send that may have landed ---------------------------------------------
+
+test("a failure after the send is not offered as a fresh start", async () => {
+  // tx.wait() throws on a dropped connection or a replaced transaction, long
+  // after the node accepted the transaction. The first version freed the key
+  // here, so the retry sent a second one — the exact duplicate this module
+  // exists to prevent.
+  const key = "broadcast-then-lost";
+  const print = fp("stage", "0xabc", 3, "QmHash");
+
+  await assert.rejects(
+    () =>
+      withIdempotency(6, key, print, async ({ markBroadcast }) => {
+        markBroadcast();
+        throw new Error("connection dropped while waiting");
+      }),
+    /connection dropped/
+  );
+
+  let ranAgain = false;
+  await assert.rejects(
+    () =>
+      withIdempotency(6, key, print, async () => {
+        ranAgain = true;
+        return "second attempt";
+      }),
+    IdempotencyUnresolvedError
+  );
+  assert.equal(ranAgain, false, "the retry must not reach the chain again");
+});
+
+test("the remembered answer is the response, so a replay needs no chain", async () => {
+  const key = "replayed-answer";
+  const print = fp("drive", "0xcollege", "SDE");
+  const first = await withIdempotency(7, key, print, async ({ markBroadcast }) => {
+    markBroadcast();
+    return { txHash: "0xdeadbeef", driveId: 4 };
+  });
+  const replay = await withIdempotency(7, key, print, async () => {
+    throw new Error("must not run");
+  });
+  assert.deepEqual(replay, first);
+});
+
+test("a record outlives the process that made it", async () => {
+  // Written by "another process": the same rows this one reads.
+  const key = "survives-restart";
+  const print = fp("stage", "0xrestart", 1);
+  db.prepare(
+    `INSERT INTO idempotency_keys (store_key, fingerprint, status, result, broadcast, expires_at)
+     VALUES (?, ?, 'done', ?, 1, ?)`
+  ).run(`8:${key}`, print, JSON.stringify({ txHash: "0xearlier" }), Date.now() + 60000);
+
+  const answer = await withIdempotency(8, key, print, async () => {
+    throw new Error("must not run");
+  });
+  assert.deepEqual(answer, { txHash: "0xearlier" });
 });

@@ -48,6 +48,7 @@ const {
   upsertActor,
   upsertRosterEntries,
   getRosterEntry,
+  releaseRosterClaimByRoll,
   getVerification,
   listPendingVerifications,
   VERIFICATION,
@@ -61,9 +62,9 @@ const { ROLE, STATUS } = await import("../src/chain.js");
 const college = ethers.Wallet.createRandom().address;
 let seq = 0;
 
-function makeUser({ emailVerified = false } = {}) {
+function makeUser({ emailVerified = false, email } = {}) {
   const user = createUser({
-    email: `verify-${seq++}@example.com`,
+    email: email ?? `verify-${seq++}@example.com`,
     passwordHash: "hash",
     walletAddress: ethers.Wallet.createRandom().address,
     encryptedPrivateKey: "iv:tag:ct",
@@ -83,7 +84,16 @@ before(() => {
     updatedAtBlock: 1,
   });
   upsertRosterEntries(college, [
-    { roll_number: "21CE1041", full_name: "Asha Patil", course_code: "CSE", batch_year: 2026 },
+    // With the college email, so this row admits exactly one account.
+    {
+      roll_number: "21CE1041",
+      full_name: "Asha Patil",
+      course_code: "CSE",
+      batch_year: 2026,
+      email: "asha.patil@somaiya.edu",
+    },
+    // Without one — the shape of an older roster, and of a college that only
+    // uploads names. Nobody is auto-verified against it.
     { roll_number: "21CE1042", full_name: "Rahul Nair", course_code: "CSE", batch_year: 2026 },
   ]);
 });
@@ -115,8 +125,8 @@ test("confirming the email alone does not verify the account", () => {
 
 // --- ordering one: roster first ----------------------------------------------
 
-test("a roll number already on the roster is matched immediately", async () => {
-  const user = makeUser({ emailVerified: true });
+test("a roster row is matched immediately for the email it belongs to", async () => {
+  const user = makeUser({ emailVerified: true, email: "asha.patil@somaiya.edu" });
   const result = await claimRollNumber({
     userId: user.id,
     collegeAddress: college,
@@ -134,7 +144,7 @@ test("a roll number already on the roster is matched immediately", async () => {
 });
 
 test("a roll number already claimed by someone else is refused", async () => {
-  const user = makeUser({ emailVerified: true });
+  const user = makeUser({ emailVerified: true, email: "someone.else@somaiya.edu" });
   const result = await claimRollNumber({
     userId: user.id,
     collegeAddress: college,
@@ -142,6 +152,66 @@ test("a roll number already claimed by someone else is refused", async () => {
   });
   assert.ok(result.error);
   assert.match(result.error, /already been claimed/i);
+});
+
+// --- the takeover this replaced ----------------------------------------------
+
+test("somebody else's roll number is queued, not granted, and stays unclaimed", async () => {
+  // The whole attack: roll numbers run in sequence, so a classmate's is a
+  // guess away. It used to verify the guesser as that student, copy the real
+  // student's name onto their account, and leave no way back.
+  const attacker = makeUser({ emailVerified: true, email: "attacker@somaiya.edu" });
+  const result = await claimRollNumber({
+    userId: attacker.id,
+    collegeAddress: college,
+    rollNumber: "21CE1042",
+  });
+
+  assert.equal(result.matched, false);
+  assert.equal(result.queued, true);
+  assert.equal(getVerification(attacker.id).status, VERIFICATION.Pending);
+  // Crucially the row is still free, so the real student is not locked out.
+  assert.equal(getRosterEntry(college, "21CE1042").claimed_by, null);
+});
+
+test("the placement cell can free a roll number claimed by the wrong account", async () => {
+  const wrong = makeUser({ emailVerified: true, email: "wrong@somaiya.edu" });
+  upsertRosterEntries(college, [
+    {
+      roll_number: "21CE1050",
+      full_name: "Meera Iyer",
+      course_code: "CSE",
+      batch_year: 2026,
+      email: "wrong@somaiya.edu",
+    },
+  ]);
+  await claimRollNumber({ userId: wrong.id, collegeAddress: college, rollNumber: "21CE1050" });
+  assert.ok(getRosterEntry(college, "21CE1050").claimed_by);
+
+  const released = releaseRosterClaimByRoll(college, "21CE1050");
+  assert.equal(released.toLowerCase(), wrong.wallet_address.toLowerCase());
+  assert.equal(getRosterEntry(college, "21CE1050").claimed_by, null);
+  // Releasing a row nobody holds is not an error, it just reports nothing.
+  assert.equal(releaseRosterClaimByRoll(college, "21CE1050"), null);
+});
+
+test("an upload that omits the email keeps the one already stored", () => {
+  upsertRosterEntries(college, [
+    {
+      roll_number: "21CE1060",
+      full_name: "Karan Shah",
+      course_code: "CSE",
+      batch_year: 2026,
+      email: "karan.shah@somaiya.edu",
+    },
+  ]);
+  // A college re-uploading an older file must not silently un-protect the row.
+  upsertRosterEntries(college, [
+    { roll_number: "21CE1060", full_name: "Karan Shah", course_code: "IT", batch_year: 2026 },
+  ]);
+  const row = getRosterEntry(college, "21CE1060");
+  assert.equal(row.email, "karan.shah@somaiya.edu");
+  assert.equal(row.course_code, "IT");
 });
 
 // --- ordering two: student first ---------------------------------------------
@@ -186,7 +256,7 @@ test("two people cannot queue for the same roll number", async () => {
 });
 
 test("a declined request says so, and can be retried", async () => {
-  const user = makeUser({ emailVerified: true });
+  const user = makeUser({ emailVerified: true, email: "retry@somaiya.edu" });
   await claimRollNumber({ userId: user.id, collegeAddress: college, rollNumber: "21CE8080" });
 
   rejectQueuedStudent({ userId: user.id, collegeAddress: college, reason: "Not on our records." });
@@ -196,10 +266,19 @@ test("a declined request says so, and can be retried", async () => {
   assert.equal(state.rejectionReason, "Not on our records.");
 
   // Rejection is not a dead end either — they can correct it and try again.
+  upsertRosterEntries(college, [
+    {
+      roll_number: "21CE8081",
+      full_name: "Retry Student",
+      course_code: "CSE",
+      batch_year: 2026,
+      email: "retry@somaiya.edu",
+    },
+  ]);
   const retry = await claimRollNumber({
     userId: user.id,
     collegeAddress: college,
-    rollNumber: "21CE1042",
+    rollNumber: "21CE8081",
   });
   assert.equal(retry.matched, true);
 });
@@ -232,9 +311,15 @@ test("an unverified email holds the on-chain write back", async () => {
   // Matching a roster row is not enough on its own. The address still has to be
   // proved before anything about this student counts — it just isn't a wall at
   // the front door any more.
-  const user = makeUser({ emailVerified: false });
+  const user = makeUser({ emailVerified: false, email: "later@somaiya.edu" });
   upsertRosterEntries(college, [
-    { roll_number: "21CE7070", full_name: "Later Email", course_code: "CSE", batch_year: 2026 },
+    {
+      roll_number: "21CE7070",
+      full_name: "Later Email",
+      course_code: "CSE",
+      batch_year: 2026,
+      email: "later@somaiya.edu",
+    },
   ]);
 
   const result = await claimRollNumber({

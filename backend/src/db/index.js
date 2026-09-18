@@ -6,6 +6,9 @@ export {
   db,
   getLastSyncedBlock,
   setLastSyncedBlock,
+  listSyncFailures,
+  addSyncFailure,
+  removeSyncFailure,
   getDeploymentFingerprint,
   resetMirrorForNewDeployment,
 } from "./connection.js";
@@ -19,7 +22,9 @@ export {
 } from "./actors.js";
 export {
   createUser,
+  deleteUser,
   getUserByEmail,
+  getUserByAddress,
   getUserById,
   setPasswordHash,
   setEmailVerified,
@@ -34,6 +39,7 @@ export {
   upsertVerification,
   getVerification,
   setVerificationStatus,
+  clearVerificationForUser,
   listPendingVerifications,
   rollNumberPending,
 } from "./verifications.js";
@@ -42,6 +48,7 @@ export {
   getRosterEntry,
   claimRosterEntry,
   releaseRosterClaim,
+  releaseRosterClaimByRoll,
   getRosterEntryForAddress,
   listRoster,
   rosterCounts,
@@ -75,7 +82,6 @@ export {
   setOfferResponse,
   getOfferResponse,
   setPlacement,
-  isPlaced,
 } from "./outcomes.js";
 export {
   getDriveFunnelStats,
@@ -126,4 +132,5 @@ export {
   getRegistrationNumberClaim,
   claimRegistrationNumber,
   releaseClaimsForAddress,
+  releaseOtherClaimsForAddress,
 } from "./registrationClaims.js";

@@ -2,6 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {
   createUser,
+  deleteUser,
   getUserByEmail,
   getUserById,
   setPasswordHash,
@@ -34,13 +35,9 @@ import { sendEmail, buildPasswordResetEmail, buildOtpEmail } from "../email.js";
 import { userAuth } from "../middleware/userAuth.js";
 import { tryComplete } from "../studentVerification.js";
 import { logger } from "../logger.js";
+import { EMAIL_RE } from "../limits.js";
 
 export const authRouter = Router();
-
-// A real, if permissive, shape check — the earlier rule here was "non-empty,"
-// which let a bare word through. This isn't meant to catch every malformed
-// address, just the ones that couldn't possibly receive mail.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Reachable with no prior authentication, and signup in particular spends
 // real treasury gas money per call — generous for a real user, hostile to a
@@ -139,20 +136,32 @@ authRouter.post("/signup", signupLimiter, async (req, res) => {
     return res.status(409).json({ error: "An account with this email already exists" });
   }
 
+  let user = null;
   try {
     const passwordHash = await hashPassword(password);
     const { address, encryptedPrivateKey } = generateWallet();
 
-    // Fund before persisting the user — an unfunded custodial wallet can't
-    // transact at all, so there's no point creating an account around one.
-    await fundWallet(address);
-
-    const user = createUser({
+    // The row first, gas second. The other way round, two signups racing on the
+    // same email both passed the check above, both drew a gas drip from the
+    // treasury, and the loser's insert failed — leaving a funded wallet with no
+    // account pointing at it, once per race. The UNIQUE constraint decides the
+    // race now, and a wallet is only funded once its account exists.
+    user = createUser({
       email,
       passwordHash,
       walletAddress: address,
       encryptedPrivateKey,
     });
+
+    try {
+      await fundWallet(address);
+    } catch (err) {
+      // Nothing was spent, so leave nothing behind: the address must stay free
+      // for a real signup later.
+      deleteUser(user.id);
+      user = null;
+      throw err;
+    }
 
     // No token yet — see /login and /verify-email below. An account only
     // becomes usable once this address has been shown to actually reach
@@ -198,6 +207,11 @@ authRouter.post("/signup", signupLimiter, async (req, res) => {
           "Sign-ups are temporarily unavailable — the service wallet that funds new " +
           "accounts needs topping up. Please try again later.",
       });
+    }
+    // A concurrent signup for the same address or email won the UNIQUE
+    // constraint. That is the check working, not a server fault.
+    if (/UNIQUE constraint failed/i.test(err.message)) {
+      return res.status(409).json({ error: "An account with this email already exists" });
     }
     logger.error("signup_failed", { email, message: err.message, stack: err.stack });
     res.status(502).json({ error: "Could not create account. Please try again." });

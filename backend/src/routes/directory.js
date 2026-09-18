@@ -2,7 +2,6 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {
   getActor,
-  getProfile,
   lookupStudent,
   listResumeItems,
   listSkills,
@@ -94,16 +93,3 @@ directoryRouter.post("/lookup", lookupLimiter, (req, res) => {
   });
 });
 
-/**
- * A student's own view of their college's directory shape — nothing
- * identifying, just what exists, so the lookup form can say "2026, CSE" rather
- * than asking someone to guess.
- */
-directoryRouter.get("/me", (req, res) => {
-  const profile = getProfile(req.user.address);
-  res.json({
-    collegeAddress: req.actor.college,
-    batchYear: profile?.batch_year ?? null,
-    courseCode: profile?.course_code ?? null,
-  });
-});

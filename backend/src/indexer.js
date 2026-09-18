@@ -7,9 +7,13 @@ import {
   preparationLogRead,
 } from "./chain.js";
 import { deployment } from "./config.js";
+import { logger } from "./logger.js";
 import {
   getLastSyncedBlock,
   setLastSyncedBlock,
+  listSyncFailures,
+  addSyncFailure,
+  removeSyncFailure,
   getDeploymentFingerprint,
   resetMirrorForNewDeployment,
   upsertActor,
@@ -292,7 +296,7 @@ export async function backfill() {
   // Reaching here means every event in the range was mirrored, so any block in
   // it that was previously held back is resolved. Done before moving the
   // cursor, so a gap can never be forgotten while the watermark moves past it.
-  const repaired = pendingSyncFailures().filter((b) => b >= fromBlock && b <= toBlock);
+  const repaired = pendingSyncFailures().filter((b) => b <= toBlock);
   for (const block of repaired) clearSyncFailure(block);
   if (repaired.length > 0) {
     console.log(`[indexer] recovered ${repaired.length} previously failed block(s): ${repaired.join(", ")}`);
@@ -314,20 +318,60 @@ export async function backfill() {
  * to lose an approval permanently, with the mirror showing stale data and
  * nothing anywhere saying so.
  */
-const unsyncedBlocks = new Set();
+const unsyncedBlocks = new Set(listSyncFailures());
 
-/** The furthest the cursor may advance, given what is known to be missing. */
-export function safeCursor(candidateBlock, failed = unsyncedBlocks) {
-  if (failed.size === 0) return candidateBlock;
-  return Math.min(candidateBlock, Math.min(...failed) - 1);
+/**
+ * Blocks whose handlers are running right now.
+ *
+ * Fourteen listeners run independently and their handlers take very different
+ * times — some write to SQLite and return, others read back from the chain
+ * first. A later block's handler finishing first used to move the cursor past
+ * an earlier block that was still being processed; a restart then resumed
+ * above the gap and that event was never mirrored at all. The cursor now waits
+ * for the lowest block still in flight.
+ */
+const inFlightBlocks = new Map(); // block number -> how many handlers are on it
+
+function enterBlock(blockNumber) {
+  inFlightBlocks.set(blockNumber, (inFlightBlocks.get(blockNumber) ?? 0) + 1);
 }
 
-export function recordSyncFailure(blockNumber, failed = unsyncedBlocks) {
+function leaveBlock(blockNumber) {
+  const remaining = (inFlightBlocks.get(blockNumber) ?? 1) - 1;
+  if (remaining <= 0) inFlightBlocks.delete(blockNumber);
+  else inFlightBlocks.set(blockNumber, remaining);
+}
+
+/**
+ * The furthest the cursor may advance: never past a block known to be missing,
+ * and never past one still being handled.
+ */
+export function safeCursor(candidateBlock, failed = unsyncedBlocks, inFlight = inFlightBlocks) {
+  let limit = candidateBlock;
+  if (failed.size > 0) limit = Math.min(limit, Math.min(...failed) - 1);
+  if (inFlight.size > 0) limit = Math.min(limit, Math.min(...inFlight.keys()) - 1);
+  return limit;
+}
+
+export function recordSyncFailure(blockNumber, failed = unsyncedBlocks, message) {
   failed.add(blockNumber);
+  // Written down, because the cursor in the database has to keep being held
+  // below this block after a restart too.
+  try {
+    addSyncFailure(blockNumber, message);
+  } catch (err) {
+    console.error(`[indexer] could not record the sync gap at block ${blockNumber}:`, err);
+  }
 }
 
 export function clearSyncFailure(blockNumber, failed = unsyncedBlocks) {
   failed.delete(blockNumber);
+  try {
+    removeSyncFailure(blockNumber);
+  } catch {
+    // The row is gone or the database is busy; the set is what guards the cursor
+    // in this process, and the next reconciliation will try again.
+  }
 }
 
 /** Exposed for tests and for a health check that wants to report sync gaps. */
@@ -342,14 +386,18 @@ export function startLiveSync({ reconcileIntervalMs = 60000 } = {}) {
       const payload = args[args.length - 1];
       const eventArgs = args.slice(0, -1);
       const blockNumber = payload.log.blockNumber;
+      enterBlock(blockNumber);
       try {
         await watcher.handle(eventArgs, payload.log);
         clearSyncFailure(blockNumber);
-        // Only ever forwards, and never past a known gap.
+        leaveBlock(blockNumber);
+        // Only ever forwards, never past a known gap, and never past a block
+        // another handler is still working on.
         const target = safeCursor(blockNumber);
         if (target > getLastSyncedBlock()) setLastSyncedBlock(target);
       } catch (err) {
-        recordSyncFailure(blockNumber);
+        leaveBlock(blockNumber);
+        recordSyncFailure(blockNumber, unsyncedBlocks, err.message);
         console.error(
           `[indexer] failed to sync ${watcher.eventName} at block ${blockNumber} — ` +
             `holding the sync cursor below it until reconciliation succeeds:`,
@@ -375,6 +423,36 @@ export function startLiveSync({ reconcileIntervalMs = 60000 } = {}) {
     `[indexer] live event sync active (reconciling every ${Math.round(reconcileIntervalMs / 1000)}s)`
   );
   return timer;
+}
+
+/**
+ * Updates the mirror right after this process's own transaction, without ever
+ * failing the request for it.
+ *
+ * The routes used to await these calls inside the same try/catch as the
+ * transaction. `syncActor` and `syncPreparationRecorded` read back from the
+ * chain, so one RPC hiccup after a confirmed write landed in the catch and told
+ * the user their on-chain update had **failed** — for a record that is on-chain
+ * forever. On a route without an idempotency key the natural response, retrying,
+ * wrote a second permanent entry.
+ *
+ * A failure here is a mirror problem, not a chain problem: the block is marked
+ * unsynced, which holds the cursor below it, and reconciliation repairs it.
+ */
+export async function syncAfterWrite(label, blockNumber, run) {
+  try {
+    await run();
+    return true;
+  } catch (err) {
+    if (Number.isInteger(blockNumber)) recordSyncFailure(blockNumber);
+    console.error(
+      `[indexer] ${label} was written to the chain at block ${blockNumber} but the ` +
+        `local copy could not be updated — reconciliation will pick it up:`,
+      err
+    );
+    logger.error("post_write_sync_failed", { label, blockNumber, message: err.message });
+    return false;
+  }
 }
 
 export async function startIndexer() {

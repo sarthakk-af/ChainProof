@@ -13,7 +13,9 @@
  *
  * Requires a seeded database — run `npm run seed -- --full` first.
  */
-const BASE = "http://127.0.0.1:4000";
+// Honours API_URL like the other suites, so this can be pointed at a throwaway
+// stack instead of the one on the default port.
+const BASE = process.env.API_URL || "http://127.0.0.1:4000";
 const PASSWORD = "SeedPass123";
 let failures = 0;
 

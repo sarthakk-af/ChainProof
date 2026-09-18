@@ -136,6 +136,29 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_admin_actions_created ON admin_actions(created_at);
 
+  -- Blocks whose events could not be mirrored. The sync cursor is held below
+  -- the lowest of these, so a gap can never be skipped past. Rows rather than
+  -- memory because the process forgetting them is exactly how the gap became
+  -- permanent: the cursor had already moved on. See indexer.js.
+  CREATE TABLE IF NOT EXISTS sync_failures (
+    block_number INTEGER PRIMARY KEY,
+    last_error TEXT,
+    first_failed_at INTEGER NOT NULL
+  );
+
+  -- One row per (user, idempotency key): what a retry of that exact request
+  -- should be told. Rows rather than memory because a crash between the chain
+  -- write and the HTTP response is precisely the case this exists for, and an
+  -- in-process Map forgot every key the moment it happened. See idempotency.js.
+  CREATE TABLE IF NOT EXISTS idempotency_keys (
+    store_key TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL,         -- pending | done | unresolved
+    result TEXT,
+    broadcast INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER NOT NULL
+  );
+
 
   -- ===========================================================================
   -- v2: rosters, profiles, drives, applications, outcomes
@@ -434,6 +457,21 @@ if (!adminActionColumns.includes("admin_username")) {
   db.exec("ALTER TABLE admin_actions ADD COLUMN admin_username TEXT");
 }
 
+// The college email each roster row belongs to. Added when it turned out that
+// a roll number alone admitted anybody: whoever typed a classmate's roll number
+// first was verified as them. A row with an email auto-verifies only the account
+// that signed up with it; a row without one goes to the placement cell.
+const rosterColumns = db.prepare("PRAGMA table_info(roster_entries)").all().map((c) => c.name);
+if (!rosterColumns.includes("email")) {
+  db.exec("ALTER TABLE roster_entries ADD COLUMN email TEXT");
+}
+
+// Added when the college's own decision list turned out to be showing the
+// platform owner's suspensions too: the log had no record of who decided.
+if (!adminActionColumns.includes("decided_by")) {
+  db.exec("ALTER TABLE admin_actions ADD COLUMN decided_by TEXT");
+}
+
 const indexerStateColumns = db.prepare("PRAGMA table_info(indexer_state)").all().map((c) => c.name);
 if (!indexerStateColumns.includes("deployment_fingerprint")) {
   db.exec("ALTER TABLE indexer_state ADD COLUMN deployment_fingerprint TEXT");
@@ -486,6 +524,25 @@ export function setLastSyncedBlock(blockNumber) {
   db.prepare("UPDATE indexer_state SET last_synced_block = ? WHERE id = 1").run(blockNumber);
 }
 
+/** Every block still known to be unmirrored, lowest first. */
+export function listSyncFailures() {
+  return db
+    .prepare("SELECT block_number FROM sync_failures ORDER BY block_number")
+    .all()
+    .map((r) => r.block_number);
+}
+
+export function addSyncFailure(blockNumber, message) {
+  db.prepare(
+    `INSERT INTO sync_failures (block_number, last_error, first_failed_at) VALUES (?, ?, ?)
+     ON CONFLICT(block_number) DO UPDATE SET last_error = excluded.last_error`
+  ).run(blockNumber, message ?? null, Date.now());
+}
+
+export function removeSyncFailure(blockNumber) {
+  db.prepare("DELETE FROM sync_failures WHERE block_number = ?").run(blockNumber);
+}
+
 export function getDeploymentFingerprint() {
   return db.prepare("SELECT deployment_fingerprint FROM indexer_state WHERE id = 1").get()
     .deployment_fingerprint;
@@ -530,6 +587,9 @@ export function resetMirrorForNewDeployment(fingerprint) {
   // chain, each with a transaction hash that no longer exists. Shown after a
   // reset, it listed a company as approved when no company was registered.
   db.exec("DELETE FROM admin_actions;");
+  // Gaps recorded against the old chain's block numbers mean nothing on a new
+  // one, and holding the cursor below them would stall the fresh backfill.
+  db.exec("DELETE FROM sync_failures;");
   db.prepare(
     "UPDATE indexer_state SET last_synced_block = 0, deployment_fingerprint = ? WHERE id = 1"
   ).run(fingerprint);

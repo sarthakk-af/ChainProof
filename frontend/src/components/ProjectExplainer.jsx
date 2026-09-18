@@ -83,7 +83,7 @@ export default function ProjectExplainer() {
           </div>
           <h1 className="hero-title">A placement record nobody can fudge.</h1>
           <p className="hero-lead">
-            An internal placement platform for one college, where each figure is signed by the
+            An internal placement platform for college, where each figure is signed by the
             party with nothing to gain from inflating it — and then can never be changed.
           </p>
           {/* One main action and one alternative. Placement results live in the

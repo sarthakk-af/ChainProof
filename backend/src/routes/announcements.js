@@ -5,7 +5,6 @@ import {
   getDrive,
   AUDIENCE,
   createAnnouncement,
-  getAnnouncement,
   getAnnouncementWithContext,
   updateAnnouncement,
   deleteAnnouncement,
@@ -14,6 +13,7 @@ import {
 import { ROLE, STATUS } from "../chain.js";
 import { serializeAnnouncement } from "../serializers.js";
 import { logger } from "../logger.js";
+import { requireNotSuspended } from "../middleware/notSuspended.js";
 
 /**
  * announcements.js — placement notices.
@@ -149,6 +149,9 @@ announcementsRouter.post("/", (req, res) => {
 announcementsRouter.patch("/:id", (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid notice id." });
+  // Ownership was the only check, so a suspended account could still rewrite
+  // notices that stay published to everyone.
+  if (!requireNotSuspended(req, res)) return;
 
   const parsed = parseAnnouncementBody(req.body || {});
   if (parsed.error) return res.status(400).json({ error: parsed.error });
@@ -163,6 +166,7 @@ announcementsRouter.patch("/:id", (req, res) => {
 announcementsRouter.delete("/:id", (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: "Invalid notice id." });
+  if (!requireNotSuspended(req, res)) return;
   if (!deleteAnnouncement(id, req.user.address)) {
     return res.status(404).json({ error: "No such notice of yours." });
   }

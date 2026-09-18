@@ -222,11 +222,16 @@ const NAMES = [
   "Asha Patil", "Rahul Nair", "Sara Khan", "Vikram Rao", "Neha Joshi",
   "Arjun Menon", "Priya Desai", "Karan Shah", "Meera Iyer", "Rohit Verma",
 ];
+// The first five rows carry the email of the student login the seed creates,
+// because a row only confirms itself for the address the college listed against
+// it. The rest have none, which is the other half of the demo: those students
+// would wait in the placement cell's queue.
 const roster = NAMES.map((fullName, i) => ({
   rollNumber: `21CE10${41 + i}`,
   fullName,
   courseCode: "CSE",
   batchYear: 2026,
+  email: i < 5 ? `student${i + 1}@seed.local` : undefined,
 }));
 const uploaded = await call("POST", "/college/roster", { token: college.token, body: { entries: roster } });
 console.log(`    ${uploaded.added} added, ${uploaded.updated} updated`);

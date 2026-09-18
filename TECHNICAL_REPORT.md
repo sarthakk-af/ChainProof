@@ -111,6 +111,7 @@ Solidity 0.8.20 with the optimiser on at 200 runs — the usual middle ground fo
 
 - At signup the backend generates a wallet, encrypts its private key (AES-256-GCM), and stores it. The key is decrypted only for the moment a transaction is signed.
 - A **treasury** wallet sends each new wallet a little gas. When the treasury runs low, signup says so clearly rather than failing vaguely.
+- **A wallet that runs out of gas is topped up before its next transaction.** Wallets used to be funded once, at signup, so a wallet that ran dry — or every wallet at once, after a local chain restart wipes all balances — could never transact again, and its owner saw only a generic failure. The check runs inside the wallet's own queue slot, so it costs one balance read per transaction and cannot race the send.
 
 ### Transaction queue (`txQueue.js`)
 
@@ -136,6 +137,10 @@ A student is verified when **two** things are true, in either order:
 Whichever happens second triggers `tryComplete`, the only place a student is written on-chain. Until then they can browse but not act, and they appear in no figure.
 
 Writing on-chain *last* means a sign-up that never comes back costs no gas and never inflates the "registered students" number. If the chain write fails, re-entering the roll number retries it.
+
+- **A roll number alone is not proof.** It was: the route asked for a college and a roll number, and roll numbers run in sequence. Whoever typed a classmate's number first was verified as that student, had their real name, course and batch copied onto their own account, was written to the chain as a student of that college — and the real student was told their roll number was already taken, with no way for the placement cell to undo it. The roster now carries the college email each row belongs to, and a row auto-verifies only the account that signed up with that address. Anything else — a row with no email, a mismatch, a student whose address changed — goes to the placement cell's queue, where a person decides.
+- **A wrong claim can be taken back.** `POST /college/roster/:rollNumber/release` frees the row and clears that account's verification. It cannot erase an on-chain registration, because nothing can; when the account was already written to the chain the response says so and points at the owner's suspend button.
+- **Claiming and approving are each one database transaction.** Both wrote three rows in sequence without one. A crash in the middle left the roster row claimed by an account the platform did not consider verified — which read, to the student, as their own roll number being taken by someone else, permanently.
 
 ### Resumes, directory and talent pool
 
@@ -172,13 +177,24 @@ How it stays correct:
 - **Redeploying resets the copy.** A fresh chain is detected by its deploy timestamp. The copied chain data is cleared, and so are the rows that only made sense on the old chain (student verifications, roster claims, notices). Logins are kept.
 - **The copy can be rebuilt.** If its tables were deleted, restarting would rebuild them from the chain.
 
+- **The sync cursor cannot pass a block that isn't mirrored.** It is a single "everything up to here" watermark, and two things used to move it past a gap. A *failed* handler only logged, so the next success — necessarily from a later block — carried the watermark over the gap, which backfill then resumed above: one transient RPC error lost an approval permanently. And the fourteen listeners run independently with very different handler durations, so a later block finishing first moved the watermark while an earlier block was still being processed. The cursor now waits for the lowest block that is either in flight or known to have failed, and failures are rows in `sync_failures` rather than a Set the process forgets when it restarts.
+
 ### Other safeguards
 
-- **Idempotency keys** on posting a drive and recording a stage: a retried request can't create a duplicate. A key reused with a *different* request is refused, rather than silently returning the earlier result.
+- **Idempotency keys** on posting a drive, recording a stage and recording a preparation session: a retried request can't create a duplicate. A key reused with a *different* request is refused, rather than silently returning the earlier result. Two things about the first version defeated its own purpose and are fixed:
+  - It **freed the key whenever the work threw**. `tx.wait()` throws on a dropped connection or a replaced transaction — after the node has accepted the transaction. Freeing the key let the retry send a second one. A send that may have landed now leaves the key unresolved, and the retry is told to check before trying again, which is the only answer that cannot create a second permanent record.
+  - It **lived in memory**, so a restart forgot every key — and a crash between the chain write and the response is exactly the case it exists for. The records are rows now.
+  - The preparation route had no key at all, so a retry wrote the session twice — into the one record the college is not allowed to edit.
+- **A mirror failure is never reported as a chain failure** (`syncAfterWrite`). Routes used to update the local copy inside the same `try` as the transaction, and two of those updates read back from the chain — so one RPC hiccup after a confirmed write told the user their update had *failed*, for a record that was on-chain forever. The block is now marked unsynced (holding the cursor below it, for reconciliation to repair) and the request still succeeds.
+- **Error messages say what happened without saying what shouldn't be said** (`chainErrors.js`). A contract's revert reason passes through, because it names the rule that was broken. A dry treasury used to report its own address and balance to any signed-in user, and a wallet that failed to decrypt reported OpenSSL's internals; both are now generic.
+- **Suspension is checked wherever an account acts**, not only where it owns something: applying to a drive, answering an offer, reading a drive's applicants, editing a notice, and editing the profile and resume that recruiters read. Each of those checked role or ownership and not status.
+- **A half-created college can be finished.** Creating it registers on-chain and then approves; if the approval failed, the mirror had no college (so the "one college only" check passed) while the chain had one (so the email check refused), and no route could approve on its own — the platform was unbootstrappable without editing the database. The call now picks up where it stopped.
+- **Signup takes the account row before spending gas on its wallet.** The other way round, two signups racing on one email both drew a drip from the treasury and the loser's insert failed, leaving a funded wallet with no account pointing at it.
 - **Rate limits** by user: registration, results, drives, preparation records, and login/signup.
 - **Clean errors:** malformed JSON gets a 400, not a crash or a 500.
 - **Startup takes the port first.** If port 4000 is taken, the backend exits with a clear message *before* touching the database. Previously, a second copy reset the shared database and then kept running in the background.
 - **Production guard:** the backend refuses to run against a non-local chain with the known Hardhat development keys.
+- **The chain is checked, not assumed (`chainHealth.js`).** Restarting a local Hardhat node wipes it: no contracts, no history, no balances. The backend used to keep serving against the empty chain, so every action failed with ethers' `could not coalesce error`, which named nothing useful. Now it verifies at start-up that the manifest's contracts have code, and re-checks every 15 seconds while running. A wiped chain makes it refuse to start, or stop serving with one sentence naming the fix: deploy again, then restart. `/health` reports the same message, and the check's answers carry CORS headers so the browser shows them instead of discarding them as "failed to fetch".
 
 ### Routes
 
@@ -195,7 +211,7 @@ How it stays correct:
 | `/admin` | administrator | create the college, accounts, suspend/restore, action log |
 | `/public` | anyone | batches, drives and funnels, recruiters, preparation, public notices |
 
-### Backend tests — 177
+### Backend tests — 187
 
 These run against a temporary SQLite file with no blockchain. They cover validation, authorisation, the privacy boundaries (a company never sees names; one company's applicant doesn't unlock for another), notices, resumes, preparation counting, batch-revision counting, verification ordering, idempotency and the indexer's position handling.
 
@@ -249,6 +265,7 @@ Paths that actually send transactions are covered by the live suites below inste
 - **The Pinata key is in the browser bundle.** Job-description documents are pinned to IPFS from the frontend, so `VITE_PINATA_JWT` is shipped to every visitor. Pinning has to move to the backend, and the key has to be replaced, before any public deployment.
 - **One college per deployment.** The data model allows several, but routes such as the talent pool assume one.
 - **Resumes are unverified by design.** The platform vouches for the placement record, not for what students write about themselves.
+- **A student's CGPA is self-declared**, and it is what decides which drives they are eligible for — so a cutoff a company published on-chain is not actually enforced against a figure the student typed. Moving CGPA into the roster, where the college owns it as it owns names and courses, is the fix and is deliberately left for the next version.
 - **The classmate lookup is a weak secret.** College emails are often guessable from roll numbers; the rate limit carries as much of the protection as the roll-number-plus-email pair does.
 
 ## 7. What has been verified
@@ -256,7 +273,7 @@ Paths that actually send transactions are covered by the live suites below inste
 | Check | Result |
 |---|---|
 | Contract tests | 213 / 213 |
-| Backend tests | 177 / 177 |
+| Backend tests | 187 / 187 |
 | Live suites | all 3 pass against a running stack |
 | Frontend | builds, and lint passes |
 | Public dashboard | checked visually in dark and light themes, at desktop and phone widths |

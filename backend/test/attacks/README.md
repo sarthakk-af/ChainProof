@@ -9,7 +9,7 @@ npm run test:attacks
 
 ## Why these are separate from `npm test`
 
-`npm test` is 177 unit and route tests that run against a temporary SQLite file
+`npm test` is 187 unit and route tests that run against a temporary SQLite file
 with nothing else switched on. These are different: they need all three
 services up, they write real transactions to the chain, and they create real
 accounts. Mixing the two would mean `npm test` could only ever be run by

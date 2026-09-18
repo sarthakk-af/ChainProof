@@ -57,7 +57,7 @@ cd frontend && npm run dev
 Open **http://localhost:5173**. The system starts empty, and you set it up by hand:
 
 1. Go to **http://localhost:5173/admin**, sign in as `admin`, and create the college. This also creates the placement cell's login.
-2. Sign in as the college. Declare a batch size and upload the roster (roll numbers, names, course, batch).
+2. Sign in as the college. Declare a batch size and upload the roster: `roll number, full name, course, batch year, college email`. The email matters — a student is confirmed automatically only if they signed up with the email listed against their roll number. A row without one waits in the college's Students tab for someone to confirm by hand.
 3. Sign up as a company. The college approves it, and it can then post a drive.
 4. Sign up as a student and enter a roll number from the roster.
 5. The public placement results are at **http://localhost:5173/results**.
@@ -85,7 +85,7 @@ Everything the backend stores is one file: `backend/data/chainproof.sqlite`. Ope
 
 ```bash
 npx hardhat test                  # 213 contract tests
-cd backend && npm test            # 177 backend tests (no blockchain needed)
+cd backend && npm test            # 187 backend tests (no blockchain needed)
 cd frontend && npm run lint       # frontend lint
 ```
 

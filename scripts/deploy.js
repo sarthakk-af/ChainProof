@@ -12,7 +12,7 @@ const path = require("path");
  *
  * Usage:
  *   npx hardhat run scripts/deploy.js --network localhost
- *   npx hardhat run scripts/deploy.js --network sepolia
+ *   npx hardhat run scripts/deploy.js --network amoy
  */
 
 async function main() {

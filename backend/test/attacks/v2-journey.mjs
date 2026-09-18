@@ -9,6 +9,21 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+// These suites create accounts by writing to the database directly, as well as
+// through the API. Pointed at another backend (API_URL) without also being
+// pointed at that backend's database (DB_PATH), they write into the default
+// database while the server reads a different one: every token they mint is
+// then rejected as "signed out", and the default database — which on a
+// developer's machine is the real one — collects the test accounts. Refusing is
+// the only way that mistake announces itself.
+if (process.env.API_URL && !process.env.DB_PATH) {
+  throw new Error(
+    "API_URL is set but DB_PATH is not. Set DB_PATH to the database the backend at " +
+      `${process.env.API_URL} is using, or unset API_URL to test the default stack.`
+  );
+}
+
+
 const BACKEND_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 process.chdir(BACKEND_ROOT);
 const src = (f) => pathToFileURL(path.join(BACKEND_ROOT, "src", f)).href;
@@ -62,17 +77,23 @@ async function waitFor(label, predicate, { timeoutMs = 20000, intervalMs = 400 }
 }
 
 let seq = 0;
-async function account() {
+async function account(emailOverride) {
   const { address, encryptedPrivateKey } = generateWallet();
   await fundWallet(address);
+  const email = emailOverride ?? `v2-${TS}-${seq++}@test.com`;
   const user = createUser({
-    email: `v2-${TS}-${seq++}@test.com`,
+    email,
     passwordHash: "not-used",
     walletAddress: address,
     encryptedPrivateKey,
   });
   setEmailVerified(user.id);
-  return { id: user.id, address, token: signToken({ userId: user.id, address, tokenVersion: user.token_version }) };
+  return {
+    id: user.id,
+    address,
+    email,
+    token: signToken({ userId: user.id, address, tokenVersion: user.token_version }),
+  };
 }
 
 const cin = (n) => `L${String(TS).slice(-5)}MH2024PLC${String(500000 + n).slice(0, 6)}`;
@@ -178,6 +199,7 @@ const ROLL = (i) => `R${String(TS).slice(-10)}${i}`;
 const NAME = (i) => `Aspirant ${TS} ${i}`;
 const NAME_RE = new RegExp(`Aspirant ${TS}`);
 const ROLL_RE = new RegExp(`R${String(TS).slice(-10)}`);
+const STUDENT_EMAIL = (n) => `v2-${TS}-student-${n}@test.com`;
 
 // ============================================================================
 console.log("\n=== 2. The college declares its cohort and uploads a roster ===");
@@ -188,9 +210,19 @@ console.log("\n=== 2. The college declares its cohort and uploads a roster ===")
   });
   check("Cohort of 180 recorded on-chain", b.status === 201, `${b.status} ${JSON.stringify(b.data?.error || "")}`);
 
+  // Four rows carry the email of the student who will claim them: a row only
+  // confirms itself for the address the college listed against it. The last two
+  // have none, so anyone claiming those waits for the cell — which is what
+  // stops a classmate's roll number being a working password.
   const entries = [];
   for (let i = 1; i <= 6; i++) {
-    entries.push({ rollNumber: ROLL(i), fullName: NAME(i), courseCode: "CSE", batchYear: BATCH });
+    entries.push({
+      rollNumber: ROLL(i),
+      fullName: NAME(i),
+      courseCode: "CSE",
+      batchYear: BATCH,
+      email: i <= 4 ? STUDENT_EMAIL(i) : undefined,
+    });
   }
   const r = await call("POST", "/college/roster", { token: college.token, body: { entries } });
   check("Roster of 6 uploaded", r.status === 200 && r.data.added === 6, JSON.stringify(r.data));
@@ -207,7 +239,7 @@ console.log("\n=== 2. The college declares its cohort and uploads a roster ===")
 console.log("\n=== 3. Students claim roll numbers from that roster ===");
 const students = [];
 for (let i = 1; i <= 4; i++) {
-  const s = await account();
+  const s = await account(STUDENT_EMAIL(i));
   const r = await call("POST", "/me/claim-roll-number", {
     token: s.token,
     body: { collegeAddress: college.address, rollNumber: ROLL(i), cgpa: i === 4 ? 6.2 : 8.1 },
@@ -218,6 +250,39 @@ for (let i = 1; i <= 4; i++) {
   students.push(s);
 }
 check("Four students matched the roster", students.length === 4);
+{
+  // The attack this replaced: roll numbers run in sequence, so a classmate's is
+  // a guess away. It used to verify the guesser as that student, copy their real
+  // name across, and lock the real one out for good with no way back.
+  const impostor = await account();
+  const grab = await call("POST", "/me/claim-roll-number", {
+    token: impostor.token,
+    body: { collegeAddress: college.address, rollNumber: ROLL(5) },
+  });
+  check("Someone else's roll number is queued, not granted",
+    grab.status === 202 && grab.data?.queued === true, JSON.stringify(grab.data));
+
+  const rosterNow = await call("GET", "/college/roster", { token: college.token });
+  const row = rosterNow.data?.roster?.find((r) => r.rollNumber === ROLL(5));
+  check("And it stays free for the student it belongs to", row?.claimed === false, JSON.stringify(row));
+
+  const mine = await call("GET", "/me", { token: impostor.token });
+  check("The impostor gets none of that student's details",
+    !mine.data?.profile?.fullName, JSON.stringify(mine.data?.profile?.fullName));
+}
+
+{
+  // And the way back, which did not exist: the cell can free a row it decides
+  // the wrong account is holding.
+  const freed = await call("POST", `/college/roster/${ROLL(4)}/release`, { token: college.token });
+  check("The cell can take a claim back", freed.status === 200, JSON.stringify(freed.data));
+  const reclaim = await call("POST", "/me/claim-roll-number", {
+    token: students[3].token,
+    body: { collegeAddress: college.address, rollNumber: ROLL(4) },
+  });
+  check("And the right student can claim it again",
+    reclaim.status === 200 && reclaim.data?.matched === true, JSON.stringify(reclaim.data?.matched));
+}
 {
   const me = await call("GET", "/me", { token: students[0].token });
   check("Identity comes from the roster, not from the student",

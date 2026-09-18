@@ -25,12 +25,15 @@ export function upsertRosterEntries(collegeAddress, entries) {
   );
   const insert = db.prepare(
     `INSERT INTO roster_entries
-       (college_address, roll_number, full_name, course_code, batch_year, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+       (college_address, roll_number, full_name, course_code, batch_year, email, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(college_address, roll_number) DO UPDATE SET
        full_name   = excluded.full_name,
        course_code = excluded.course_code,
-       batch_year  = excluded.batch_year`
+       batch_year  = excluded.batch_year,
+       -- An upload that leaves the email out keeps whatever was there, so a
+       -- college re-uploading an old file can't quietly un-protect its rows.
+       email       = COALESCE(excluded.email, roster_entries.email)`
   );
 
   const run = db.transaction(() => {
@@ -61,6 +64,7 @@ export function upsertRosterEntries(collegeAddress, entries) {
         entry.full_name,
         entry.course_code,
         entry.batch_year,
+        entry.email ? entry.email.toLowerCase() : null,
         now
       );
       if (before) updated++;
@@ -98,6 +102,32 @@ export function releaseRosterClaim(address) {
   db.prepare(
     "UPDATE roster_entries SET claimed_by = NULL, claimed_at = NULL WHERE LOWER(claimed_by) = LOWER(?)"
   ).run(address);
+}
+
+/**
+ * Frees one roll number the college says was claimed by the wrong account, and
+ * returns the address it was taken from.
+ *
+ * Until this existed there was no way back from a wrong claim at all: the row
+ * stayed taken, the real student was told their roll number was already used,
+ * and the only remedy was editing the database by hand.
+ *
+ * @returns {string|null} the address the claim was released from, or null when
+ *          the row does not exist or was not claimed.
+ */
+export function releaseRosterClaimByRoll(collegeAddress, rollNumber) {
+  const row = db
+    .prepare(
+      "SELECT claimed_by FROM roster_entries WHERE college_address = ? AND roll_number = ? AND claimed_by IS NOT NULL"
+    )
+    .get(collegeAddress.toLowerCase(), rollNumber);
+  if (!row) return null;
+
+  db.prepare(
+    `UPDATE roster_entries SET claimed_by = NULL, claimed_at = NULL
+      WHERE college_address = ? AND roll_number = ?`
+  ).run(collegeAddress.toLowerCase(), rollNumber);
+  return row.claimed_by;
 }
 
 export function getRosterEntryForAddress(address) {

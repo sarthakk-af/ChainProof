@@ -1,4 +1,5 @@
 import { db } from "./connection.js";
+import { normalizeEmail } from "../limits.js";
 
 /**
  * Email addresses are matched case-insensitively, and stored lowercased.
@@ -15,9 +16,7 @@ import { db } from "./connection.js";
  * signup, login, OTP, resend, reset, check-email — gets it for free and can't
  * drift apart later.
  */
-export function normalizeEmail(email) {
-  return String(email ?? "").trim().toLowerCase();
-}
+export { normalizeEmail } from "../limits.js";
 
 export function createUser({ email, passwordHash, walletAddress, encryptedPrivateKey }) {
   const result = db
@@ -33,8 +32,27 @@ export function getUserByEmail(email) {
   return db.prepare("SELECT * FROM users WHERE email = ?").get(normalizeEmail(email));
 }
 
+/** The account that holds a wallet address, for the college's roster view. */
+export function getUserByAddress(address) {
+  return db
+    .prepare("SELECT * FROM users WHERE LOWER(wallet_address) = LOWER(?)")
+    .get(String(address ?? ""));
+}
+
 export function getUserById(id) {
   return db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+}
+
+/**
+ * Removes an account that was never finished.
+ *
+ * Signup takes the row before spending gas on its wallet, so that a second
+ * signup for the same email is refused by the UNIQUE constraint rather than by
+ * a check the first one can slip past. If funding then fails there is nothing
+ * to keep, and a half-made account would block the address for good.
+ */
+export function deleteUser(userId) {
+  db.prepare("DELETE FROM users WHERE id = ?").run(userId);
 }
 
 export function setPasswordHash(userId, passwordHash) {

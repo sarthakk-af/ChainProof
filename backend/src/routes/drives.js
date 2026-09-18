@@ -23,14 +23,27 @@ import {
   DRIVE_STATUS,
   STAGE,
 } from "../chain.js";
-import { syncDrivePosted, syncDriveStatus, syncApplicationCount, findEventInReceipt } from "../indexer.js";
+import {
+  syncDrivePosted,
+  syncDriveStatus,
+  syncApplicationCount,
+  findEventInReceipt,
+  syncAfterWrite,
+} from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
 import { serializeDrive, STAGE_NAMES } from "../serializers.js";
 import { validateIpfsHash } from "../ipfsHash.js";
 import { byteLength } from "../limits.js";
-import { withIdempotency, fingerprintPayload, IdempotencyPendingError, IdempotencyKeyConflictError } from "../idempotency.js";
+import {
+  withIdempotency,
+  fingerprintPayload,
+  IdempotencyPendingError,
+  IdempotencyKeyConflictError,
+  IdempotencyUnresolvedError,
+} from "../idempotency.js";
 import { issueLimiter, announceLimiter } from "../middleware/chainWriteLimiter.js";
 import { logger } from "../logger.js";
+import { publicChainError } from "../chainErrors.js";
 
 /**
  * drives.js — a company's openings, and students applying to them.
@@ -110,10 +123,18 @@ drivesRouter.post("/", announceLimiter, async (req, res) => {
   if (deadline > date) {
     return res.status(400).json({ error: "Applications must close on or before the drive date." });
   }
+  // A deadline in the past posts a drive nobody can ever apply to: students see
+  // it and every application is refused with "applications have closed".
+  if (deadline * 1000 < Date.now()) {
+    return res.status(400).json({ error: "That application deadline has already passed." });
+  }
 
   try {
     const fingerprint = fingerprintPayload(["drive", collegeAddress, title, pkg, cgpaScaled, year, deadline, date, hashCheck.value]);
-    const receipt = await withIdempotency(req.user.id, idempotencyKey, fingerprint, () =>
+    // Everything that must happen exactly once lives inside here, and what
+    // comes back is the response itself — so a retry of a request whose answer
+    // was lost is replayed from the record rather than re-sent to the chain.
+    const answer = await withIdempotency(req.user.id, idempotencyKey, fingerprint, ({ markBroadcast }) =>
       withWalletLock(req.user.address, async (nonce) => {
         const drives = placementDriveAsSigner(getUserSigner(req.user.id));
         const tx = await drives.postDrive(
@@ -127,22 +148,36 @@ drivesRouter.post("/", announceLimiter, async (req, res) => {
           hashCheck.value,
           { nonce }
         );
-        return tx.wait();
+        markBroadcast();
+        const receipt = await tx.wait();
+
+        const posted = findEventInReceipt(placementDriveRead, "DrivePosted", receipt);
+        if (posted) {
+          await syncAfterWrite("posted drive", receipt.blockNumber, () =>
+            syncDrivePosted(posted, receipt)
+          );
+        }
+        const status = findEventInReceipt(placementDriveRead, "DriveStatusChanged", receipt);
+        if (status) {
+          await syncAfterWrite("drive status", receipt.blockNumber, () =>
+            syncDriveStatus(status, receipt)
+          );
+        }
+        return { txHash: receipt.hash, driveId: posted ? Number(posted[0]) : null };
       })
     );
 
-    const posted = findEventInReceipt(placementDriveRead, "DrivePosted", receipt);
-    if (posted) syncDrivePosted(posted, receipt);
-    const status = findEventInReceipt(placementDriveRead, "DriveStatusChanged", receipt);
-    if (status) syncDriveStatus(status, receipt);
-
     logger.info("drive_posted", { company: req.user.address, college: collegeAddress, title });
-    res.status(201).json({ txHash: receipt.hash, driveId: posted ? Number(posted[0]) : null });
+    res.status(201).json(answer);
   } catch (err) {
-    if (err instanceof IdempotencyPendingError || err instanceof IdempotencyKeyConflictError) {
+    if (
+      err instanceof IdempotencyPendingError ||
+      err instanceof IdempotencyKeyConflictError ||
+      err instanceof IdempotencyUnresolvedError
+    ) {
       return res.status(409).json({ error: err.message });
     }
-    const reason = err.reason || err.shortMessage || err.message;
+    const reason = publicChainError(err);
     logger.error("drive_post_failed", { company: req.user.address, reason });
     res.status(400).json({ error: `On-chain post failed: ${reason}` });
   }
@@ -195,12 +230,16 @@ drivesRouter.post("/:id/application-count", issueLimiter, async (req, res) => {
       return tx.wait();
     });
     const args = findEventInReceipt(placementDriveRead, "ApplicationCountRecorded", receipt);
-    if (args) syncApplicationCount(args, receipt);
+    if (args) {
+      await syncAfterWrite("applicant count", receipt.blockNumber, () =>
+        syncApplicationCount(args, receipt)
+      );
+    }
 
     logger.info("application_count_recorded", { driveId, count, company: req.user.address });
     res.json({ txHash: receipt.hash, applicationCount: count });
   } catch (err) {
-    const reason = err.reason || err.shortMessage || err.message;
+    const reason = publicChainError(err);
     res.status(400).json({ error: `On-chain update failed: ${reason}` });
   }
 });
@@ -221,11 +260,15 @@ async function changeDriveStatus(req, res, method, event) {
       return tx.wait();
     });
     const args = findEventInReceipt(placementDriveRead, "DriveStatusChanged", receipt);
-    if (args) syncDriveStatus(args, receipt);
+    if (args) {
+      await syncAfterWrite("drive withdrawal", receipt.blockNumber, () =>
+        syncDriveStatus(args, receipt)
+      );
+    }
     logger.info(event, { driveId, company: req.user.address });
     res.json({ drive: serializeDrive(getDrive(driveId)), txHash: receipt.hash });
   } catch (err) {
-    const reason = err.reason || err.shortMessage || err.message;
+    const reason = publicChainError(err);
     res.status(400).json({ error: `On-chain update failed: ${reason}` });
   }
 }
@@ -242,7 +285,11 @@ drivesRouter.get("/:id/applicants", (req, res) => {
   const caller = getActor(req.user.address);
   const isOwner = drive.company_address.toLowerCase() === req.user.address.toLowerCase();
   const isHost = drive.college_address.toLowerCase() === req.user.address.toLowerCase();
-  if (!caller || (!isOwner && !isHost)) {
+  // This list is the largest amount of personal data the platform hands over —
+  // every applicant's roll number, name, course, batch, CGPA and stage — and it
+  // was the one place that checked who was asking but not whether their account
+  // was still allowed to act.
+  if (!caller || caller.status !== STATUS.Active || (!isOwner && !isHost)) {
     return res.status(403).json({ error: "Not allowed to view this drive's applicants." });
   }
 
@@ -321,7 +368,11 @@ drivesRouter.get("/open", (req, res) => {
 
 drivesRouter.post("/:id/apply", (req, res) => {
   const actor = getActor(req.user.address);
-  if (!actor || actor.role !== ROLE.Student) {
+  // Status, not just role: applying is a database write the contract never
+  // sees, so a suspended student used to keep appearing in applicant lists,
+  // in the count the company attests on-chain, and in the contact details a
+  // company unlocks — after their access had been withdrawn.
+  if (!actor || actor.role !== ROLE.Student || actor.status !== STATUS.Active) {
     return res.status(403).json({ error: "Only a registered student can apply." });
   }
 

@@ -286,20 +286,27 @@ function RosterPanel({ onError, onNotice }) {
     onError("");
     setRowErrors([]);
 
-    // One student per line: roll, name, course, batch year.
+    // One student per line: roll, name, course, batch year, college email.
+    // The email is what lets that student — and nobody else — confirm the row
+    // themselves; a line without one waits for you in Students instead.
     const entries = raw
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const [rollNumber, fullName, courseCode, batchYear] = line.split(",").map((p) => (p ?? "").trim());
-        return { rollNumber, fullName, courseCode, batchYear };
+        const [rollNumber, fullName, courseCode, batchYear, email] = line
+          .split(",")
+          .map((p) => (p ?? "").trim());
+        return { rollNumber, fullName, courseCode, batchYear, email };
       });
 
     try {
       const result = await api.post("/college/roster", { entries });
       onNotice(
         `${result.added} added, ${result.updated} updated` +
+          (result.withoutEmail
+            ? `, ${result.withoutEmail} without an email (those students wait in Students)`
+            : "") +
           (result.skippedClaimed.length ? `, ${result.skippedClaimed.length} left alone (already claimed)` : "")
       );
       setRaw("");
@@ -314,6 +321,25 @@ function RosterPanel({ onError, onNotice }) {
 
   const claimed = roster.filter((r) => r.claimed).length;
   const [search, setSearch] = useState("");
+  const [releasing, setReleasing] = useState(null);
+
+  // Taking a roll number back from the wrong account. Confirmed first, because
+  // it un-verifies whoever holds it.
+  const release = async (rollNumber) => {
+    setReleasing(rollNumber);
+    onError("");
+    try {
+      const result = await api.post(`/college/roster/${encodeURIComponent(rollNumber)}/release`, {});
+      onNotice(`${rollNumber} is free again. ${result.note}`);
+      load();
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setReleasing(null);
+      setConfirming(null);
+    }
+  };
+  const [confirming, setConfirming] = useState(null);
   const needle = search.trim().toLowerCase();
   const shown = needle
     ? roster.filter((r) => `${r.rollNumber} ${r.fullName}`.toLowerCase().includes(needle))
@@ -325,11 +351,12 @@ function RosterPanel({ onError, onNotice }) {
         <div>
           <h3 className="card-title">Upload your roster</h3>
           <p className="card-lead">
-            One student per line. Students can only sign up with a roll number on this list.
+            One student per line. A student can only confirm their own row if you include
+            their college email — without one, they wait for you in Students.
           </p>
         </div>
         <label htmlFor="roster-raw" style={{ marginBottom: -6 }}>
-          Roll number, full name, course, batch year
+          Roll number, full name, course, batch year, college email
         </label>
         <textarea
           id="roster-raw"
@@ -337,7 +364,10 @@ function RosterPanel({ onError, onNotice }) {
           rows={7}
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
-          placeholder={"21CE1042, Asha Patil, CSE, 2026\n21CE1043, Rahul Nair, CSE, 2026"}
+          placeholder={
+            "21CE1042, Asha Patil, CSE, 2026, asha.patil@somaiya.edu\n" +
+            "21CE1043, Rahul Nair, CSE, 2026, rahul.nair@somaiya.edu"
+          }
         />
         {rowErrors.length > 0 && (
           <div className="alert alert-danger" role="alert">
@@ -375,13 +405,44 @@ function RosterPanel({ onError, onNotice }) {
             <div key={r.rollNumber} className="row" style={{ padding: "8px 16px" }}>
               <span style={{ fontSize: "0.85rem" }}>
                 <span className="mono-addr">{r.rollNumber}</span> {r.fullName}
+                {!r.email && (
+                  <span className="row-meta" title="Without an email, this student has to be confirmed by you">
+                    {" "}· no email
+                  </span>
+                )}
               </span>
-              <span className="row-meta">
-                {r.courseCode} {r.batchYear} ·{" "}
-                <span style={r.claimed ? { color: "var(--accent-success)" } : undefined}>
-                  {r.claimed ? "signed up" : "not yet"}
+
+              {confirming === r.rollNumber ? (
+                <span className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
+                  <span className="row-meta">
+                    Free {r.rollNumber} for the right student? {r.claimedByEmail} stops being verified.
+                  </span>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    disabled={releasing === r.rollNumber}
+                    onClick={() => release(r.rollNumber)}
+                  >
+                    {releasing === r.rollNumber ? <span className="spinner" /> : "Free it"}
+                  </button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirming(null)}>
+                    Cancel
+                  </button>
                 </span>
-              </span>
+              ) : (
+                <span className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
+                  <span className="row-meta">
+                    {r.courseCode} {r.batchYear} ·{" "}
+                    <span style={r.claimed ? { color: "var(--accent-success)" } : undefined}>
+                      {r.claimed ? r.claimedByEmail || "signed up" : "not yet"}
+                    </span>
+                  </span>
+                  {r.claimed && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => setConfirming(r.rollNumber)}>
+                      Wrong person?
+                    </button>
+                  )}
+                </span>
+              )}
             </div>
           ))}
           {shown.length > 100 && (
