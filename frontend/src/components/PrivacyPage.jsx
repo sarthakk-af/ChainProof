@@ -23,7 +23,7 @@ export default function PrivacyPage() {
   return (
     <div className="page-container animate-fade-in-up" style={{ maxWidth: 760 }}>
       <div className="section-eyebrow">Privacy &amp; Data</div>
-      <h2 style={{ marginBottom: 8 }}>What This App Stores, and Who Sees It</h2>
+      <h2 style={{ marginBottom: 8 }}>What this app stores, and who sees it</h2>
       <p style={{ marginBottom: 32 }}>
         A plain-language explanation, not a legal document. The short version: the record of
         the placement season is permanent and public; everything about you as a person is

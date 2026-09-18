@@ -33,14 +33,14 @@ export default function PendingApproval() {
   }
 
   return (
-    <div className="page-container animate-fade-in-up text-center" style={{ maxWidth: 560, marginTop: 100 }}>
+    <div className="page-container page-status animate-fade-in-up">
       {isRejected ? (
         <XCircle size={40} style={{ color: "var(--accent-danger)", marginBottom: 16 }} />
       ) : (
         <Clock size={40} style={{ color: "var(--accent-warning)", marginBottom: 16 }} />
       )}
       <h2 style={{ marginBottom: 12 }}>
-        {isRejected ? "Registration Rejected" : "Verification Pending"}
+        {isRejected ? "Registration rejected" : "Verification pending"}
       </h2>
       <p style={{ marginBottom: 28 }}>
         {isRejected ? (
@@ -64,15 +64,15 @@ export default function PendingApproval() {
       <div className="flex justify-center gap-12">
         {isRejected ? (
           <button className="btn btn-primary" onClick={() => setResubmitting(true)}>
-            <RefreshCw size={16} /> Try Again
+            <RefreshCw size={16} /> Try again
           </button>
         ) : (
           <button className="btn btn-secondary" onClick={() => refreshActor()}>
-            <RefreshCw size={16} /> Check Again
+            <RefreshCw size={16} /> Check again
           </button>
         )}
         <button className="btn btn-ghost" onClick={logout}>
-          <LogOut size={16} /> Sign Out
+          <LogOut size={16} /> Sign out
         </button>
       </div>
     </div>

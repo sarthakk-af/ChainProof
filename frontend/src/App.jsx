@@ -26,6 +26,7 @@ import PrivacyPage        from "./components/PrivacyPage.jsx";
 import ProfilePage        from "./components/ProfilePage.jsx";
 import PendingApproval    from "./components/PendingApproval.jsx";
 import SuspendedAccount   from "./components/SuspendedAccount.jsx";
+import ServiceUnavailable from "./components/ServiceUnavailable.jsx";
 import PublicDashboard    from "./components/PublicDashboard.jsx";
 import ResetPassword      from "./components/ResetPassword.jsx";
 import AdminPanel         from "./components/AdminPanel.jsx";
@@ -66,6 +67,7 @@ function AppShell() {
       );
     }
     if (path === "/privacy") return <PrivacyPage />;
+    if (status === "unavailable") return <ServiceUnavailable />;
     if (status !== "authenticated") return <LandingPage />;
     if (path === "/profile") return <ProfilePage />;
 

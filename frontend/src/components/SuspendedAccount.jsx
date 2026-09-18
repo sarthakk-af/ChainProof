@@ -19,7 +19,7 @@ export default function SuspendedAccount() {
   const { actor, logout } = useAuth();
 
   return (
-    <div className="page-container animate-fade-in-up text-center" style={{ maxWidth: 560, marginTop: 100 }}>
+    <div className="page-container page-status animate-fade-in-up">
       <Ban size={40} style={{ color: "var(--accent-warning)", marginBottom: 16 }} />
       <h2 style={{ marginBottom: 12 }}>This account is suspended</h2>
 

@@ -60,12 +60,21 @@ export default function CompanyDashboard() {
 
   return (
     <div className="page-container animate-fade-in-up">
-      <div className="section-eyebrow">Recruiter</div>
-      <h2 style={{ marginBottom: 4 }}>{actor?.name}</h2>
-      <p style={{ marginBottom: 24, fontSize: "0.85rem", color: "var(--text-muted)" }}>
-        You set your own terms and record your own decisions. The college decides only
-        whether a drive runs on its campus.
-      </p>
+      <header className="page-head">
+        <div className="section-eyebrow">Recruiter</div>
+        <h2>{actor?.name}</h2>
+        <p>
+          You set your own terms and record your own decisions. The college decides only
+          whether a drive runs on its campus.
+        </p>
+      </header>
+
+      <Tabs
+        tabs={TABS}
+        value={tab}
+        onChange={(id) => { setTab(id); setError(""); setNotice(""); }}
+        label="Recruiter sections"
+      />
 
       {error && (
         <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>
@@ -80,20 +89,13 @@ export default function CompanyDashboard() {
         </div>
       )}
 
-      <Tabs
-        tabs={TABS}
-        value={tab}
-        onChange={(id) => { setTab(id); setError(""); setNotice(""); }}
-        label="Recruiter sections"
-      />
-
       {tab === "students" && <TalentPool />}
       {tab === "notices" && <Announcements role="Company" drives={drives} />}
 
       {tab === "drives" && (
       <>
-      <div className="flex items-center justify-between" style={{ marginBottom: 16, flexWrap: "wrap", gap: 8 }}>
-        <div className="section-eyebrow" style={{ marginBottom: 0 }}>Your drives ({drives.length})</div>
+      <div className="section-head">
+        <div className="section-eyebrow">Your drives ({drives.length})</div>
         <button className="btn btn-primary btn-sm" onClick={() => setShowPost((v) => !v)}>
           <Plus size={14} /> {showPost ? "Cancel" : "Post an opening"}
         </button>
@@ -108,7 +110,7 @@ export default function CompanyDashboard() {
 
       {drives.length === 0 && !showPost ? (
         <div className="empty-state glass-card">
-          <Briefcase size={48} className="empty-state-icon" />
+          <Briefcase className="empty-state-icon" />
           <h3>No openings yet</h3>
           <p style={{ fontSize: "0.85rem" }}>Post one and the college will decide whether to host it.</p>
         </div>
@@ -194,32 +196,31 @@ function PostDriveForm({ onPosted, onError }) {
   };
 
   return (
-    <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16" style={{ marginBottom: 20 }}>
-      <div className="form-group">
-        <label htmlFor="d-college">College</label>
-        <select id="d-college" value={form.collegeAddress} onChange={set("collegeAddress")} required>
-          <option value="">Select…</option>
-          {colleges.map((c) => <option key={c.address} value={c.address}>{c.name}</option>)}
-        </select>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="d-role">Role title</label>
-        <input id="d-role" value={form.roleTitle} onChange={set("roleTitle")} placeholder="Software Engineer" required />
-      </div>
-
-      <div className="grid-2" style={{ gap: 12 }}>
+    <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-12" style={{ marginBottom: 16 }}>
+      <div className="form-grid">
+        <div className="form-group">
+          <label htmlFor="d-role">Role title</label>
+          <input id="d-role" value={form.roleTitle} onChange={set("roleTitle")} placeholder="Software Engineer" required />
+        </div>
+        {/* With one college on the platform it is already chosen, so the picker
+            only appears when there is actually a choice to make. */}
+        {colleges.length !== 1 && (
+          <div className="form-group">
+            <label htmlFor="d-college">College</label>
+            <select id="d-college" value={form.collegeAddress} onChange={set("collegeAddress")} required>
+              <option value="">Select…</option>
+              {colleges.map((c) => <option key={c.address} value={c.address}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
         <div className="form-group">
           <label htmlFor="d-package">Annual package (₹)</label>
           <input id="d-package" type="number" value={form.annualPackage} onChange={set("annualPackage")} placeholder="650000" required />
         </div>
         <div className="form-group">
-          <label htmlFor="d-cgpa">Minimum CGPA</label>
+          <label htmlFor="d-cgpa">Minimum CGPA <span className="label-optional">(optional)</span></label>
           <input id="d-cgpa" type="number" step="0.01" min="0" max="10" value={form.minCgpa} onChange={set("minCgpa")} placeholder="7.00" />
         </div>
-      </div>
-
-      <div className="grid-2" style={{ gap: 12 }}>
         <div className="form-group">
           <label htmlFor="d-batch">Batch year</label>
           <input id="d-batch" type="number" value={form.batchYear} onChange={set("batchYear")} placeholder="2026" required />
@@ -228,21 +229,18 @@ function PostDriveForm({ onPosted, onError }) {
           <label htmlFor="d-deadline">Applications close</label>
           <input id="d-deadline" type="date" value={form.applicationDeadline} onChange={set("applicationDeadline")} required />
         </div>
+        <div className="form-group">
+          <label htmlFor="d-date">Drive date</label>
+          <input id="d-date" type="date" value={form.driveDate} onChange={set("driveDate")} required />
+        </div>
+        <div className="form-group span-all">
+          <label htmlFor="d-desc">Description <span className="label-optional">(optional)</span></label>
+          <textarea id="d-desc" rows={3} value={form.description} onChange={set("description")} />
+        </div>
       </div>
 
-      <div className="form-group">
-        <label htmlFor="d-date">Drive date</label>
-        <input id="d-date" type="date" value={form.driveDate} onChange={set("driveDate")} required />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="d-desc">Description</label>
-        <textarea id="d-desc" value={form.description} onChange={set("description")} style={{ height: 100 }} />
-      </div>
-
-      <p style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-        The package and CGPA cutoff are published on-chain before applications open, so
-        they can't be quietly changed later to explain away a rejection.
+      <p className="form-hint" style={{ margin: 0 }}>
+        The package and CGPA cutoff go on-chain before applications open, so they can't be changed later.
       </p>
 
       <button type="submit" className="btn btn-primary" disabled={busy}>
@@ -315,7 +313,7 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onToggle(); } }}
       >
         <div>
-          <strong style={{ fontFamily: "var(--font-head)" }}>{drive.roleTitle}</strong>
+          <strong className="item-title">{drive.roleTitle}</strong>
           <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
             {drive.collegeName} · batch {drive.batchYear} · {formatDate(drive.driveDate)}
           </div>
@@ -340,7 +338,7 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
             </span>
             {unpublished && (
               <button className="btn btn-ghost btn-sm" onClick={publishCount} disabled={busy === "count"}>
-                <Lock size={13} /> Publish the applicant count
+                {busy === "count" ? <span className="spinner" /> : <><Lock size={14} /> Publish the applicant count</>}
               </button>
             )}
           </div>
@@ -353,7 +351,7 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
           )}
 
           {applicants.length === 0 ? (
-            <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>Nobody has applied yet.</p>
+            <div className="empty-state"><p>Nobody has applied yet.</p></div>
           ) : (
             <div className="flex flex-col gap-8">
               {applicants.map((a) => (
@@ -370,10 +368,10 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
                       <button
                         key={s}
                         className="btn btn-ghost btn-sm"
-                        disabled={busy === a.address + s}
+                        disabled={typeof busy === "string" && busy.startsWith(a.address)}
                         onClick={() => recordStage(a.address, s)}
                       >
-                        {STAGE_LABEL[s]}
+                        {busy === a.address + s ? <span className="spinner" /> : STAGE_LABEL[s]}
                       </button>
                     ))}
                   </div>

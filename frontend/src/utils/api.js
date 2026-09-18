@@ -16,7 +16,9 @@ export function setAuthToken(token) {
 }
 
 async function request(path, { method = "GET", body, headers = {} } = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  let res;
+  try {
+    res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
@@ -24,7 +26,12 @@ async function request(path, { method = "GET", body, headers = {} } = {}) {
       ...headers,
     },
     body: body ? JSON.stringify(body) : undefined,
-  });
+    });
+  } catch {
+    // fetch only throws when no response arrived at all. Its own message is
+    // "Failed to fetch", which tells the reader nothing.
+    throw new Error("Can't reach the ChainProof server. Check that the backend is running.");
+  }
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
@@ -33,6 +40,7 @@ async function request(path, { method = "GET", body, headers = {} } = {}) {
     // carry extra fields on an error response that the caller needs to act
     // on — attach the whole body rather than just the message string.
     Object.assign(err, data);
+    err.status = res.status;
     throw err;
   }
   return data;

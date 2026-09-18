@@ -50,6 +50,10 @@ export function createApp() {
    * working rather than after.
    */
   app.get("/health", async (_req, res) => {
+    const { chainProblem } = await import("./chainHealth.js");
+    if (chainProblem()) {
+      return res.status(503).json({ status: "error", error: chainProblem() });
+    }
     try {
       const { provider } = await import("./chain.js");
       const { getTreasuryBalance, treasuryAddress } = await import("./treasury.js");

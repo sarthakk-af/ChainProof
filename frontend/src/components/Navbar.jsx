@@ -6,7 +6,7 @@
  * the app that only "Sign Out" can escape from.
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link2, Sun, Moon, BarChart3, LayoutDashboard, User, LogOut, Info, LogIn, UserPlus } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Link, usePath } from "../utils/navigation.jsx";
@@ -33,8 +33,21 @@ export default function Navbar() {
 
   const toggleTheme = () => setTheme((t) => (t === "dark" ? "light" : "dark"));
 
+  // The bar's height, for anything that sticks just below it (the tab bars).
+  // Measured rather than hard-coded because the bar wraps on narrow screens.
+  const navRef = useRef(null);
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(() => {
+      document.documentElement.style.setProperty("--nav-h", `${el.offsetHeight}px`);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <nav className="navbar animate-fade-in">
+    <nav ref={navRef} className="navbar animate-fade-in">
       {/* Brand — always links back home */}
       <div className="flex items-center gap-12">
         <Link to="/" className="navbar-brand" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>

@@ -470,6 +470,6 @@ if (FULL) {
 } else {
   console.log("\nRun `npm run seed:full` to also create students, a drive and a part-run funnel.");
 }
-console.log(`\nPublic dashboard (no sign-in): http://localhost:5173/public`);
+console.log(`\nPlacement results (no sign-in): http://localhost:5173/results`);
 console.log(`${"=".repeat(64)}\n`);
 }

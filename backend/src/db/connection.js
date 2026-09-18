@@ -526,6 +526,10 @@ export function resetMirrorForNewDeployment(fingerprint) {
   // keeping them meant each reset-and-seed left another copy of the same notice
   // under the college's reused login, which read like invented data.
   db.exec("DELETE FROM announcements;");
+  // The action log records approvals and suspensions of identities on the old
+  // chain, each with a transaction hash that no longer exists. Shown after a
+  // reset, it listed a company as approved when no company was registered.
+  db.exec("DELETE FROM admin_actions;");
   db.prepare(
     "UPDATE indexer_state SET last_synced_block = 0, deployment_fingerprint = ? WHERE id = 1"
   ).run(fingerprint);

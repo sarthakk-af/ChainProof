@@ -76,31 +76,43 @@ export default function ProjectExplainer() {
   return (
     <div className="animate-fade-in-up">
       {/* Hero */}
-      <div className="hero-grid" style={{ display: "grid", gridTemplateColumns: "1.05fr 0.95fr", gap: 48, alignItems: "center", marginBottom: 64 }}>
+      <section className="hero-grid landing-section">
         <div>
-          <div className="eyebrow-pill" style={{ marginBottom: 22 }}>
+          <div className="eyebrow-pill" style={{ marginBottom: 16 }}>
             <span className="dot" /> Public record · no login required to check
           </div>
-          <h1 style={{ marginBottom: 20 }}>A placement record nobody can fudge.</h1>
-          <p style={{ fontSize: "1.05rem", maxWidth: 460, marginBottom: 28 }}>
+          <h1 className="hero-title">A placement record nobody can fudge.</h1>
+          <p className="hero-lead">
             An internal placement platform for one college, where each figure is signed by the
             party with nothing to gain from inflating it — and then can never be changed.
           </p>
           {/* One main action and one alternative. Placement results live in the
-              top bar, so they are not repeated here. */}
+              top bar, so they are only offered here as a small link. */}
           {signedIn ? (
-            <Link to="/" className="btn btn-primary btn-lg">Go to your dashboard</Link>
+            <Link to="/" className="btn btn-primary">Go to your dashboard</Link>
           ) : (
             <>
               <div className="flex gap-12 items-center" style={{ flexWrap: "wrap" }}>
-                <Link to="/signup" className="btn btn-primary btn-lg">Create an account</Link>
-                <Link to="/login" className="btn btn-ghost btn-lg">Sign in</Link>
+                <Link to="/signup" className="btn btn-primary">Create an account</Link>
+                <Link to="/login" className="btn btn-ghost">Sign in</Link>
               </div>
-              <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 16 }}>
-                No wallet or crypto knowledge needed. Just want to see the numbers?{" "}
+              <p className="form-hint" style={{ marginTop: 12 }}>
+                No wallet or crypto knowledge needed. Just want the numbers?{" "}
                 <Link to="/results">View placement results</Link>.
               </p>
             </>
+          )}
+
+          {/* Real figures from the public API, never invented ones. No overall
+              placement rate: a rate needs a denominator, and the honest one is
+              per cohort, on the results page. */}
+          {stats && (
+            <dl className="hero-stats">
+              <div><dt>Companies</dt><dd>{stats.companies}</dd></div>
+              <div><dt>Drives</dt><dd>{stats.drives}</dd></div>
+              <div><dt>Students verified</dt><dd>{stats.students}</dd></div>
+              <div><dt>Accepted offers</dt><dd>{stats.placed}</dd></div>
+            </dl>
           )}
         </div>
 
@@ -130,13 +142,30 @@ export default function ProjectExplainer() {
             <span className="stamp-badge">IMMUTABLE</span>
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* How it works */}
+      <section className="landing-section">
+        <div className="landing-head">
+          <h2>How a record gets made</h2>
+          <p>It works like any website. The blockchain part happens behind the scenes.</p>
+        </div>
+        <div className="steps-grid">
+          {STEPS.map((s) => (
+            <div key={s.n} className="step-col">
+              <span className="num">{s.n}</span>
+              <h4>{s.title}</h4>
+              <p>{s.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       {/* Problem / comparison */}
-      <div style={{ marginBottom: 64 }}>
-        <div style={{ maxWidth: 620, marginBottom: 24 }}>
-          <h2 style={{ marginBottom: 8 }}>A placement number is only as good as the record behind it.</h2>
-          <p style={{ fontSize: "0.92rem" }}>
+      <section className="landing-section">
+        <div className="landing-head">
+          <h2>A placement number is only as good as the record behind it.</h2>
+          <p>
             "92% placed" means nothing until you know 92% of what, who counted, and whether
             anyone could have changed it since.
           </p>
@@ -157,88 +186,32 @@ export default function ProjectExplainer() {
             <div className="compare-item good"><span className="mk">✓</span> Anyone can check it on a public page, no account needed</div>
           </div>
         </div>
-      </div>
-
-      {/* How it works */}
-      <div style={{ marginBottom: 64 }}>
-        <div style={{ maxWidth: 620, marginBottom: 32 }}>
-          <h2 style={{ marginBottom: 8 }}>How a record gets made</h2>
-          <p style={{ fontSize: "0.92rem" }}>It works like any website. The blockchain part happens behind the scenes.</p>
-        </div>
-        <div className="steps-grid">
-          {STEPS.map((s) => (
-            <div key={s.n} className="step-col">
-              <span className="num">{s.n}</span>
-              <h4>{s.title}</h4>
-              <p>{s.body}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+      </section>
 
       {/* Who uses it */}
-      <div style={{ marginBottom: 64 }}>
-        <div style={{ maxWidth: 620, marginBottom: 24 }}>
-          <h2 style={{ marginBottom: 8 }}>Three roles, each signing only its own part</h2>
-          <p style={{ fontSize: "0.92rem" }}>Parents and anyone else can read the result without an account.</p>
+      <section className="landing-section">
+        <div className="landing-head">
+          <h2>Three roles, each signing only its own part</h2>
+          <p>Parents and anyone else can read the results without an account.</p>
         </div>
-        <div className="grid-3 stagger-children">
+        <div className="grid-3" style={{ gap: 14 }}>
           {ROLES.map((r) => (
-            <div key={r.title} className="glass-card p-24 animate-fade-in-up">
-              <r.Icon size={24} style={{ color: "var(--accent-primary)" }} />
-              <div className="section-eyebrow" style={{ marginTop: 10 }}>{r.tag}</div>
-              <h3 style={{ margin: "10px 0" }}>{r.title}</h3>
-              <p style={{ fontSize: "0.85rem" }}>{r.body}</p>
+            <div key={r.title} className="glass-card p-24">
+              <div className="flex items-center gap-8" style={{ marginBottom: 8 }}>
+                <r.Icon size={18} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
+                <span className="section-eyebrow" style={{ margin: 0 }}>{r.tag}</span>
+              </div>
+              <h3 className="card-title">{r.title}</h3>
+              <p style={{ fontSize: "0.84rem" }}>{r.body}</p>
             </div>
           ))}
         </div>
-      </div>
+      </section>
 
-      {/* Real stats */}
-      {stats && (
-        <div style={{ marginBottom: 64 }}>
-          <div className="stats-strip">
-            <div className="stat-item">
-              <span className="stat-n">{stats.companies}</span>
-              <span className="stat-l">Companies approved to recruit</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-n">{stats.drives}</span>
-              <span className="stat-l">Drives posted</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-n">{stats.students}</span>
-              <span className="stat-l">Students verified</span>
-            </div>
-            <div className="stat-item">
-              <span className="stat-n">{stats.placed}</span>
-              <span className="stat-l">Students who accepted an offer</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* What makes it trustworthy */}
-      <div className="grid-2" style={{ gap: 16, marginBottom: 24 }}>
-        <div className="glass-card p-24">
-          <h3 style={{ marginBottom: 8, fontSize: "1rem" }}>Mistakes stay visible</h3>
-          <p style={{ fontSize: "0.85rem" }}>
-            A withdrawn offer, a revised batch size, a session that didn't happen — each is a
-            new entry beside the original, never an edit that hides it.
-          </p>
-        </div>
-        <div className="glass-card p-24">
-          <h3 style={{ marginBottom: 8, fontSize: "1rem" }}>People stay private</h3>
-          <p style={{ fontSize: "0.85rem" }}>
-            The blockchain holds events, not people. Names, roll numbers and resumes stay in the
-            college's own database, and companies browse students without seeing who they are.
-          </p>
-        </div>
-      </div>
-
-      <p className="text-center" style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-        Want to know exactly what is stored, and where?{" "}
-        <Link to="/privacy">Read the Privacy &amp; Data page →</Link>
+      <p className="text-center form-hint">
+        The blockchain holds events, not people — names, roll numbers and resumes stay in the
+        college's own database.{" "}
+        <Link to="/privacy">What is stored, and where →</Link>
       </p>
     </div>
   );

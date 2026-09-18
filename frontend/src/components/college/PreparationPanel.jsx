@@ -17,7 +17,6 @@ import {
   GraduationCap,
   Plus,
   X,
-  AlertCircle,
   CheckCircle2,
   Ban,
   Users,
@@ -50,32 +49,29 @@ export default function PreparationPanel({ onError, onNotice }) {
   if (loading) return <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading…</p>;
 
   return (
-    <div className="flex flex-col gap-20">
-      <div className="glass-card p-24">
-        <div className="flex items-center gap-8" style={{ marginBottom: 6 }}>
-          <GraduationCap size={16} />
-          <strong style={{ fontFamily: "var(--font-head)" }}>Preparation record</strong>
-        </div>
-        <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-          Training, mock interviews, workshops and seminars you ran. This is the one record
-          here that is yours to write — and it is permanent, so it shows what you did as
-          the year went rather than what was remembered at the end of it.
-        </p>
-
-        {summary && (
-          <div className="flex gap-24" style={{ flexWrap: "wrap", marginTop: 16 }}>
-            <Stat label="Sessions held" value={summary.standing} />
-            <Stat label="Total attendance" value={summary.attendances} />
-            {summary.cancelled > 0 && <Stat label="Cancelled" value={summary.cancelled} muted />}
+    <div className="stack">
+      <div>
+        <div className="section-head">
+          <div className="section-eyebrow flex items-center gap-6">
+            <GraduationCap size={13} /> Preparation record
+            {summary && (
+              <span style={{ color: "var(--text-muted)" }}>
+                · {summary.standing} held · {summary.attendances} attended
+                {summary.cancelled > 0 && ` · ${summary.cancelled} cancelled`}
+              </span>
+            )}
           </div>
-        )}
+          {!adding && (
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)}>
+              <Plus size={14} /> Record a session
+            </button>
+          )}
+        </div>
+        <p className="form-hint" style={{ margin: 0 }}>
+          Training, mock interviews, workshops and seminars you ran. Entries are permanent;
+          one that didn't happen is marked, not removed.
+        </p>
       </div>
-
-      {!adding && (
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => setAdding(true)} style={{ alignSelf: "flex-start" }}>
-          <Plus size={14} /> Record a session
-        </button>
-      )}
 
       {adding && (
         <EventForm
@@ -90,96 +86,58 @@ export default function PreparationPanel({ onError, onNotice }) {
         />
       )}
 
-      {events.length === 0 && (
-        <div className="glass-card p-24" style={{ textAlign: "center" }}>
-          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-            Nothing recorded yet.
-          </p>
-        </div>
-      )}
-
-      <div className="flex flex-col gap-12">
+      <div className="row-list">
+        {events.length === 0 && <div className="row-empty">Nothing recorded yet.</div>}
         {events.map((e) => (
-          <div key={e.id} className="glass-card p-24" style={{ opacity: e.cancelled ? 0.72 : 1 }}>
-            <div className="flex items-start justify-between gap-12" style={{ flexWrap: "wrap" }}>
-              <div style={{ minWidth: 0 }}>
-                <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
-                  <strong style={{ fontFamily: "var(--font-head)" }}>{e.title}</strong>
-                  <span className="pill pill-muted" style={{ fontSize: "0.68rem" }}>{e.kind}</span>
-                  {e.cancelled && (
-                    <span className="pill" style={{ fontSize: "0.68rem" }}>
-                      <Ban size={10} /> Did not happen
-                    </span>
-                  )}
-                </div>
-                <div
-                  style={{
-                    fontSize: "0.78rem",
-                    color: "var(--text-muted)",
-                    marginTop: 6,
-                    display: "flex",
-                    gap: 12,
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <CalendarDays size={12} /> {formatDate(e.heldOn)}
+          <div key={e.id} className="row" style={{ opacity: e.cancelled ? 0.72 : 1 }}>
+            <div style={{ minWidth: 0 }}>
+              <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
+                <strong className="item-title">{e.title}</strong>
+                <span className="pill pill-muted">{e.kind}</span>
+                {e.cancelled && (
+                  <span className="pill">
+                    <Ban size={10} /> Did not happen
                   </span>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    <Users size={12} /> {e.attendance} attended
-                  </span>
-                  <span>By {e.conductedBy}</span>
-                  {e.batchYear && <span>Batch {e.batchYear}</span>}
-                </div>
-                {e.cancelled && e.cancelReason && (
-                  <p style={{ fontSize: "0.8rem", marginTop: 8 }}>Reason: {e.cancelReason}</p>
                 )}
               </div>
-
-              {!e.cancelled && (
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setCancelling(e.id)}
-                  style={{ flexShrink: 0 }}
-                >
-                  <Ban size={13} /> Didn't happen
-                </button>
+              <div className="row-meta flex items-center gap-12" style={{ marginTop: 2, flexWrap: "wrap" }}>
+                <span className="flex items-center gap-4">
+                  <CalendarDays size={12} /> {formatDate(e.heldOn)}
+                </span>
+                <span className="flex items-center gap-4">
+                  <Users size={12} /> {e.attendance} attended
+                </span>
+                <span>By {e.conductedBy}</span>
+                {e.batchYear && <span>Batch {e.batchYear}</span>}
+              </div>
+              {e.cancelled && e.cancelReason && (
+                <div className="row-meta" style={{ marginTop: 2 }}>Reason: {e.cancelReason}</div>
               )}
             </div>
 
+            {!e.cancelled && cancelling !== e.id && (
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setCancelling(e.id)}>
+                <Ban size={14} /> Didn't happen
+              </button>
+            )}
+
             {cancelling === e.id && (
-              <CancelForm
-                eventId={e.id}
-                onCancel={() => setCancelling(null)}
-                onSaved={() => {
-                  setCancelling(null);
-                  load();
-                  onNotice("Recorded as cancelled. The original entry stays visible.");
-                }}
-                onError={onError}
-              />
+              <div style={{ flexBasis: "100%" }}>
+                <CancelForm
+                  eventId={e.id}
+                  onCancel={() => setCancelling(null)}
+                  onSaved={() => {
+                    setCancelling(null);
+                    load();
+                    onNotice("Recorded as cancelled. The original entry stays visible.");
+                  }}
+                  onError={onError}
+                />
+              </div>
             )}
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, muted }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontFamily: "var(--font-head)",
-          fontSize: "1.6rem",
-          color: muted ? "var(--text-muted)" : "inherit",
-        }}
-      >
-        {value}
-      </div>
-      <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{label}</div>
     </div>
   );
 }
@@ -221,16 +179,26 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
   };
 
   return (
-    <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16">
+    <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-12">
       <div className="flex items-center justify-between">
-        <strong style={{ fontFamily: "var(--font-head)" }}>Record a session</strong>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
+        <h3 className="card-title">Record a session</h3>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel} aria-label="Close">
           <X size={14} />
         </button>
       </div>
 
-      <div className="flex gap-12" style={{ flexWrap: "wrap" }}>
-        <div className="form-group" style={{ flex: "1 1 160px" }}>
+      <div className="form-grid">
+        <div className="form-group span-all">
+          <label htmlFor="pe-title">What it was</label>
+          <input
+            id="pe-title"
+            value={values.title}
+            onChange={set("title")}
+            placeholder="e.g. Aptitude Test Series - Round 3"
+            required
+          />
+        </div>
+        <div className="form-group">
           <label htmlFor="pe-kind">Kind</label>
           <select id="pe-kind" value={values.kind} onChange={set("kind")}>
             {kinds.map((k) => (
@@ -240,36 +208,21 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
             ))}
           </select>
         </div>
-        <div className="form-group" style={{ flex: "1 1 150px" }}>
+        <div className="form-group">
           <label htmlFor="pe-date">Date held</label>
           <input id="pe-date" type="date" value={values.date} onChange={set("date")} required />
         </div>
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="pe-title">What it was</label>
-        <input
-          id="pe-title"
-          value={values.title}
-          onChange={set("title")}
-          placeholder="e.g. Aptitude Test Series - Round 3"
-          required
-        />
-      </div>
-
-      <div className="form-group">
-        <label htmlFor="pe-by">Conducted by</label>
-        <input
-          id="pe-by"
-          value={values.conductedBy}
-          onChange={set("conductedBy")}
-          placeholder="e.g. Placement Cell, or an outside trainer"
-          required
-        />
-      </div>
-
-      <div className="flex gap-12" style={{ flexWrap: "wrap" }}>
-        <div className="form-group" style={{ flex: "1 1 140px" }}>
+        <div className="form-group">
+          <label htmlFor="pe-by">Conducted by</label>
+          <input
+            id="pe-by"
+            value={values.conductedBy}
+            onChange={set("conductedBy")}
+            placeholder="e.g. Placement Cell"
+            required
+          />
+        </div>
+        <div className="form-group">
           <label htmlFor="pe-attendance">Students who attended</label>
           <input
             id="pe-attendance"
@@ -280,9 +233,9 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
             placeholder="0"
           />
         </div>
-        <div className="form-group" style={{ flex: "1 1 140px" }}>
+        <div className="form-group">
           <label htmlFor="pe-batch">
-            Batch <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(blank = all)</span>
+            Batch <span className="label-optional">(blank = all)</span>
           </label>
           <input
             id="pe-batch"
@@ -296,14 +249,10 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
         </div>
       </div>
 
-      <div className="alert alert-info" role="status">
-        <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-        <span style={{ fontSize: "0.82rem" }}>
-          This goes on the blockchain and cannot be edited afterwards. If a session you
-          recorded turns out not to have happened, you can mark it so — the original entry
-          stays visible beside it.
-        </span>
-      </div>
+      <p className="form-hint" style={{ margin: 0 }}>
+        This goes on the blockchain and can't be edited later. If it turns out not to have
+        happened, you can mark it so.
+      </p>
 
       <button type="submit" className="btn btn-primary" disabled={busy}>
         {busy ? <span className="spinner" /> : <><CheckCircle2 size={14} /> Record on-chain</>}
@@ -341,7 +290,7 @@ function CancelForm({ eventId, onCancel, onSaved, onError }) {
           onChange={(e) => setReason(e.target.value)}
           placeholder="e.g. Trainer unavailable"
         />
-        <p style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: 4 }}>
+        <p className="form-hint">
           The entry stays on the record with this note attached — it is never removed.
         </p>
       </div>

@@ -15,7 +15,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   Users,
-  Search,
   AlertCircle,
   Lock,
   Unlock,
@@ -67,18 +66,11 @@ export default function TalentPool() {
   }
 
   return (
-    <div className="flex flex-col gap-20">
-      <div className="glass-card p-24">
-        <div className="flex items-center gap-8" style={{ marginBottom: 6 }}>
-          <Users size={16} />
-          <strong style={{ fontFamily: "var(--font-head)" }}>Students at this college</strong>
-        </div>
-        <p style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-          Profiles are shown without names or contact details. A student's name, email and
-          phone appear to you once they apply to one of your drives — applying is how they
-          agree to be contacted.
-        </p>
-      </div>
+    <div className="stack">
+      <p className="form-hint" style={{ margin: 0 }}>
+        <Users size={12} style={{ verticalAlign: "-2px" }} /> Students are shown without names or
+        contact details. Those appear once a student applies to one of your drives.
+      </p>
 
       {error && (
         <div className="alert alert-danger" role="alert">
@@ -87,9 +79,10 @@ export default function TalentPool() {
         </div>
       )}
 
-      <div className="glass-card p-24 flex flex-col gap-16">
-        <div className="flex gap-12" style={{ flexWrap: "wrap" }}>
-          <div className="form-group" style={{ flex: "1 1 140px" }}>
+      <div className="split">
+        <aside className="glass-card p-24 flex flex-col gap-12 side-sticky" aria-label="Filters">
+          <h3 className="card-title">Filters</h3>
+          <div className="form-group">
             <label htmlFor="tp-course">Course</label>
             <select
               id="tp-course"
@@ -105,37 +98,39 @@ export default function TalentPool() {
             </select>
           </div>
 
-          <div className="form-group" style={{ flex: "1 1 120px" }}>
-            <label htmlFor="tp-batch">Batch</label>
-            <select
-              id="tp-batch"
-              value={filters.batchYear}
-              onChange={(e) => setFilters((f) => ({ ...f, batchYear: e.target.value }))}
-            >
-              <option value="">Any</option>
-              {facets.batches.map((b) => (
-                <option key={b.year} value={b.year}>
-                  {b.year} ({b.students})
-                </option>
-              ))}
-            </select>
+          <div className="form-grid cols-2">
+            <div className="form-group">
+              <label htmlFor="tp-batch">Batch</label>
+              <select
+                id="tp-batch"
+                value={filters.batchYear}
+                onChange={(e) => setFilters((f) => ({ ...f, batchYear: e.target.value }))}
+              >
+                <option value="">Any</option>
+                {facets.batches.map((b) => (
+                  <option key={b.year} value={b.year}>
+                    {b.year} ({b.students})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="tp-cgpa">Min. CGPA</label>
+              <input
+                id="tp-cgpa"
+                type="number"
+                step="0.1"
+                min="0"
+                max="10"
+                value={filters.minCgpa}
+                onChange={(e) => setFilters((f) => ({ ...f, minCgpa: e.target.value }))}
+                placeholder="e.g. 7"
+              />
+            </div>
           </div>
 
-          <div className="form-group" style={{ flex: "1 1 120px" }}>
-            <label htmlFor="tp-cgpa">Minimum CGPA</label>
-            <input
-              id="tp-cgpa"
-              type="number"
-              step="0.1"
-              min="0"
-              max="10"
-              value={filters.minCgpa}
-              onChange={(e) => setFilters((f) => ({ ...f, minCgpa: e.target.value }))}
-              placeholder="e.g. 7"
-            />
-          </div>
-
-          <div className="form-group" style={{ flex: "1 1 140px" }}>
+          <div className="form-group">
             <label htmlFor="tp-placed">Availability</label>
             <select
               id="tp-placed"
@@ -147,83 +142,77 @@ export default function TalentPool() {
               <option value="true">Already placed</option>
             </select>
           </div>
-        </div>
 
-        {facets.skills.length > 0 && (
-          <div>
-            <label style={{ fontSize: "0.8rem", fontWeight: 600 }}>Skills</label>
-            <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", margin: "2px 0 8px" }}>
-              Picking more than one narrows to students who have all of them.
-            </p>
-            <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
-              {facets.skills.slice(0, 24).map((s) => (
+          {facets.skills.length > 0 && (
+            <div className="form-group">
+              <span className="field-label" id="tp-skills-label">Skills</span>
+              <p className="form-hint" style={{ margin: "0 0 4px" }}>
+                Picking several shows students who have all of them.
+              </p>
+              <div className="flex gap-6" style={{ flexWrap: "wrap" }} role="group" aria-labelledby="tp-skills-label">
+                {facets.skills.slice(0, 24).map((s) => (
+                  <button
+                    key={s.skill}
+                    type="button"
+                    className={skills.includes(s.skill) ? "pill pill-active" : "pill"}
+                    aria-pressed={skills.includes(s.skill)}
+                    onClick={() => toggleSkill(s.skill)}
+                  >
+                    {s.display} · {s.students}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </aside>
+
+        <section>
+          <div className="section-head">
+            <div className="section-eyebrow">
+              {loading ? "Searching…" : `${result.total} student${result.total === 1 ? "" : "s"} match`}
+            </div>
+          </div>
+
+          {!loading && result.students.length === 0 ? (
+            <div className="row-list">
+              <div className="row-empty">No students match those filters.</div>
+            </div>
+          ) : (
+            <div className="split-even" style={{ gap: 12 }}>
+              {result.students.map((s) => (
                 <button
-                  key={s.skill}
+                  key={s.rollNumber}
                   type="button"
-                  className={skills.includes(s.skill) ? "pill pill-active" : "pill"}
-                  onClick={() => toggleSkill(s.skill)}
-                  style={{ cursor: "pointer" }}
+                  className="glass-card student-card"
+                  onClick={() => setSelected(s.rollNumber)}
                 >
-                  {s.display} · {s.students}
+                  <div className="flex items-start justify-between gap-12">
+                    <div style={{ minWidth: 0 }}>
+                      <div className="flex items-center gap-8">
+                        <span className="mono-addr">{s.rollNumber}</span>
+                        {s.placed && <span className="pill pill-muted">Placed</span>}
+                      </div>
+                      <div className="row-meta" style={{ marginTop: 4 }}>
+                        {s.courseCode} · Batch {s.batchYear}
+                        {s.cgpa !== null && s.cgpa !== undefined && <> · CGPA {s.cgpa.toFixed(2)}</>}
+                      </div>
+                    </div>
+                    <Lock size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} aria-label="Anonymous" />
+                  </div>
+                  {s.headline && <div className="student-card-headline">{s.headline}</div>}
+                  {s.skills.length > 0 && (
+                    <div className="flex gap-6" style={{ flexWrap: "wrap", marginTop: 8 }}>
+                      {s.skills.slice(0, 6).map((skill) => (
+                        <span key={skill} className="pill">{skill}</span>
+                      ))}
+                      {s.skills.length > 6 && <span className="pill pill-muted">+{s.skills.length - 6}</span>}
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
-          </div>
-        )}
-      </div>
-
-      <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-        {loading ? "Searching…" : `${result.total} student${result.total === 1 ? "" : "s"} match`}
-      </div>
-
-      <div className="flex flex-col gap-12">
-        {result.students.map((s) => (
-          <button
-            key={s.rollNumber}
-            type="button"
-            className="glass-card p-24"
-            onClick={() => setSelected(s.rollNumber)}
-            style={{ textAlign: "left", cursor: "pointer", width: "100%" }}
-          >
-            <div className="flex items-start justify-between gap-12" style={{ flexWrap: "wrap" }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 600 }}>
-                  <span className="mono-addr">{s.rollNumber}</span>
-                  {s.placed && (
-                    <span className="pill pill-muted" style={{ marginLeft: 8, fontSize: "0.68rem" }}>
-                      Placed
-                    </span>
-                  )}
-                </div>
-                <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 2 }}>
-                  {s.courseCode} · Batch {s.batchYear}
-                  {s.cgpa !== null && s.cgpa !== undefined && <> · CGPA {s.cgpa.toFixed(2)}</>}
-                </div>
-                {s.headline && <div style={{ fontSize: "0.85rem", marginTop: 6 }}>{s.headline}</div>}
-              </div>
-              <Lock size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} title="Anonymous" />
-            </div>
-
-            {s.skills.length > 0 && (
-              <div className="flex gap-8" style={{ flexWrap: "wrap", marginTop: 10 }}>
-                {s.skills.slice(0, 8).map((skill) => (
-                  <span key={skill} className="pill" style={{ fontSize: "0.7rem" }}>
-                    {skill}
-                  </span>
-                ))}
-              </div>
-            )}
-          </button>
-        ))}
-
-        {!loading && result.students.length === 0 && (
-          <div className="glass-card p-24" style={{ textAlign: "center" }}>
-            <Search size={20} style={{ color: "var(--text-muted)", marginBottom: 8 }} />
-            <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-              No students match those filters.
-            </p>
-          </div>
-        )}
+          )}
+        </section>
       </div>
     </div>
   );

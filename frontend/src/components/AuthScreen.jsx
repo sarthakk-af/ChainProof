@@ -11,10 +11,11 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
-import { Eye, EyeOff, LogIn, UserPlus, Mail, Check, AlertCircle, Info, ArrowLeft, ShieldCheck, RotateCw } from "lucide-react";
+import { LogIn, UserPlus, Mail, Check, AlertCircle, Info, ArrowLeft, ShieldCheck, RotateCw } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import { Link } from "../utils/navigation.jsx";
+import PasswordInput from "./shared/PasswordInput.jsx";
 
 // Mirrors backend/src/auth.js's validatePassword — client-side is UX only,
 // the server re-checks the exact same rule regardless of what this says.
@@ -212,9 +213,7 @@ export default function AuthScreen({ initialMode = "login" }) {
             aria-invalid={emailServerError || (emailTouched && !emailFormatValid) ? "true" : undefined}
             aria-describedby="auth-email-msg"
             style={
-              emailServerError || (emailTouched && !emailFormatValid)
-                ? { borderColor: "var(--accent-danger)" }
-                : mode === "signup" && emailAvailability === "available"
+              mode === "signup" && emailAvailability === "available" && !emailServerError && emailFormatValid
                 ? { borderColor: "var(--accent-success)" }
                 : undefined
             }
@@ -259,46 +258,24 @@ export default function AuthScreen({ initialMode = "login" }) {
           <div className="form-group">
             <label htmlFor="auth-password">Password</label>
             {mode === "signup" && (
-              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", margin: "0 0 6px" }}>
+              <p className="form-hint" style={{ margin: "0 0 6px" }}>
                 At least {PASSWORD_MIN_LENGTH} characters, including a number.
               </p>
             )}
-            <div style={{ position: "relative" }}>
-              <input
-                id="auth-password"
-                type={showPassword ? "text" : "password"}
-                placeholder={mode === "signup" ? `At least ${PASSWORD_MIN_LENGTH} characters` : "••••••••"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onBlur={() => setPasswordTouched(true)}
-                autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                minLength={mode === "signup" ? PASSWORD_MIN_LENGTH : undefined}
-                required
-                aria-invalid={mode === "signup" && passwordTouched && !passwordValid ? "true" : undefined}
-                aria-describedby="auth-password-msg"
-                style={{
-                  paddingRight: 40,
-                  borderColor:
-                    mode === "signup" && passwordTouched && !passwordValid ? "var(--accent-danger)" : undefined,
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                aria-label={showPassword ? "Hide password" : "Show password"}
-                aria-pressed={showPassword}
-                className="btn btn-ghost btn-sm"
-                style={{
-                  position: "absolute",
-                  right: 6,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  padding: 6,
-                }}
-              >
-                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-              </button>
-            </div>
+            <PasswordInput
+              id="auth-password"
+              shown={showPassword}
+              onToggle={() => setShowPassword((v) => !v)}
+              placeholder={mode === "signup" ? `At least ${PASSWORD_MIN_LENGTH} characters` : "••••••••"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onBlur={() => setPasswordTouched(true)}
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              minLength={mode === "signup" ? PASSWORD_MIN_LENGTH : undefined}
+              required
+              aria-invalid={mode === "signup" && passwordTouched && !passwordValid ? "true" : undefined}
+              aria-describedby="auth-password-msg"
+            />
             {mode === "signup" && password && (
               <div style={{ marginTop: 6 }}>
                 <div style={{ height: 4, borderRadius: 2, background: "var(--border-card)", overflow: "hidden" }}>
@@ -326,10 +303,11 @@ export default function AuthScreen({ initialMode = "login" }) {
 
         {mode === "signup" && (
           <div className="form-group">
-            <label htmlFor="auth-confirm-password">Confirm Password</label>
-            <input
+            <label htmlFor="auth-confirm-password">Confirm password</label>
+            <PasswordInput
               id="auth-confirm-password"
-              type={showPassword ? "text" : "password"}
+              shown={showPassword}
+              withToggle={false}
               placeholder="Re-enter your password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
@@ -338,9 +316,6 @@ export default function AuthScreen({ initialMode = "login" }) {
               required
               aria-invalid={confirmTouched && !confirmValid ? "true" : undefined}
               aria-describedby="auth-confirm-msg"
-              style={{
-                borderColor: confirmTouched && !confirmValid ? "var(--accent-danger)" : undefined,
-              }}
             />
             <span id="auth-confirm-msg" aria-live="polite" style={{ fontSize: "0.78rem" }}>
               {confirmTouched && confirmPassword && confirmPassword === password ? (
@@ -383,16 +358,7 @@ export default function AuthScreen({ initialMode = "login" }) {
 
         <button id="auth-submit-btn" type="submit" className="btn btn-primary btn-lg" disabled={submitDisabled}>
           {loading ? (
-            <>
-              <div className="spinner" style={{ width: 18, height: 18, borderWidth: 2 }} />
-              {mode === "signup"
-                ? "Creating account…"
-                : mode === "forgot"
-                ? "Sending…"
-                : mode === "verify"
-                ? "Verifying…"
-                : "Signing in…"}
-            </>
+            <span className="spinner" />
           ) : mode === "signup" ? (
             <><UserPlus size={16} /> Create account</>
           ) : mode === "forgot" ? (

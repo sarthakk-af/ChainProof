@@ -1,7 +1,9 @@
-import express from "express";
+import express from "express";
+import cors from "cors";
 import { config } from "./config.js";
 import { createApp } from "./app.js";
 import { startIndexer } from "./indexer.js";
+import { checkChain, chainProblem, watchChain } from "./chainHealth.js";
 import { logger } from "./logger.js";
 
 // Without these, Node terminates the entire process on an unhandled promise
@@ -101,8 +103,16 @@ async function main() {
   // script waiting for the stack can see the process is alive.
   let ready = false;
   const app = express();
+  // Before the gate, so its answers carry CORS headers too. Without them the
+  // browser discards the response and the app can only say "failed to fetch".
+  app.use(cors({ origin: config.frontendOrigin }));
   app.use((req, res, next) => {
-    if (ready || req.path === "/health") return next();
+    if (req.path === "/health") return next();
+    // Every action here ends in a transaction; against a wiped chain they all
+    // fail with an error that names nothing useful. Say what's actually wrong.
+    const problem = chainProblem();
+    if (problem) return res.status(503).json({ error: problem });
+    if (ready) return next();
     res.status(503).json({ error: "The server is starting up. Try again in a few seconds." });
   });
   app.use(createApp());
@@ -126,7 +136,15 @@ async function main() {
   }
 
   await ensureAdminAccount();
+
+  const problem = await checkChain();
+  if (problem) {
+    console.error(`\n[server] ${problem.message}\n`);
+    process.exit(1);
+  }
+
   await startIndexer();
+  watchChain();
   ready = true;
 
   logger.info("server_started", { port: config.port });

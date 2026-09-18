@@ -22,7 +22,9 @@ export function useAuth() {
 }
 
 export function AuthProvider({ children }) {
-  const [status, setStatus] = useState("idle"); // idle | authenticated | unauthenticated
+  const [status, setStatus] = useState("idle"); // idle | authenticated | unauthenticated | unavailable
+  // Why a saved session couldn't be checked, when status is "unavailable".
+  const [serviceError, setServiceError] = useState("");
   const [user, setUser] = useState(null); // { email, address }
   const [actor, setActor] = useState(null); // serialized actor from GET /me, or null
   // What is still outstanding before this account counts as real. An account
@@ -39,21 +41,30 @@ export function AuthProvider({ children }) {
     setStatus("authenticated");
   }, []);
 
-  // On mount, resume a saved session if there is one.
-  useEffect(() => {
+  // Resume a saved session if there is one.
+  const resumeSession = useCallback(() => {
     const savedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (!savedToken) {
       setStatus("unauthenticated");
       return;
     }
     setAuthToken(savedToken);
-    refreshActor().catch(() => {
-      // Saved token is invalid/expired — clear it and start fresh.
-      localStorage.removeItem(TOKEN_STORAGE_KEY);
-      setAuthToken(null);
-      setStatus("unauthenticated");
+    refreshActor().catch((err) => {
+      // Only a rejected token ends the session. Any other failure — the
+      // backend restarting, or down — used to sign people out too, so a
+      // server restart looked like being logged out for no reason.
+      if (err.status === 401) {
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
+        setAuthToken(null);
+        setStatus("unauthenticated");
+        return;
+      }
+      setServiceError(err.message);
+      setStatus("unavailable");
     });
   }, [refreshActor]);
+
+  useEffect(() => { resumeSession(); }, [resumeSession]);
 
   const applySession = useCallback(
     async (token) => {
@@ -148,6 +159,8 @@ export function AuthProvider({ children }) {
 
   const value = {
     status,
+    serviceError,
+    resumeSession,
     verification,
     profile,
     claimRollNumber,

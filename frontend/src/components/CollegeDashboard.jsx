@@ -28,7 +28,10 @@ import Announcements from "./shared/Announcements.jsx";
 import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
-import { shortAddr, formatDate } from "../utils/format.js";
+import { shortAddr, formatDate, formatLPA } from "../utils/format.js";
+
+/** True while either button for `id` is working (busy is "<id>:<action>"). */
+const isBusy = (busy, id) => typeof busy === "string" && busy.startsWith(`${id}:`);
 
 const TABS = [
   { id: "students", label: "Students", icon: UserCheck },
@@ -48,12 +51,14 @@ export default function CollegeDashboard() {
 
   return (
     <div className="page-container animate-fade-in-up">
-      <div className="section-eyebrow">Placement Cell</div>
-      <h2 style={{ marginBottom: 4 }}>{actor?.name}</h2>
-      <p style={{ marginBottom: 24, fontSize: "0.85rem", color: "var(--text-muted)" }}>
-        Admit companies and host their drives. Offers and results are written by the
-        companies themselves.
-      </p>
+      <header className="page-head">
+        <div className="section-eyebrow">Placement cell</div>
+        <h2>{actor?.name}</h2>
+        <p>
+          Admit companies and host their drives. Offers and results are written by the
+          companies themselves.
+        </p>
+      </header>
 
       <Tabs
         tabs={TABS}
@@ -99,7 +104,7 @@ function CompaniesPanel({ onError, onNotice }) {
   useEffect(() => { load(); }, [load]);
 
   const decide = async (address, action) => {
-    setBusy(address);
+    setBusy(`${address}:${action}`);
     onError("");
     try {
       await api.post(`/college/companies/${address}/${action}`, {});
@@ -116,61 +121,60 @@ function CompaniesPanel({ onError, onNotice }) {
   const active = companies.filter((c) => c.status === "Active");
 
   return (
-    <>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>
-        Awaiting your decision ({pending.length})
-      </div>
-      {pending.length === 0 ? (
-        <div className="empty-state glass-card">
-          <Building2 size={48} className="empty-state-icon" />
-          <h3>Nothing waiting</h3>
-          <p style={{ fontSize: "0.85rem" }}>Companies appear here once they register.</p>
+    <div className="split-even">
+      <section>
+        <div className="section-head">
+          <div className="section-eyebrow">Awaiting your decision ({pending.length})</div>
         </div>
-      ) : (
-        <div className="flex flex-col gap-10">
+        <div className="row-list">
+          {pending.length === 0 && (
+            <div className="row-empty">Nothing waiting. Companies appear here once they register.</div>
+          )}
           {pending.map((c) => (
-            <div key={c.address} className="glass-card" style={{ padding: "16px 20px" }}>
-              <div className="flex items-center justify-between" style={{ marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
-                <strong style={{ fontFamily: "var(--font-head)" }}>{c.name}</strong>
-                <span className="badge badge-company">Pending</span>
+            <div key={c.address} className="row">
+              <div style={{ minWidth: 0 }}>
+                <strong className="item-title">{c.name}</strong>
+                <div className="row-meta" style={{ marginTop: 2 }}>
+                  CIN <span className="mono-addr">{c.registrationNumber || "—"}</span>
+                  {c.website && (
+                    <>
+                      {" · "}
+                      <a href={c.website} target="_blank" rel="noreferrer noopener">{c.website.replace(/^https?:\/\//, "")}</a>
+                      {c.websiteReachable === false && (
+                        <span style={{ color: "var(--accent-warning)" }}> (didn't respond)</span>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
-              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 12 }}>
-                <div>CIN: <span className="mono-addr">{c.registrationNumber || "—"}</span></div>
-                {c.website && (
-                  <div>
-                    Website: <a href={c.website} target="_blank" rel="noreferrer noopener">{c.website}</a>
-                    {c.websiteReachable === false && (
-                      <span style={{ color: "var(--accent-warning)" }}> · didn't respond</span>
-                    )}
-                  </div>
-                )}
-                <div>Wallet: <span className="mono-addr">{shortAddr(c.address)}</span></div>
-              </div>
-              <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
-                <button className="btn btn-primary btn-sm" disabled={busy === c.address} onClick={() => decide(c.address, "approve")}>
-                  <CheckCircle2 size={14} /> Admit
+              <div className="flex gap-8">
+                <button className="btn btn-primary btn-sm" disabled={isBusy(busy, c.address)} onClick={() => decide(c.address, "approve")}>
+                  {busy === `${c.address}:approve` ? <span className="spinner" /> : <><CheckCircle2 size={14} /> Admit</>}
                 </button>
-                <button className="btn btn-ghost btn-sm" disabled={busy === c.address} onClick={() => decide(c.address, "reject")}>
-                  <XCircle size={14} /> Decline
+                <button className="btn btn-ghost btn-sm" disabled={isBusy(busy, c.address)} onClick={() => decide(c.address, "reject")}>
+                  {busy === `${c.address}:reject` ? <span className="spinner" /> : <><XCircle size={14} /> Decline</>}
                 </button>
               </div>
             </div>
           ))}
         </div>
-      )}
+      </section>
 
-      <div className="section-eyebrow" style={{ margin: "28px 0 12px" }}>
-        Admitted ({active.length})
-      </div>
-      <div className="flex flex-col gap-8">
-        {active.map((c) => (
-          <div key={c.address} className="glass-card flex items-center justify-between" style={{ padding: "12px 18px", flexWrap: "wrap", gap: 8 }}>
-            <strong style={{ fontFamily: "var(--font-head)", fontSize: "0.9rem" }}>{c.name}</strong>
-            <span className="mono-addr" style={{ fontSize: "0.72rem" }}>{c.registrationNumber || shortAddr(c.address)}</span>
-          </div>
-        ))}
-      </div>
-    </>
+      <section>
+        <div className="section-head">
+          <div className="section-eyebrow">Admitted ({active.length})</div>
+        </div>
+        <div className="row-list">
+          {active.length === 0 && <div className="row-empty">No companies admitted yet.</div>}
+          {active.map((c) => (
+            <div key={c.address} className="row">
+              <strong className="item-title">{c.name}</strong>
+              <span className="mono-addr" style={{ fontSize: "0.72rem" }}>{c.registrationNumber || shortAddr(c.address)}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -187,7 +191,7 @@ function DrivesPanel({ onError, onNotice }) {
   useEffect(() => { load(); }, [load]);
 
   const decide = async (id, action) => {
-    setBusy(id);
+    setBusy(`${id}:${action}`);
     onError("");
     try {
       await api.post(`/college/drives/${id}/${action}`, {});
@@ -204,56 +208,59 @@ function DrivesPanel({ onError, onNotice }) {
   const rest = drives.filter((d) => d.status !== "Proposed");
 
   return (
-    <>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>
-        Proposed ({proposed.length})
-      </div>
-      {proposed.length === 0 ? (
-        <div className="empty-state glass-card">
-          <CalendarDays size={48} className="empty-state-icon" />
-          <h3>No drives waiting</h3>
-          <p style={{ fontSize: "0.85rem" }}>Companies post openings; you decide whether they run here.</p>
+    <div className="split-even">
+      <section>
+        <div className="section-head">
+          <div className="section-eyebrow">Proposed ({proposed.length})</div>
         </div>
-      ) : (
-        <div className="flex flex-col gap-10">
+        <p className="form-hint" style={{ margin: "0 0 10px" }}>
+          The company set these terms. You decide only whether the drive runs on your campus.
+        </p>
+        <div className="row-list">
+          {proposed.length === 0 && (
+            <div className="row-empty">No drives waiting. Companies post openings; you decide whether they run here.</div>
+          )}
           {proposed.map((d) => (
-            <div key={d.id} className="glass-card" style={{ padding: "16px 20px" }}>
-              <div className="flex items-center justify-between" style={{ marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
-                <strong style={{ fontFamily: "var(--font-head)" }}>{d.companyName} — {d.roleTitle}</strong>
-                <span className="badge badge-company">₹{d.annualPackage.toLocaleString("en-IN")}</span>
+            <div key={d.id} className="row">
+              <div style={{ minWidth: 0 }}>
+                <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
+                  <strong className="item-title">{d.companyName} — {d.roleTitle}</strong>
+                  <span className="pill">{formatLPA(d.annualPackage)}</span>
+                </div>
+                <div className="row-meta" style={{ marginTop: 2 }}>
+                  Batch {d.batchYear}
+                  {d.minCgpa ? ` · CGPA ${d.minCgpa.toFixed(2)}+` : " · no CGPA cutoff"}
+                  {" · "}drive {formatDate(d.driveDate)}
+                </div>
               </div>
-              <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 12 }}>
-                Batch {d.batchYear}
-                {d.minCgpa ? ` · CGPA ${d.minCgpa.toFixed(2)}+` : " · no CGPA cutoff"}
-                {" · "}drive {formatDate(d.driveDate)}
-              </div>
-              <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: 12 }}>
-                These terms were set by the company and can't be edited here — you're
-                deciding only whether the drive runs on your campus.
-              </p>
-              <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
-                <button className="btn btn-primary btn-sm" disabled={busy === d.id} onClick={() => decide(d.id, "approve")}>
-                  <CheckCircle2 size={14} /> Host it
+              <div className="flex gap-8">
+                <button className="btn btn-primary btn-sm" disabled={isBusy(busy, d.id)} onClick={() => decide(d.id, "approve")}>
+                  {busy === `${d.id}:approve` ? <span className="spinner" /> : <><CheckCircle2 size={14} /> Host it</>}
                 </button>
-                <button className="btn btn-ghost btn-sm" disabled={busy === d.id} onClick={() => decide(d.id, "reject")}>
-                  <XCircle size={14} /> Decline
+                <button className="btn btn-ghost btn-sm" disabled={isBusy(busy, d.id)} onClick={() => decide(d.id, "reject")}>
+                  {busy === `${d.id}:reject` ? <span className="spinner" /> : <><XCircle size={14} /> Decline</>}
                 </button>
               </div>
             </div>
           ))}
         </div>
-      )}
+      </section>
 
-      <div className="section-eyebrow" style={{ margin: "28px 0 12px" }}>All drives ({rest.length})</div>
-      <div className="flex flex-col gap-8">
-        {rest.map((d) => (
-          <div key={d.id} className="glass-card flex items-center justify-between" style={{ padding: "12px 18px", flexWrap: "wrap", gap: 8 }}>
-            <span style={{ fontSize: "0.88rem" }}>{d.companyName} — {d.roleTitle}</span>
-            <span className="badge badge-student">{d.status}</span>
-          </div>
-        ))}
-      </div>
-    </>
+      <section>
+        <div className="section-head">
+          <div className="section-eyebrow">All drives ({rest.length})</div>
+        </div>
+        <div className="row-list">
+          {rest.length === 0 && <div className="row-empty">No drives decided yet.</div>}
+          {rest.map((d) => (
+            <div key={d.id} className="row">
+              <span style={{ fontSize: "0.86rem" }}>{d.companyName} — {d.roleTitle}</span>
+              <span className="badge badge-student">{d.status}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -306,26 +313,34 @@ function RosterPanel({ onError, onNotice }) {
   };
 
   const claimed = roster.filter((r) => r.claimed).length;
+  const [search, setSearch] = useState("");
+  const needle = search.trim().toLowerCase();
+  const shown = needle
+    ? roster.filter((r) => `${r.rollNumber} ${r.fullName}`.toLowerCase().includes(needle))
+    : roster;
 
   return (
-    <>
-      <div className="glass-card p-24 flex flex-col gap-16" style={{ marginBottom: 24 }}>
+    <div className="split">
+      <div className="glass-card p-24 flex flex-col gap-12">
         <div>
-          <strong style={{ fontFamily: "var(--font-head)" }}>Upload your roster</strong>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>
-            One student per line: <code>roll number, full name, course, batch year</code>.
-            This list is what lets a student prove they study here — nobody can sign up
-            with a roll number that isn't on it.
+          <h3 className="card-title">Upload your roster</h3>
+          <p className="card-lead">
+            One student per line. Students can only sign up with a roll number on this list.
           </p>
         </div>
+        <label htmlFor="roster-raw" style={{ marginBottom: -6 }}>
+          Roll number, full name, course, batch year
+        </label>
         <textarea
+          id="roster-raw"
+          className="textarea-mono"
+          rows={7}
           value={raw}
           onChange={(e) => setRaw(e.target.value)}
           placeholder={"21CE1042, Asha Patil, CSE, 2026\n21CE1043, Rahul Nair, CSE, 2026"}
-          style={{ height: 160, fontFamily: "var(--font-mono)", fontSize: "0.78rem" }}
         />
         {rowErrors.length > 0 && (
-          <div className="alert alert-danger" style={{ fontSize: "0.78rem" }}>
+          <div className="alert alert-danger" role="alert">
             <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
             <span>
               {rowErrors.slice(0, 5).map((e) => (
@@ -340,35 +355,41 @@ function RosterPanel({ onError, onNotice }) {
         </button>
       </div>
 
-      <div className="kpi-strip" style={{ marginBottom: 20 }}>
-        <div className="kpi">
-          <span className="kpi-n">{roster.length}</span>
-          <span className="kpi-l">On the roster</span>
-        </div>
-        <div className="kpi">
-          <span className="kpi-n accent">{claimed}</span>
-          <span className="kpi-l">Signed up</span>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-8">
-        {roster.slice(0, 100).map((r) => (
-          <div key={r.rollNumber} className="glass-card flex items-center justify-between" style={{ padding: "10px 16px", flexWrap: "wrap", gap: 8 }}>
-            <span style={{ fontSize: "0.85rem" }}>
-              <span className="mono-addr">{r.rollNumber}</span> · {r.fullName}
-            </span>
-            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-              {r.courseCode} {r.batchYear} · {r.claimed ? "signed up" : "not yet"}
-            </span>
+      <section>
+        <div className="section-head">
+          <div className="section-eyebrow">
+            Roster · {roster.length} students · {claimed} signed up
           </div>
-        ))}
-        {roster.length > 100 && (
-          <p style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-            Showing the first 100 of {roster.length}.
-          </p>
-        )}
-      </div>
-    </>
+          <input
+            aria-label="Search the roster"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search roll number or name"
+            style={{ maxWidth: 260 }}
+          />
+        </div>
+        <div className="row-list">
+          {roster.length === 0 && <div className="row-empty">No students uploaded yet.</div>}
+          {roster.length > 0 && shown.length === 0 && <div className="row-empty">No one matches “{search}”.</div>}
+          {shown.slice(0, 100).map((r) => (
+            <div key={r.rollNumber} className="row" style={{ padding: "8px 16px" }}>
+              <span style={{ fontSize: "0.85rem" }}>
+                <span className="mono-addr">{r.rollNumber}</span> {r.fullName}
+              </span>
+              <span className="row-meta">
+                {r.courseCode} {r.batchYear} ·{" "}
+                <span style={r.claimed ? { color: "var(--accent-success)" } : undefined}>
+                  {r.claimed ? "signed up" : "not yet"}
+                </span>
+              </span>
+            </div>
+          ))}
+          {shown.length > 100 && (
+            <div className="row-empty">Showing 100 of {shown.length}. Search to find someone.</div>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -409,17 +430,16 @@ function BatchesPanel({ onError, onNotice }) {
   };
 
   return (
-    <>
-      <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16" style={{ marginBottom: 24 }}>
+    <div className="split">
+      <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-12">
         <div>
-          <strong style={{ fontFamily: "var(--font-head)" }}>Declare a cohort's size</strong>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>
-            This is the denominator of your placement percentage, so it goes on-chain.
-            You can revise it later — but the previous figure stays visible, which is
-            what makes the number worth quoting.
+          <h3 className="card-title">Declare a cohort's size</h3>
+          <p className="card-lead">
+            The denominator of your placement percentage. You can revise it, but the earlier
+            figure stays visible.
           </p>
         </div>
-        <div className="grid-2" style={{ gap: 12 }}>
+        <div className="form-grid cols-2">
           <div className="form-group">
             <label htmlFor="b-course">Course</label>
             <input id="b-course" value={courseCode} onChange={(e) => setCourseCode(e.target.value.toUpperCase())} placeholder="CSE" required />
@@ -428,34 +448,38 @@ function BatchesPanel({ onError, onNotice }) {
             <label htmlFor="b-year">Batch year</label>
             <input id="b-year" type="number" value={batchYear} onChange={(e) => setBatchYear(e.target.value)} placeholder="2026" required />
           </div>
-        </div>
-        <div className="form-group">
-          <label htmlFor="b-strength">Total students</label>
-          <input id="b-strength" type="number" value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="180" required />
+          <div className="form-group span-all">
+            <label htmlFor="b-strength">Total students</label>
+            <input id="b-strength" type="number" value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="180" required />
+          </div>
         </div>
         <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? <span className="spinner" /> : "Record on-chain"}
         </button>
       </form>
 
-      <div className="flex flex-col gap-8">
-        {batches.map((b) => (
-          <div key={`${b.courseCode}-${b.batchYear}`} className="glass-card" style={{ padding: "12px 18px" }}>
-            <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 8 }}>
-              <strong style={{ fontFamily: "var(--font-head)", fontSize: "0.9rem" }}>
-                {b.courseCode} {b.batchYear}
-              </strong>
+      <section>
+        <div className="section-head">
+          <div className="section-eyebrow">Declared cohorts ({batches.length})</div>
+        </div>
+        <div className="row-list">
+          {batches.length === 0 && <div className="row-empty">No cohorts declared yet.</div>}
+          {batches.map((b) => (
+            <div key={`${b.courseCode}-${b.batchYear}`} className="row">
+              <div>
+                <strong className="item-title">{b.courseCode} {b.batchYear}</strong>
+                {b.revisionCount > 0 && (
+                  <div className="row-meta" style={{ color: "var(--accent-warning)" }}>
+                    Revised {b.revisionCount} time{b.revisionCount === 1 ? "" : "s"} · previously {b.previousStrength}
+                  </div>
+                )}
+              </div>
               <span className="badge badge-college">{b.strength} students</span>
             </div>
-            {b.revisionCount > 0 && (
-              <div style={{ fontSize: "0.75rem", color: "var(--accent-warning)", marginTop: 4 }}>
-                Revised {b.revisionCount} time{b.revisionCount === 1 ? "" : "s"} · previously {b.previousStrength}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -492,7 +516,7 @@ function VerificationsPanel({ onError, onNotice }) {
       onError("Fill in the name, course and batch year before approving.");
       return;
     }
-    setBusy(userId);
+    setBusy(`${userId}:approve`);
     onError("");
     try {
       await api.post(`/college/verifications/${userId}/approve`, {
@@ -510,7 +534,7 @@ function VerificationsPanel({ onError, onNotice }) {
   };
 
   const reject = async (userId) => {
-    setBusy(userId);
+    setBusy(`${userId}:reject`);
     onError("");
     try {
       await api.post(`/college/verifications/${userId}/reject`, {
@@ -528,7 +552,7 @@ function VerificationsPanel({ onError, onNotice }) {
   if (pending.length === 0) {
     return (
       <div className="empty-state glass-card">
-        <UserCheck size={48} className="empty-state-icon" />
+        <UserCheck className="empty-state-icon" />
         <h3>Nobody waiting</h3>
         <p style={{ fontSize: "0.85rem" }}>
           Students whose roll number is already on your roster are confirmed
@@ -540,17 +564,19 @@ function VerificationsPanel({ onError, onNotice }) {
 
   return (
     <>
-      <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: 16 }}>
-        These students gave a roll number your roster doesn't list yet. Confirming one
-        adds them to the roster, so your list stays the single record of who studies here.
+      <div className="section-head">
+        <div className="section-eyebrow">Waiting for you ({pending.length})</div>
+      </div>
+      <p className="form-hint" style={{ margin: "0 0 10px" }}>
+        These roll numbers aren't on your roster yet. Confirming a student adds them to it.
       </p>
 
-      <div className="flex flex-col gap-10">
+      <div className="row-list">
         {pending.map((p) => (
-          <div key={p.userId} className="glass-card" style={{ padding: "16px 20px" }}>
-            <div className="flex items-center justify-between" style={{ marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+          <div key={p.userId} className="row" style={{ display: "block" }}>
+            <div className="flex items-center justify-between" style={{ marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
               <div>
-                <strong style={{ fontFamily: "var(--font-head)" }} className="mono-addr">
+                <strong className="mono-addr">
                   {p.rollNumber}
                 </strong>
                 <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{p.email}</div>
@@ -560,8 +586,8 @@ function VerificationsPanel({ onError, onNotice }) {
               </span>
             </div>
 
-            <div className="grid-2" style={{ gap: 10, marginBottom: 10 }}>
-              <div className="form-group" style={{ marginBottom: 0 }}>
+            <div className="form-grid cols-wide-first" style={{ marginBottom: 10 }}>
+              <div className="form-group">
                 <label htmlFor={`v-name-${p.userId}`}>Full name</label>
                 <input
                   id={`v-name-${p.userId}`}
@@ -570,7 +596,7 @@ function VerificationsPanel({ onError, onNotice }) {
                   placeholder="As on college records"
                 />
               </div>
-              <div className="form-group" style={{ marginBottom: 0 }}>
+              <div className="form-group">
                 <label htmlFor={`v-course-${p.userId}`}>Course</label>
                 <input
                   id={`v-course-${p.userId}`}
@@ -579,33 +605,32 @@ function VerificationsPanel({ onError, onNotice }) {
                   placeholder="CSE"
                 />
               </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor={`v-batch-${p.userId}`}>Batch year</label>
-              <input
-                id={`v-batch-${p.userId}`}
-                type="number"
-                value={details[p.userId]?.batchYear ?? ""}
-                onChange={setField(p.userId, "batchYear")}
-                placeholder="2026"
-              />
+              <div className="form-group">
+                <label htmlFor={`v-batch-${p.userId}`}>Batch year</label>
+                <input
+                  id={`v-batch-${p.userId}`}
+                  type="number"
+                  value={details[p.userId]?.batchYear ?? ""}
+                  onChange={setField(p.userId, "batchYear")}
+                  placeholder="2026"
+                />
+              </div>
             </div>
 
             <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
               <button
                 className="btn btn-primary btn-sm"
-                disabled={busy === p.userId}
+                disabled={isBusy(busy, p.userId)}
                 onClick={() => approve(p.userId)}
               >
-                <CheckCircle2 size={14} /> Confirm
+                {busy === `${p.userId}:approve` ? <span className="spinner" /> : <><CheckCircle2 size={14} /> Confirm</>}
               </button>
               <button
                 className="btn btn-ghost btn-sm"
-                disabled={busy === p.userId}
+                disabled={isBusy(busy, p.userId)}
                 onClick={() => reject(p.userId)}
               >
-                <XCircle size={14} /> Decline
+                {busy === `${p.userId}:reject` ? <span className="spinner" /> : <><XCircle size={14} /> Decline</>}
               </button>
             </div>
           </div>

@@ -60,13 +60,15 @@ Open **http://localhost:5173**. The system starts empty, and you set it up by ha
 2. Sign in as the college. Declare a batch size and upload the roster (roll numbers, names, course, batch).
 3. Sign up as a company. The college approves it, and it can then post a drive.
 4. Sign up as a student and enter a roll number from the roster.
-5. The public dashboard is at **http://localhost:5173/public**.
+5. The public placement results are at **http://localhost:5173/results**.
 
 If you'd rather have ready-made demo data: `cd backend && npm run seed:full`.
 
 ### Things that trip people up
 
 - **Restarting the blockchain wipes it.** After restarting step 1, run step 2 again and restart the backend. The backend notices the new deployment and clears its copy of the old chain data. Logins are kept.
+  - Everything recorded on the old chain is gone, so each existing login picks its role again, and the admin creates the college again (the placement cell keeps its login). Wallets are refilled with test ETH automatically.
+  - If you forget step 2, the backend won't start, and a running backend stops accepting requests. Either way it prints what to do.
 - **"Port already in use"** means an earlier copy is still running. The backend now refuses to start in that case and tells you so. To stop the old copy on Windows:
   ```
   netstat -ano | findstr :4000

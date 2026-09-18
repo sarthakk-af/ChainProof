@@ -34,39 +34,41 @@ export default function ResumeEditor({ onError, onNotice }) {
 
   useEffect(load, [load]);
 
+  const [removing, setRemoving] = useState(null);
   const remove = async (id) => {
+    if (removing) return;
     onError("");
+    setRemoving(id);
     try {
       await api.del(`/me/resume/item/${id}`);
       load();
     } catch (err) {
       onError(err.message);
+    } finally {
+      setRemoving(null);
     }
   };
 
   if (loading) return <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading…</p>;
 
   return (
-    <div className="flex flex-col gap-20">
-      <div className="glass-card p-24">
-        <h3 className="card-title">Your resume</h3>
-        <p className="card-lead" style={{ marginBottom: 0 }}>
-          Companies browsing this college see everything below, along with your roll
-          number, course, batch and CGPA — but not your name, email or phone. Those
-          appear only to a company whose drive you have applied to.
-        </p>
-      </div>
+    <div className="stack">
+      <p className="form-hint" style={{ margin: 0 }}>
+        Companies see this with your roll number, course, batch and CGPA — not your name,
+        email or phone, which appear only to a company whose drive you applied to.
+      </p>
 
       <SkillsPanel skills={skills} onSaved={(s) => { setSkills(s); onNotice("Skills saved."); }} onError={onError} />
 
+      <div className="split-even">
       {sections.map((section) => {
         const items = resume[section.key] ?? [];
         return (
           <div key={section.key} className="glass-card p-24">
-            <div className="flex items-center justify-between gap-12" style={{ marginBottom: 12 }}>
+            <div className="flex items-start justify-between gap-12" style={{ marginBottom: 10 }}>
               <div>
-                <strong style={{ fontFamily: "var(--font-head)" }}>{section.label}</strong>
-                <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 2 }}>
+                <h3 className="card-title">{section.label}</h3>
+                <p className="card-lead">
                   {section.help}
                 </p>
               </div>
@@ -91,7 +93,7 @@ export default function ResumeEditor({ onError, onNotice }) {
             )}
 
             {items.length === 0 && adding !== section.key && (
-              <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>Nothing here yet.</p>
+              <p className="form-hint" style={{ margin: 0 }}>Nothing added yet.</p>
             )}
 
             <div className="flex flex-col gap-12">
@@ -111,6 +113,7 @@ export default function ResumeEditor({ onError, onNotice }) {
                     item={item}
                     onEdit={() => { setEditing(item); setAdding(null); }}
                     onDelete={() => remove(item.id)}
+                    deleting={removing === item.id}
                   />
                 )
               )}
@@ -118,13 +121,14 @@ export default function ResumeEditor({ onError, onNotice }) {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function ItemRow({ item, onEdit, onDelete }) {
+function ItemRow({ item, onEdit, onDelete, deleting }) {
   const period = [item.startedOn, item.endedOn].filter(Boolean).join(" – ");
   return (
     <div
@@ -144,11 +148,11 @@ function ItemRow({ item, onEdit, onDelete }) {
           )}
         </div>
         <div className="flex gap-8" style={{ flexShrink: 0 }}>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit} title="Edit">
-            <Pencil size={13} />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit} title="Edit" aria-label="Edit">
+            <Pencil size={14} />
           </button>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={onDelete} title="Remove">
-            <Trash2 size={13} />
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onDelete} title="Remove" aria-label="Remove" disabled={deleting}>
+            {deleting ? <span className="spinner" /> : <Trash2 size={14} />}
           </button>
         </div>
       </div>
@@ -217,7 +221,7 @@ function ItemForm({ section, existing, onCancel, onSaved, onError }) {
 
       <div className="form-group">
         <label htmlFor="ri-subtitle">
-          {section.subtitleLabel} <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>
+          {section.subtitleLabel} <span className="label-optional">(optional)</span>
         </label>
         <input id="ri-subtitle" value={values.subtitle} onChange={set("subtitle")} />
       </div>
@@ -235,14 +239,14 @@ function ItemForm({ section, existing, onCancel, onSaved, onError }) {
 
       <div className="form-group">
         <label htmlFor="ri-desc">
-          Description <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>
+          Description <span className="label-optional">(optional)</span>
         </label>
         <textarea id="ri-desc" rows={3} value={values.description} onChange={set("description")} />
       </div>
 
       <div className="form-group">
         <label htmlFor="ri-url">
-          Link <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>
+          Link <span className="label-optional">(optional)</span>
         </label>
         <input id="ri-url" value={values.url} onChange={set("url")} placeholder="https://…" />
       </div>
@@ -297,9 +301,9 @@ function SkillsPanel({ skills, onSaved, onError }) {
     <div className="glass-card p-24">
       <div className="flex items-center gap-8" style={{ marginBottom: 10 }}>
         <Tag size={15} />
-        <strong style={{ fontFamily: "var(--font-head)" }}>Skills</strong>
+        <h3 className="card-title">Skills</h3>
       </div>
-      <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 12 }}>
+      <p className="card-lead" style={{ marginBottom: 12 }}>
         These are what a company filters on when it looks at this college.
       </p>
 

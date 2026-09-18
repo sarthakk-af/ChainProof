@@ -33,11 +33,13 @@ export default function ProfilePage() {
 
   return (
     <div className="page-container animate-fade-in-up" style={{ maxWidth: 640 }}>
-      <div className="section-eyebrow">Your Account</div>
-      <h2 style={{ marginBottom: 4 }}>Profile</h2>
-      <p style={{ marginBottom: 28 }}>What ChainProof currently knows about your account.</p>
+      <header className="page-head">
+        <div className="section-eyebrow">Your account</div>
+        <h2>Account</h2>
+        <p>What ChainProof currently knows about your account.</p>
+      </header>
 
-      <div className="glass-card p-32">
+      <div className="glass-card p-24">
         <Row label="Email">{user?.email}</Row>
         <Row label="Wallet Address">
           <span className="mono-addr" title={user?.address}>{user?.address}</span>

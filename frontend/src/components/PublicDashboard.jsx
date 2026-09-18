@@ -219,7 +219,7 @@ export default function PublicDashboard() {
 
           {batchFigures?.declaredStrengthRevisions > 0 && (
             <div className="alert alert-warning" role="status" style={{ fontSize: "0.82rem" }}>
-              <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 2 }} />
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
               <span>
                 The college has changed the declared size of this batch{" "}
                 {batchFigures.declaredStrengthRevisions === 1

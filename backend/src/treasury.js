@@ -1,7 +1,7 @@
 import { ethers } from "ethers";
-import { provider } from "./chain.js";
+import { provider, verifierSigner } from "./chain.js";
 import { config } from "./config.js";
-import { withWalletLock } from "./txQueue.js";
+import { withWalletLock, setBeforeSend } from "./txQueue.js";
 
 const treasurySigner = new ethers.Wallet(config.treasuryPrivateKey, provider);
 
@@ -73,3 +73,24 @@ export async function fundWallet(address) {
     throw err;
   }
 }
+
+/**
+ * Tops a wallet back up when it is nearly out of gas.
+ *
+ * Wallets were funded once, at signup. A wallet that later ran dry — or every
+ * wallet at once, after a local chain restart wipes all balances — could never
+ * send another transaction, and its owner saw only a generic failure. Checked
+ * before each transaction, so only wallets actually in use are refilled.
+ * The platform's own signers are funded by hand and skipped.
+ */
+export async function ensureFunded(address) {
+  const key = address.toLowerCase();
+  if (key === treasurySigner.address.toLowerCase()) return;
+  if (key === verifierSigner.address.toLowerCase()) return;
+
+  const threshold = ethers.parseEther(config.walletGasDripEth) / 4n;
+  if ((await provider.getBalance(address)) >= threshold) return;
+  await fundWallet(address);
+}
+
+setBeforeSend(ensureFunded);

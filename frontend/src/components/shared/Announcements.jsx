@@ -40,29 +40,37 @@ export default function Announcements({ role, drives = [] }) {
 
   useEffect(load, [load]);
 
+  const [removing, setRemoving] = useState(null);
   const remove = async (id) => {
+    if (removing) return;
     setError("");
+    setRemoving(id);
     try {
       await api.del(`/announcements/${id}`);
       load();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setRemoving(null);
     }
   };
 
   return (
-    <div className="flex flex-col gap-16">
+    <div className="stack" style={{ gap: 12 }}>
+      <div className="section-head" style={{ marginBottom: 0 }}>
+        <div className="section-eyebrow">Placement notices ({items.length})</div>
+        {canPost && !composing && !editing && (
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setComposing(true)}>
+            <Megaphone size={14} /> Post a notice
+          </button>
+        )}
+      </div>
+
       {error && (
         <div className="alert alert-danger" role="alert">
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{error}</span>
         </div>
-      )}
-
-      {canPost && !composing && !editing && (
-        <button type="button" className="btn btn-primary btn-sm" onClick={() => setComposing(true)}>
-          <Megaphone size={14} /> Post a notice
-        </button>
       )}
 
       {(composing || editing) && (
@@ -83,15 +91,10 @@ export default function Announcements({ role, drives = [] }) {
         />
       )}
 
-      {loading && <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading…</p>}
+      {loading && <p className="form-hint">Loading…</p>}
 
       {!loading && items.length === 0 && (
-        <div className="glass-card p-24" style={{ textAlign: "center" }}>
-          <Megaphone size={20} style={{ color: "var(--text-muted)", marginBottom: 8 }} />
-          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-            No placement notices yet.
-          </p>
-        </div>
+        <div className="row-list"><div className="row-empty">No placement notices yet.</div></div>
       )}
 
       {items.map((item) => (
@@ -101,6 +104,7 @@ export default function Announcements({ role, drives = [] }) {
           canManage={canPost && isOwn(item, address)}
           onEdit={() => setEditing(item)}
           onDelete={() => remove(item.id)}
+          deleting={removing === item.id}
         />
       ))}
     </div>
@@ -121,12 +125,12 @@ function isOwn(item, address) {
   return !!address && item.authorAddress?.toLowerCase() === address.toLowerCase();
 }
 
-function NoticeCard({ item, canManage, onEdit, onDelete }) {
+function NoticeCard({ item, canManage, onEdit, onDelete, deleting }) {
   return (
     <div className="glass-card p-24">
       <div className="flex items-start justify-between gap-12" style={{ marginBottom: 8 }}>
         <div>
-          <strong style={{ fontFamily: "var(--font-head)", fontSize: "1rem" }}>{item.title}</strong>
+          <strong className="item-title">{item.title}</strong>
           <div
             style={{
               fontSize: "0.75rem",
@@ -158,11 +162,11 @@ function NoticeCard({ item, canManage, onEdit, onDelete }) {
 
         {canManage && (
           <div className="flex gap-8" style={{ flexShrink: 0 }}>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit} title="Edit">
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onEdit} title="Edit" aria-label="Edit notice">
               <Pencil size={14} />
             </button>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={onDelete} title="Withdraw">
-              <Trash2 size={14} />
+            <button type="button" className="btn btn-ghost btn-sm" onClick={onDelete} title="Withdraw" aria-label="Withdraw notice" disabled={deleting}>
+              {deleting ? <span className="spinner" /> : <Trash2 size={14} />}
             </button>
           </div>
         )}
@@ -207,9 +211,9 @@ function NoticeComposer({ role, drives, existing, onCancel, onSaved, onError }) 
   return (
     <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16">
       <div className="flex items-center justify-between">
-        <strong style={{ fontFamily: "var(--font-head)" }}>
+        <h3 className="card-title">
           {existing ? "Edit notice" : "New notice"}
-        </strong>
+        </h3>
         <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
           <X size={14} />
         </button>

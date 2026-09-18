@@ -27,7 +27,10 @@ import Announcements from "./shared/Announcements.jsx";
 import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
-import { formatDate } from "../utils/format.js";
+import { formatDate, formatLPA } from "../utils/format.js";
+
+/** True while either button for `id` is working (busy is "<id>:<action>"). */
+const isBusy = (busy, id) => typeof busy === "string" && busy.startsWith(`${id}:`);
 
 const TABS = [
   { id: "open", label: "Open drives", icon: Briefcase },
@@ -51,13 +54,15 @@ export default function StudentDashboard() {
 
   return (
     <div className="page-container animate-fade-in-up">
-      <div className="section-eyebrow">Student</div>
-      <h2 style={{ marginBottom: 4 }}>{displayName}</h2>
-      <p style={{ marginBottom: 16, fontSize: "0.85rem", color: "var(--text-muted)" }}>
-        {verified
-          ? "Apply to drives, follow where you stand, and answer your own offers."
-          : "Have a look around. You can apply once you're confirmed as a student here."}
-      </p>
+      <header className="page-head">
+        <div className="section-eyebrow">Student</div>
+        <h2>{displayName}</h2>
+        <p>
+          {verified
+            ? "Apply to drives, follow where you stand, and answer your own offers."
+            : "Have a look around. You can apply once you're confirmed as a student here."}
+        </p>
+      </header>
 
       {!verified && <VerificationBanner verification={verification} />}
 
@@ -106,7 +111,7 @@ function VerificationBanner({ verification }) {
 
   if (rejected) {
     return (
-      <div className="alert alert-danger" style={{ marginBottom: 20 }} role="status">
+      <div className="alert alert-danger" style={{ marginBottom: 20 }} role="alert">
         <XCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
         <span>
           <strong>Your placement cell couldn't confirm you.</strong>
@@ -165,7 +170,7 @@ function OpenDrives({ onError, onNotice }) {
   if (drives.length === 0) {
     return (
       <div className="empty-state glass-card">
-        <Briefcase size={48} className="empty-state-icon" />
+        <Briefcase className="empty-state-icon" />
         <h3>No open drives</h3>
         <p style={{ fontSize: "0.85rem" }}>Openings appear once your college agrees to host them.</p>
       </div>
@@ -173,18 +178,28 @@ function OpenDrives({ onError, onNotice }) {
   }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="row-list">
       {drives.map((d) => (
-        <div key={d.id} className="glass-card" style={{ padding: "16px 20px" }}>
-          <div className="flex items-center justify-between" style={{ marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
-            <strong style={{ fontFamily: "var(--font-head)" }}>{d.companyName} — {d.roleTitle}</strong>
-            <span className="badge badge-company">₹{d.annualPackage.toLocaleString("en-IN")}</span>
-          </div>
-          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: 12 }}>
-            Batch {d.batchYear}
-            {d.minCgpa ? ` · CGPA ${d.minCgpa.toFixed(2)}+` : " · no CGPA cutoff"}
-            {" · drive "}{formatDate(d.driveDate)}
-            {" · applications close "}{formatDate(d.applicationDeadline)}
+        <div key={d.id} className="row">
+          <div style={{ minWidth: 0 }}>
+            <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
+              <strong className="item-title">{d.companyName} — {d.roleTitle}</strong>
+              <span className="pill">{formatLPA(d.annualPackage)}</span>
+            </div>
+            <div className="row-meta" style={{ marginTop: 2 }}>
+              Batch {d.batchYear}
+              {d.minCgpa ? ` · CGPA ${d.minCgpa.toFixed(2)}+` : " · no CGPA cutoff"}
+              {" · drive "}{formatDate(d.driveDate)}
+              {" · apply by "}{formatDate(d.applicationDeadline)}
+            </div>
+            {!d.applied && !d.eligible && (
+              /* The specific cutoff, not "not eligible" — the criteria were
+                 published before applications opened, so a student turned away
+                 is owed the number they actually missed. */
+              <div className="row-meta flex items-center gap-6" style={{ marginTop: 4, color: "var(--accent-warning)" }}>
+                <Lock size={12} /> {d.ineligibleReason}
+              </div>
+            )}
           </div>
 
           {d.applied ? (
@@ -193,15 +208,7 @@ function OpenDrives({ onError, onNotice }) {
             <button className="btn btn-primary btn-sm" disabled={busy === d.id} onClick={() => apply(d.id)}>
               {busy === d.id ? <span className="spinner" /> : "Apply"}
             </button>
-          ) : (
-            <div className="alert alert-warning" style={{ fontSize: "0.8rem" }}>
-              <Lock size={15} style={{ flexShrink: 0, marginTop: 2 }} />
-              {/* The specific cutoff, not "not eligible" — the criteria were
-                  published before applications opened, so a student turned away
-                  is owed the number they actually missed. */}
-              <span>{d.ineligibleReason}</span>
-            </div>
-          )}
+          ) : null}
         </div>
       ))}
     </div>
@@ -223,7 +230,7 @@ function MyApplications({ onError, onNotice }) {
   useEffect(() => { load(); }, [load]);
 
   const answer = async (driveId, response) => {
-    setBusy(driveId);
+    setBusy(`${driveId}:${response}`);
     onError("");
     try {
       await api.post(`/outcomes/${driveId}/answer`, { response });
@@ -239,7 +246,7 @@ function MyApplications({ onError, onNotice }) {
   if (applications.length === 0) {
     return (
       <div className="empty-state glass-card">
-        <ClipboardList size={48} className="empty-state-icon" />
+        <ClipboardList className="empty-state-icon" />
         <h3>No applications yet</h3>
         <p style={{ fontSize: "0.85rem" }}>Apply to an open drive and it'll show up here.</p>
       </div>
@@ -247,32 +254,31 @@ function MyApplications({ onError, onNotice }) {
   }
 
   return (
-    <div className="flex flex-col gap-10">
+    <div className="row-list">
       {applications.map((a) => (
-        <div key={a.driveId} className="glass-card" style={{ padding: "16px 20px" }}>
-          <div className="flex items-center justify-between" style={{ marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
-            <strong style={{ fontFamily: "var(--font-head)" }}>{a.companyName} — {a.roleTitle}</strong>
-            <span className="badge badge-student">{a.stageLabel || a.stage}</span>
+        <div key={a.driveId} className="row">
+          <div style={{ minWidth: 0 }}>
+            <strong className="item-title">{a.companyName} — {a.roleTitle}</strong>
+            <div className="row-meta" style={{ marginTop: 2 }}>
+              {formatLPA(a.annualPackage)} · drive {formatDate(a.driveDate)}
+            </div>
           </div>
-          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginBottom: a.awaitingResponse ? 12 : 0 }}>
-            ₹{a.annualPackage.toLocaleString("en-IN")} · drive {formatDate(a.driveDate)}
-          </div>
+          <span className="badge badge-student">{a.stageLabel || a.stage}</span>
 
           {a.awaitingResponse && (
-            <>
-              <p style={{ fontSize: "0.8rem", marginBottom: 10 }}>
-                You have an offer. It only counts as a placement once you accept —
-                nobody can answer this for you.
-              </p>
+            <div className="flex items-center gap-8" style={{ flexBasis: "100%", flexWrap: "wrap" }}>
+              <span style={{ fontSize: "0.8rem", marginRight: 4 }}>
+                You have an offer. It only counts once you accept.
+              </span>
               <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
-                <button className="btn btn-primary btn-sm" disabled={busy === a.driveId} onClick={() => answer(a.driveId, "Accepted")}>
-                  <CheckCircle2 size={14} /> Accept
+                <button className="btn btn-primary btn-sm" disabled={isBusy(busy, a.driveId)} onClick={() => answer(a.driveId, "Accepted")}>
+                  {busy === `${a.driveId}:Accepted` ? <span className="spinner" /> : <><CheckCircle2 size={14} /> Accept</>}
                 </button>
-                <button className="btn btn-ghost btn-sm" disabled={busy === a.driveId} onClick={() => answer(a.driveId, "Declined")}>
-                  <XCircle size={14} /> Decline
+                <button className="btn btn-ghost btn-sm" disabled={isBusy(busy, a.driveId)} onClick={() => answer(a.driveId, "Declined")}>
+                  {busy === `${a.driveId}:Declined` ? <span className="spinner" /> : <><XCircle size={14} /> Decline</>}
                 </button>
               </div>
-            </>
+            </div>
           )}
         </div>
       ))}
@@ -333,65 +339,70 @@ function ProfilePanel({ onError, onNotice }) {
   };
 
   return (
-    <>
-      {!verified && (
-        <RollNumberPanel
-          verification={verification}
-          awaitingCell={awaitingCell}
-          onClaim={claimRollNumber}
-          onError={onError}
-          onNotice={onNotice}
-        />
-      )}
+    <div className="split">
+      <div className="stack">
+        {!verified && (
+          <RollNumberPanel
+            verification={verification}
+            awaitingCell={awaitingCell}
+            onClaim={claimRollNumber}
+            onError={onError}
+            onNotice={onNotice}
+          />
+        )}
 
-      {verified && profile?.rollNumber && (
-        <div className="glass-card p-24" style={{ marginBottom: 20 }}>
-          <h3 className="card-title" style={{ marginBottom: 12 }}>From your college's roster</h3>
-          <div style={{ fontSize: "0.88rem", lineHeight: 1.8 }}>
-            <div>Roll number: <span className="mono-addr">{profile.rollNumber}</span></div>
-            <div>Name: {profile.fullName}</div>
-            <div>Course: {profile.courseCode} · Batch {profile.batchYear}</div>
+        {verified && profile?.rollNumber && (
+          <div className="glass-card p-24">
+            <h3 className="card-title">From your college's roster</h3>
+            <dl className="facts">
+              <dt>Roll number</dt><dd><span className="mono-addr">{profile.rollNumber}</span></dd>
+              <dt>Name</dt><dd>{profile.fullName}</dd>
+              <dt>Course</dt><dd>{profile.courseCode}</dd>
+              <dt>Batch</dt><dd>{profile.batchYear}</dd>
+            </dl>
+            <p className="form-hint" style={{ marginTop: 12 }}>
+              From the roster your placement cell uploaded, so it can't be edited here.
+            </p>
           </div>
-          <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 12 }}>
-            These come from the roster your placement cell uploaded and can't be edited
-            here — that's what lets the platform say you really study at this college.
-          </p>
-        </div>
-      )}
+        )}
+      </div>
 
       <form onSubmit={save} className="glass-card p-24 flex flex-col gap-16">
-        <h3 className="card-title">Your details</h3>
-        {fields.map((f) => (
-          <div className="form-group" key={f.key}>
-            <label htmlFor={`p-${f.key}`}>
-              {f.label} {!f.required && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>}
-            </label>
-            {f.multiline ? (
-              <textarea
-                id={`p-${f.key}`}
-                rows={4}
-                value={values[f.key] ?? ""}
-                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-              />
-            ) : (
-              <input
-                id={`p-${f.key}`}
-                value={values[f.key] ?? ""}
-                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-              />
-            )}
-            {f.help && <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4 }}>{f.help}</p>}
-          </div>
-        ))}
-        <p style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-          Your CGPA decides which drives you're eligible for. None of this is written to
-          the blockchain — on-chain you're only a wallet address.
-        </p>
+        <div>
+          <h3 className="card-title">Your details</h3>
+          <p className="card-lead">
+            Your CGPA decides which drives you're eligible for. None of this goes on the blockchain.
+          </p>
+        </div>
+        <div className="form-grid cols-2">
+          {fields.map((f) => (
+            <div className={f.multiline ? "form-group span-all" : "form-group"} key={f.key}>
+              <label htmlFor={`p-${f.key}`}>
+                {f.label} {!f.required && <span className="label-optional">(optional)</span>}
+              </label>
+              {f.multiline ? (
+                <textarea
+                  id={`p-${f.key}`}
+                  rows={3}
+                  value={values[f.key] ?? ""}
+                  onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                />
+              ) : (
+                <input
+                  id={`p-${f.key}`}
+                  value={values[f.key] ?? ""}
+                  onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                />
+              )}
+              {f.help && <p className="form-hint">{f.help}</p>}
+            </div>
+          ))}
+        </div>
         <button type="submit" className="btn btn-primary" disabled={busy}>
           {busy ? <span className="spinner" /> : "Save"}
         </button>
       </form>
-    </>
+    </div>
   );
 }
 
@@ -444,7 +455,7 @@ function RollNumberPanel({ verification, awaitingCell, onClaim, onError, onNotic
       <div className="glass-card p-24" style={{ marginBottom: 20 }}>
         <div className="flex items-center gap-12" style={{ marginBottom: 10 }}>
           <Clock size={20} style={{ color: "var(--accent-warning)", flexShrink: 0 }} />
-          <strong style={{ fontFamily: "var(--font-head)" }}>Waiting on your placement cell</strong>
+          <h3 className="card-title">Waiting on your placement cell</h3>
         </div>
         <p style={{ fontSize: "0.86rem" }}>
           They are confirming roll number{" "}
@@ -458,8 +469,8 @@ function RollNumberPanel({ verification, awaitingCell, onClaim, onError, onNotic
   return (
     <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16" style={{ marginBottom: 20 }}>
       <div>
-        <strong style={{ fontFamily: "var(--font-head)" }}>Confirm you study here</strong>
-        <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>
+        <h3 className="card-title">Confirm you study here</h3>
+        <p className="card-lead">
           Your roll number is what ties this account to a real student. If the roster is
           already uploaded you are confirmed instantly; if not, your placement cell gets
           it to check.

@@ -27,7 +27,7 @@ export class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="page-container animate-fade-in-up text-center" style={{ maxWidth: 480, marginTop: 100 }}>
+        <div className="page-container page-status animate-fade-in-up">
           <AlertTriangle size={40} style={{ color: "var(--accent-danger)", marginBottom: 16 }} />
           <h2 style={{ marginBottom: 12 }}>Something went wrong</h2>
           <p style={{ marginBottom: 24 }}>

@@ -43,8 +43,8 @@ export default function ClassmateLookup() {
     <div className="flex flex-col gap-20">
       <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16">
         <div>
-          <strong style={{ fontFamily: "var(--font-head)" }}>Find a classmate</strong>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>
+          <h3 className="card-title">Find a classmate</h3>
+          <p className="card-lead">
             You need both their roll number and the email they signed up with. There is no
             browsable list of students here — only companies see the pool, and they see it
             without names.

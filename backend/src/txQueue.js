@@ -18,6 +18,16 @@
 import { provider } from "./chain.js";
 
 const queues = new Map(); // lowercase address -> tail of the pending chain
+let beforeSend = null;
+
+/**
+ * Registers a step to run, inside the wallet's lock, before each transaction.
+ * treasury.js uses it to top up a wallet that has run out of gas. It's a hook
+ * rather than an import because treasury.js itself sends through this queue.
+ */
+export function setBeforeSend(fn) {
+  beforeSend = fn;
+}
 const nonces = new Map(); // lowercase address -> next nonce to use
 
 async function reserveNonce(address) {
@@ -64,6 +74,7 @@ export function withWalletLock(address, fn) {
   const previous = queues.get(key) || Promise.resolve();
 
   const run = previous.catch(() => {}).then(async () => {
+    if (beforeSend) await beforeSend(address);
     for (let attempt = 1; ; attempt++) {
       const nonce = await reserveNonce(address);
       try {

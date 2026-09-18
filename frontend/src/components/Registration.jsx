@@ -86,7 +86,7 @@ export default function Registration() {
             <div className="flex items-center gap-12">
               <Icon size={22} style={{ flexShrink: 0, color: "var(--accent-primary)" }} />
               <div>
-                <strong style={{ fontFamily: "var(--font-head)" }}>{label}</strong>
+                <strong className="item-title">{label}</strong>
                 <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{blurb}</div>
               </div>
             </div>
@@ -143,7 +143,7 @@ function StudentForm({ onClaim }) {
       <div className="glass-card p-24 animate-fade-in-up">
         <div className="flex items-center gap-12" style={{ marginBottom: 12 }}>
           <Clock size={22} style={{ color: "var(--accent-warning)", flexShrink: 0 }} />
-          <strong style={{ fontFamily: "var(--font-head)" }}>Sent to your placement cell</strong>
+          <h3 className="card-title">Sent to your placement cell</h3>
         </div>
         <p style={{ fontSize: "0.88rem", marginBottom: 12 }}>
           Your roll number wasn't on the roster yet, so we've passed it to the placement
@@ -160,7 +160,7 @@ function StudentForm({ onClaim }) {
   if (colleges.length === 0) {
     return (
       <div className="glass-card p-24">
-        <div className="alert alert-warning" style={{ fontSize: "0.85rem" }}>
+        <div className="alert alert-warning" role="status">
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>
             No college has been set up on this platform yet. The administrator creates it
@@ -190,7 +190,7 @@ function StudentForm({ onClaim }) {
           placeholder="e.g. 21CE1042"
           required
         />
-        <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4 }}>
+        <p className="form-hint">
           If your placement cell has already uploaded the roster, you're confirmed
           straight away. If not, we'll pass this to them — either way you can carry on
           looking around.
@@ -201,7 +201,7 @@ function StudentForm({ onClaim }) {
         <div className="form-group" key={f.key}>
           <label htmlFor={`reg-${f.key}`}>
             {f.label}{" "}
-            {!f.required && <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>}
+            {!f.required && <span className="label-optional">(optional)</span>}
           </label>
           <input
             id={`reg-${f.key}`}
@@ -212,7 +212,7 @@ function StudentForm({ onClaim }) {
             value={values[f.key] ?? ""}
             onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
           />
-          {f.help && <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4 }}>{f.help}</p>}
+          {f.help && <p className="form-hint">{f.help}</p>}
         </div>
       ))}
 
@@ -289,7 +289,7 @@ function CompanyForm({ onRegister }) {
 
       <div className="form-group">
         <label htmlFor="reg-web">
-          Website <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span>
+          Website <span className="label-optional">(optional)</span>
         </label>
         <input
           id="reg-web"
@@ -303,7 +303,7 @@ function CompanyForm({ onRegister }) {
         )}
       </div>
 
-      <div className="alert alert-info" style={{ fontSize: "0.82rem" }}>
+      <div className="alert alert-info" role="status">
         <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
         <span>
           The college confirms you were invited before students can see your openings.

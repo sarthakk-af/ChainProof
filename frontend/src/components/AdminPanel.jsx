@@ -18,6 +18,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   ShieldCheck,
+  LogIn,
   Landmark,
   AlertCircle,
   CheckCircle2,
@@ -25,6 +26,8 @@ import {
   KeyRound,
   Ban,
 } from "lucide-react";
+import PasswordInput from "./shared/PasswordInput.jsx";
+import { shortAddr } from "../utils/format.js";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 const TOKEN_KEY = "chainproof_admin_session";
@@ -90,16 +93,17 @@ function LoginScreen({ onSignedIn }) {
   };
 
   return (
-    <div className="page-container animate-fade-in-up" style={{ maxWidth: 420, marginTop: 100 }}>
-      <div className="glass-card p-24 flex flex-col gap-16">
-        <div className="flex items-center gap-12">
-          <ShieldCheck size={22} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
-          <div>
-            <strong style={{ fontFamily: "var(--font-head)" }}>Platform administration</strong>
-            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-              Set up from your backend .env file.
-            </div>
+    <div className="page-container auth-page animate-fade-in-up">
+      <div className="glass-card p-32 flex flex-col gap-16">
+        <div>
+          <div className="section-eyebrow flex items-center gap-6">
+            <ShieldCheck size={13} /> Platform administration
           </div>
+          <h2 style={{ margin: "0 0 4px", fontSize: "1.6rem" }}>Admin sign in</h2>
+          <p style={{ fontSize: "0.85rem", margin: 0 }}>
+            Use <code>ADMIN_USERNAME</code> and <code>ADMIN_PASSWORD</code> from backend/.env.
+            College and company accounts sign in on the <a href="/login">normal sign-in page</a>.
+          </p>
         </div>
 
         <form onSubmit={submit} className="flex flex-col gap-16">
@@ -110,14 +114,14 @@ function LoginScreen({ onSignedIn }) {
               value={form.username}
               onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
               autoComplete="username"
+              placeholder="admin"
               required
             />
           </div>
           <div className="form-group">
             <label htmlFor="a-pass">Password</label>
-            <input
+            <PasswordInput
               id="a-pass"
-              type="password"
               value={form.password}
               onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
               autoComplete="current-password"
@@ -132,8 +136,8 @@ function LoginScreen({ onSignedIn }) {
             </div>
           )}
 
-          <button type="submit" className="btn btn-primary w-full" disabled={busy}>
-            {busy ? <span className="spinner" /> : "Sign in"}
+          <button type="submit" className="btn btn-primary btn-lg w-full" disabled={busy}>
+            {busy ? <span className="spinner" /> : <><LogIn size={16} /> Sign in</>}
           </button>
         </form>
       </div>
@@ -160,9 +164,12 @@ function Console({ token, username, onSignOut, onExpired }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // Bumped after a suspension or reinstatement so the action log shows it.
+  const [changes, setChanges] = useState(0);
+
   return (
-    <div className="page-container animate-fade-in-up" style={{ maxWidth: 780 }}>
-      <div className="flex items-center justify-between" style={{ marginBottom: 20, flexWrap: "wrap", gap: 8 }}>
+    <div className="page-container animate-fade-in-up">
+      <div className="flex items-center justify-between page-head" style={{ flexWrap: "wrap", gap: 8 }}>
         <div>
           <div className="section-eyebrow">
             <a href="/" style={{ color: "inherit" }}>ChainProof</a> · Platform administration
@@ -190,31 +197,38 @@ function Console({ token, username, onSignOut, onExpired }) {
 
       <Health chain={overview?.chain} counts={overview?.counts} />
 
+      {/* Until the college exists nothing else works, so its form gets the
+          full width and comes first. */}
       {overview && !overview.college && (
-        <CreateCollege
-          token={token}
-          onCreated={() => { setNotice("College created. The placement cell can sign in now."); load(); }}
-          onError={setError}
-        />
+        <div style={{ marginBottom: 20 }}>
+          <CreateCollege
+            token={token}
+            onCreated={() => { setNotice("College created. The placement cell can sign in now."); load(); }}
+            onError={setError}
+          />
+        </div>
       )}
 
-      {overview?.college && (
-        <CollegeCard
-          college={overview.college}
+      <div className="split">
+        <div className="stack">
+          {overview?.college && (
+            <CollegeCard
+              college={overview.college}
+              token={token}
+              onNotice={setNotice}
+              onError={setError}
+            />
+          )}
+          <ActionLog token={token} onError={setError} refreshKey={changes} />
+        </div>
+
+        <Accounts
           token={token}
+          onChanged={() => { load(); setChanges((n) => n + 1); }}
           onNotice={setNotice}
           onError={setError}
         />
-      )}
-
-      <Accounts
-        token={token}
-        onChanged={load}
-        onNotice={setNotice}
-        onError={setError}
-      />
-
-      <ActionLog token={token} onError={setError} />
+      </div>
     </div>
   );
 }
@@ -276,115 +290,95 @@ function Accounts({ token, onChanged, onNotice, onError }) {
   };
 
   return (
-    <section style={{ marginBottom: 24 }}>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>Accounts</div>
-
-      <div className="glass-card p-24" style={{ marginBottom: 16 }}>
-        <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: 14 }}>
-          You can stop an account from acting, and let it act again. You cannot edit what
-          it has already recorded — a drive, a result or a placement stays exactly as its
-          author signed it, which is what makes any of it worth reading.
-        </p>
-
-        <div className="flex gap-12" style={{ flexWrap: "wrap" }}>
-          <div className="form-group" style={{ flex: "1 1 140px", marginBottom: 0 }}>
-            <label htmlFor="ac-role">Role</label>
-            <select id="ac-role" value={role} onChange={(e) => setRole(e.target.value)}>
-              <option value="">All</option>
-              <option value="College">College</option>
-              <option value="Company">Company</option>
-              <option value="Student">Student</option>
-            </select>
-          </div>
-          <div className="form-group" style={{ flex: "2 1 200px", marginBottom: 0 }}>
-            <label htmlFor="ac-q">Search</label>
-            <input
-              id="ac-q"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Name, address or registration number"
-            />
-          </div>
+    <section>
+      <div className="section-head">
+        <div className="section-eyebrow">Accounts ({accounts.length})</div>
+        <div className="flex gap-8" style={{ flex: "1 1 360px", justifyContent: "flex-end" }}>
+          <select
+            aria-label="Role"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            style={{ width: 130 }}
+          >
+            <option value="">All roles</option>
+            <option value="College">College</option>
+            <option value="Company">Company</option>
+            <option value="Student">Student</option>
+          </select>
+          <input
+            aria-label="Search accounts"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search accounts"
+            style={{ maxWidth: 320 }}
+          />
         </div>
       </div>
+      <p className="form-hint" style={{ margin: "0 0 10px" }}>
+        Suspending stops an account from acting. Nothing it already recorded changes.
+      </p>
 
-      {accounts.length === 0 && (
-        <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>No accounts match.</p>
-      )}
-
-      <div className="flex flex-col gap-10">
+      <div className="row-list">
+        {accounts.length === 0 && <div className="row-empty">No accounts match.</div>}
         {accounts.map((a) => (
-          <div key={a.address} className="glass-card p-24">
-            <div className="flex items-start justify-between gap-12" style={{ flexWrap: "wrap" }}>
-              <div style={{ minWidth: 0 }}>
-                <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
-                  <strong style={{ fontFamily: "var(--font-head)" }}>{a.name}</strong>
-                  <span className="pill pill-muted" style={{ fontSize: "0.68rem" }}>{a.role}</span>
-                  <span
-                    className="pill"
-                    style={{
-                      fontSize: "0.68rem",
-                      color: a.status === "Suspended" ? "var(--accent-warning)" : undefined,
-                    }}
-                  >
-                    {a.status}
-                  </span>
-                </div>
-                <div style={{ fontSize: "0.76rem", color: "var(--text-muted)", marginTop: 6 }}>
-                  <span className="mono-addr">{a.address}</span>
-                  {a.email && <> · {a.email}</>}
-                </div>
+          <div key={a.address} className="row">
+            <div style={{ minWidth: 0 }}>
+              <div className="flex items-center gap-8" style={{ flexWrap: "wrap" }}>
+                <strong className="item-title">{a.name}</strong>
+                <span className="pill pill-muted">{a.role}</span>
+                <span
+                  className="pill"
+                  style={a.status === "Suspended" ? { color: "var(--accent-warning)" } : undefined}
+                >
+                  {a.status}
+                </span>
               </div>
-
-              <div style={{ flexShrink: 0 }}>
-                {a.status === "Active" && (
-                  <button
-                    className="btn btn-ghost btn-sm"
-                    disabled={busy === a.address}
-                    onClick={() => { setConfirming(a.address); setReason(""); }}
-                  >
-                    <Ban size={13} /> Suspend
-                  </button>
-                )}
-                {a.status === "Suspended" && (
-                  <button
-                    className="btn btn-primary btn-sm"
-                    disabled={busy === a.address}
-                    onClick={() => act(a, "reinstate")}
-                  >
-                    {busy === a.address ? <span className="spinner" /> : "Reinstate"}
-                  </button>
-                )}
+              <div className="row-meta" style={{ marginTop: 2 }}>
+                {a.email && <>{a.email} · </>}
+                <span className="mono-addr" title={a.address}>{shortAddr(a.address)}</span>
               </div>
             </div>
 
+            <div style={{ flexShrink: 0 }}>
+              {a.status === "Active" && confirming !== a.address && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  disabled={busy === a.address}
+                  onClick={() => { setConfirming(a.address); setReason(""); }}
+                >
+                  <Ban size={14} /> Suspend
+                </button>
+              )}
+              {a.status === "Suspended" && (
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={busy === a.address}
+                  onClick={() => act(a, "reinstate")}
+                >
+                  {busy === a.address ? <span className="spinner" /> : "Reinstate"}
+                </button>
+              )}
+            </div>
+
             {confirming === a.address && (
-              <div className="flex flex-col gap-12" style={{ marginTop: 16 }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label htmlFor={`ac-reason-${a.address}`}>Why are you suspending this account?</label>
-                  <input
-                    id={`ac-reason-${a.address}`}
-                    value={reason}
-                    onChange={(e) => setReason(e.target.value)}
-                    placeholder="e.g. Reported by the placement cell as not a real recruiter"
-                  />
-                  <p style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: 4 }}>
-                    The reason goes on the blockchain with the suspension. Nothing this
-                    account already recorded changes.
-                  </p>
-                </div>
-                <div className="flex gap-8">
-                  <button
-                    className="btn btn-primary btn-sm"
-                    disabled={busy === a.address}
-                    onClick={() => act(a, "suspend")}
-                  >
-                    {busy === a.address ? <span className="spinner" /> : "Confirm suspension"}
-                  </button>
-                  <button className="btn btn-ghost btn-sm" onClick={() => setConfirming(null)}>
-                    Never mind
-                  </button>
-                </div>
+              <div className="flex gap-8 items-center" style={{ flexBasis: "100%", flexWrap: "wrap" }}>
+                <input
+                  aria-label={`Why are you suspending ${a.name}?`}
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Reason (goes on the blockchain with the suspension)"
+                  style={{ flex: "1 1 260px" }}
+                />
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={busy === a.address}
+                  onClick={() => act(a, "suspend")}
+                >
+                  {busy === a.address ? <span className="spinner" /> : "Confirm suspension"}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setConfirming(null)}>
+                  Cancel
+                </button>
               </div>
             )}
           </div>
@@ -394,6 +388,7 @@ function Accounts({ token, onChanged, onNotice, onError }) {
   );
 }
 
+
 /**
  * What the owner has done, shown to the owner.
  *
@@ -401,36 +396,34 @@ function Accounts({ token, onChanged, onNotice, onError }) {
  * that its records do not rest on trusting whoever runs it. An administrator
  * acting invisibly would quietly turn that back into "trust me".
  */
-function ActionLog({ token, onError }) {
+function ActionLog({ token, onError, refreshKey }) {
   const [actions, setActions] = useState([]);
 
   useEffect(() => {
     adminApi("/admin/actions?limit=25", { token })
       .then((d) => setActions(d.actions))
       .catch((err) => onError(err.message));
-  }, [token, onError]);
-
-  if (actions.length === 0) return null;
+  }, [token, onError, refreshKey]);
 
   return (
-    <section style={{ marginBottom: 24 }}>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>Recent actions</div>
-      <div className="glass-card p-24">
-        <div className="flex flex-col gap-10">
-          {actions.map((a) => (
-            <div key={a.id} style={{ fontSize: "0.82rem" }}>
-              <span>{humanAction(a.action)}</span>
-              {" · "}
-              <strong>{a.actor_name || a.actor_address}</strong>
-              {a.reason && <> · {a.reason}</>}
-              <span style={{ color: "var(--text-muted)" }}>
-                {a.admin_username && <> · by {a.admin_username}</>}
-                {" · "}
-                {new Date(a.created_at).toLocaleString()}
-              </span>
+    <section>
+      <div className="section-head">
+        <div className="section-eyebrow">Recent actions</div>
+      </div>
+      <div className="row-list">
+        {actions.length === 0 && <div className="row-empty">Nothing yet.</div>}
+        {actions.map((a) => (
+          <div key={a.id} className="row" style={{ display: "block", fontSize: "0.82rem" }}>
+            <div>
+              {humanAction(a.action)} · <strong>{a.actor_name || a.actor_address}</strong>
             </div>
-          ))}
-        </div>
+            <div className="row-meta">
+              {a.reason && <>{a.reason} · </>}
+              {a.admin_username && <>by {a.admin_username} · </>}
+              {new Date(a.created_at).toLocaleString()}
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -447,13 +440,15 @@ function humanAction(code = "") {
 function Health({ chain, counts }) {
   if (!chain) return null;
   return (
-    <section style={{ marginBottom: 24 }}>
-      <div className="section-eyebrow" style={{ marginBottom: 12 }}>
-        <Activity size={13} style={{ verticalAlign: "-2px" }} /> Health
+    <section style={{ marginBottom: 20 }}>
+      <div className="section-head">
+        <div className="section-eyebrow">
+          <Activity size={13} style={{ verticalAlign: "-2px" }} /> Health
+        </div>
       </div>
 
       {chain.error ? (
-        <div className="alert alert-danger">
+        <div className="alert alert-danger" role="alert">
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>The blockchain isn't reachable: {chain.error}</span>
         </div>
@@ -481,7 +476,7 @@ function Health({ chain, counts }) {
           </div>
 
           {chain.low && (
-            <div className="alert alert-warning" style={{ marginTop: 12, fontSize: "0.82rem" }}>
+            <div className="alert alert-warning" role="status" style={{ marginTop: 12 }}>
               <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
               {/* Worth seeing before it stops anything rather than after: when
                   this empties, every signup fails and nothing else says why. */}
@@ -532,7 +527,7 @@ function CreateCollege({ token, onCreated, onError }) {
         <Landmark size={20} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
         <div>
           <h3 className="card-title">Set up the college</h3>
-          <p className="card-lead" style={{ marginBottom: 0 }}>
+          <p className="card-lead">
             Nothing else works until this exists — students are verified against its
             roster and companies are admitted by it. This creates its on-chain identity
             and the placement cell's login together.
@@ -548,13 +543,13 @@ function CreateCollege({ token, onCreated, onError }) {
       <div className="form-group">
         <label htmlFor="c-reg">Registration / accreditation ID</label>
         <input id="c-reg" value={form.registrationNumber} onChange={set("registrationNumber")} placeholder="EDU/MH/2024/0142" required />
-        <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4 }}>
+        <p className="form-hint">
           Published publicly so anyone can look it up independently.
         </p>
       </div>
 
       <div className="form-group">
-        <label htmlFor="c-web">Website <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span></label>
+        <label htmlFor="c-web">Website <span className="label-optional">(optional)</span></label>
         <input id="c-web" value={form.website} onChange={set("website")} placeholder="https://example.com" />
       </div>
 
@@ -567,8 +562,8 @@ function CreateCollege({ token, onCreated, onError }) {
 
       <div className="form-group">
         <label htmlFor="c-pass">Password</label>
-        <input id="c-pass" type="password" value={form.password} onChange={set("password")} required />
-        <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 4 }}>
+        <PasswordInput id="c-pass" value={form.password} onChange={set("password")} autoComplete="new-password" required />
+        <p className="form-hint">
           At least 8 characters, including a number. Hand these to your placement cell.
         </p>
       </div>
@@ -583,6 +578,7 @@ function CreateCollege({ token, onCreated, onError }) {
 // ---------------------------------------------------------------------------
 
 function CollegeCard({ college, token, onNotice, onError }) {
+  const [resetting, setResetting] = useState(false);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -598,6 +594,7 @@ function CollegeCard({ college, token, onNotice, onError }) {
         token,
       });
       setPassword("");
+      setResetting(false);
       onNotice(`Password reset for ${result.email}.`);
     } catch (err) {
       onError(err.message);
@@ -607,42 +604,47 @@ function CollegeCard({ college, token, onNotice, onError }) {
   };
 
   return (
-    <>
-      <section className="glass-card p-24" style={{ marginBottom: 20 }}>
-        <h3 className="card-title" style={{ marginBottom: 12 }}>The college</h3>
-        <div style={{ fontSize: "0.9rem", lineHeight: 1.9 }}>
-          <div><strong style={{ fontFamily: "var(--font-head)" }}>{college.name}</strong></div>
-          <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-            {college.registrationNumber || "no registration ID"} · {college.status}
-          </div>
-          <div className="mono-addr" style={{ fontSize: "0.72rem" }}>{college.address}</div>
+    <section>
+      <div className="section-head">
+        <div className="section-eyebrow">The college</div>
+      </div>
+      <div className="glass-card p-24">
+        <h3 className="card-title">{college.name}</h3>
+        <div className="row-meta">
+          {college.registrationNumber || "No registration ID"} · {college.status}
         </div>
-      </section>
+        <div className="mono-addr" style={{ fontSize: "0.72rem", marginTop: 8 }} title={college.address}>
+          {shortAddr(college.address)}
+        </div>
 
-      <form onSubmit={reset} className="glass-card p-24 flex flex-col gap-16" style={{ marginBottom: 24 }}>
-        <div className="flex items-center gap-12">
-          <KeyRound size={20} style={{ color: "var(--accent-primary)", flexShrink: 0 }} />
-          <div>
-            <h3 className="card-title">Reset the placement cell's password</h3>
-            <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: 4 }}>
-              The break-glass for a lost login. Nothing else about the college changes.
-            </p>
-          </div>
-        </div>
-        <div className="form-group">
-          <label htmlFor="c-newpass">New password</label>
-          <input
-            id="c-newpass"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="At least 8 characters, including a number"
-          />
-        </div>
-        <button type="submit" className="btn btn-ghost" disabled={busy || !password}>
-          {busy ? <span className="spinner" /> : "Reset password"}
-        </button>
-      </form>
-    </>
+        {/* A lost-login fix, needed rarely — kept out of the way until asked for. */}
+        {!resetting ? (
+          <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 14 }} onClick={() => setResetting(true)}>
+            <KeyRound size={14} /> Reset placement cell password
+          </button>
+        ) : (
+          <form onSubmit={reset} className="flex flex-col gap-10" style={{ marginTop: 14 }}>
+            <div className="form-group">
+              <label htmlFor="c-newpass">New password for the placement cell</label>
+              <PasswordInput
+                id="c-newpass"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters, including a number"
+              />
+            </div>
+            <div className="flex gap-8">
+              <button type="submit" className="btn btn-primary btn-sm" disabled={busy || !password}>
+                {busy ? <span className="spinner" /> : "Reset password"}
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setResetting(false); setPassword(""); }}>
+                Cancel
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </section>
   );
 }
