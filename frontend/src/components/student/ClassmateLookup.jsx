@@ -104,14 +104,14 @@ function StudentCard({ student }) {
   return (
     <div className="glass-card p-24">
       <h3 style={{ marginBottom: 2 }}>{student.fullName}</h3>
-      <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: 4 }}>
+      <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginBottom: 4 }}>
         <span className="mono-addr">{student.rollNumber}</span> · {student.courseCode} · Batch{" "}
         {student.batchYear}
         {student.cgpa !== null && student.cgpa !== undefined && <> · CGPA {student.cgpa.toFixed(2)}</>}
       </div>
-      {student.headline && <p style={{ fontSize: "0.9rem", marginTop: 8 }}>{student.headline}</p>}
+      {student.headline && <p style={{ fontSize: "var(--text-base)", marginTop: "var(--space-2)" }}>{student.headline}</p>}
 
-      <div className="flex gap-12" style={{ flexWrap: "wrap", marginTop: 10, fontSize: "0.8rem" }}>
+      <div className="flex gap-12" style={{ flexWrap: "wrap", marginTop: "var(--space-2)", fontSize: "var(--text-sm)" }}>
         <a href={`mailto:${student.email}`} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
           <Mail size={12} /> {student.email}
         </a>
@@ -132,16 +132,16 @@ function StudentCard({ student }) {
       </div>
 
       {student.about && (
-        <p style={{ fontSize: "0.86rem", whiteSpace: "pre-wrap", marginTop: 14, lineHeight: 1.6 }}>
+        <p style={{ fontSize: "var(--text-sm)", whiteSpace: "pre-wrap", marginTop: "var(--space-3)", lineHeight: 1.6 }}>
           {student.about}
         </p>
       )}
 
       {student.skills?.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <div className="flex items-center gap-6" style={{ marginBottom: 8 }}>
+        <div style={{ marginTop: "var(--space-4)" }}>
+          <div className="flex items-center gap-6" style={{ marginBottom: "var(--space-2)" }}>
             <Tag size={13} />
-            <strong style={{ fontSize: "0.82rem" }}>Skills</strong>
+            <strong style={{ fontSize: "var(--text-sm)" }}>Skills</strong>
           </div>
           <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
             {student.skills.map((s) => (
@@ -155,17 +155,17 @@ function StudentCard({ student }) {
         const items = student.resume?.[key] ?? [];
         if (items.length === 0) return null;
         return (
-          <div key={key} style={{ marginTop: 18 }}>
-            <strong style={{ fontSize: "0.82rem" }}>{label}</strong>
-            <div className="flex flex-col gap-10" style={{ marginTop: 8 }}>
+          <div key={key} style={{ marginTop: "var(--space-4)" }}>
+            <strong style={{ fontSize: "var(--text-sm)" }}>{label}</strong>
+            <div className="flex flex-col gap-10" style={{ marginTop: "var(--space-2)" }}>
               {items.map((item) => (
                 <div key={item.id}>
-                  <div style={{ fontWeight: 600, fontSize: "0.88rem" }}>{item.title}</div>
+                  <div style={{ fontWeight: 600, fontSize: "var(--text-sm)" }}>{item.title}</div>
                   {item.subtitle && (
-                    <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{item.subtitle}</div>
+                    <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>{item.subtitle}</div>
                   )}
                   {item.description && (
-                    <p style={{ fontSize: "0.82rem", whiteSpace: "pre-wrap", marginTop: 4 }}>
+                    <p style={{ fontSize: "var(--text-sm)", whiteSpace: "pre-wrap", marginTop: 4 }}>
                       {item.description}
                     </p>
                   )}

@@ -55,19 +55,19 @@ export default function Registration() {
   const [role, setRole] = useState(null);
 
   return (
-    <div className="page-container animate-fade-in-up" style={{ maxWidth: 680, marginTop: 60 }}>
-      <div className="flex items-center gap-8" style={{ marginBottom: 8 }}>
+    <div className="page-container animate-fade-in-up" style={{ maxWidth: 680, marginTop: "var(--space-8)" }}>
+      <div className="flex items-center gap-8" style={{ marginBottom: "var(--space-2)" }}>
         <span className="badge badge-student">Step 2 of 2</span>
-        <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+        <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
           Tell us who you are on this campus
         </span>
       </div>
       <h2 style={{ marginBottom: 4 }}>Choose your role</h2>
-      <p style={{ marginBottom: 28, fontSize: "0.85rem", color: "var(--text-muted)" }}>
+      <p style={{ marginBottom: "var(--space-5)", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
         You can look around before this is finished — nothing here locks you out.
       </p>
 
-      <div className="flex flex-col gap-12" style={{ marginBottom: 32 }} role="radiogroup" aria-label="Choose your role">
+      <div className="flex flex-col gap-12" style={{ marginBottom: "var(--space-6)" }} role="radiogroup" aria-label="Choose your role">
         {ROLES.map(({ value, label, icon: Icon, blurb }) => (
           <button
             key={value}
@@ -87,7 +87,7 @@ export default function Registration() {
               <Icon size={22} style={{ flexShrink: 0, color: "var(--accent-primary)" }} />
               <div>
                 <strong className="item-title">{label}</strong>
-                <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{blurb}</div>
+                <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>{blurb}</div>
               </div>
             </div>
           </button>
@@ -141,15 +141,15 @@ function StudentForm({ onClaim }) {
   if (queued) {
     return (
       <div className="glass-card p-24 animate-fade-in-up">
-        <div className="flex items-center gap-12" style={{ marginBottom: 12 }}>
+        <div className="flex items-center gap-12" style={{ marginBottom: "var(--space-3)" }}>
           <Clock size={22} style={{ color: "var(--accent-warning)", flexShrink: 0 }} />
           <h3 className="card-title">Sent to your placement cell</h3>
         </div>
-        <p style={{ fontSize: "0.88rem", marginBottom: 12 }}>
+        <p style={{ fontSize: "var(--text-sm)", marginBottom: "var(--space-3)" }}>
           Your roll number wasn't on the roster yet, so we've passed it to the placement
           cell to confirm. You'll be able to apply to drives as soon as they do.
         </p>
-        <p style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+        <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
           In the meantime you can browse every opening, package and cutoff — you just
           can't apply until you're confirmed.
         </p>
@@ -282,7 +282,7 @@ function CompanyForm({ onRegister }) {
           placeholder="L12345MH2020PLC123456"
           required
         />
-        <p style={{ fontSize: "0.75rem", marginTop: 4, color: touched.cin && cinMsg ? "var(--accent-danger)" : "var(--text-muted)" }}>
+        <p style={{ fontSize: "var(--text-xs)", marginTop: 4, color: touched.cin && cinMsg ? "var(--accent-danger)" : "var(--text-muted)" }}>
           {touched.cin && cinMsg ? cinMsg : "Published publicly so anyone can look it up independently."}
         </p>
       </div>
@@ -299,7 +299,7 @@ function CompanyForm({ onRegister }) {
           placeholder="https://example.com"
         />
         {touched.web && webMsg && (
-          <p style={{ fontSize: "0.75rem", color: "var(--accent-danger)", marginTop: 4 }}>{webMsg}</p>
+          <p style={{ fontSize: "var(--text-xs)", color: "var(--accent-danger)", marginTop: 4 }}>{webMsg}</p>
         )}
       </div>
 

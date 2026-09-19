@@ -92,14 +92,32 @@ test("POST /auth/logout requires authentication", async () => {
   assert.equal(res.status, 401);
 });
 
-test("POST /auth/forgot-password always returns the generic response, known email or not", async () => {
+test("POST /auth/forgot-password answers the same way for a known and an unknown email", async () => {
+  // The rule this protects: the endpoint must never become a way to check
+  // which addresses have accounts. Both answers must be identical, whatever
+  // the answer happens to be.
   const unknown = await request(app).post("/auth/forgot-password").send({ email: "nobody@example.com" });
-  assert.equal(unknown.status, 200);
-  assert.match(unknown.body.message, /reset link/i);
-
   const known = await request(app).post("/auth/forgot-password").send({ email: "flow@example.com" });
-  assert.equal(known.status, 200);
-  assert.match(known.body.message, /reset link/i);
+
+  assert.equal(unknown.status, known.status);
+  assert.deepEqual(unknown.body, known.body);
+});
+
+test("forgot-password owns up when there is no email service", async () => {
+  // It used to answer "check your inbox" on a server that could never send
+  // one. Which branch runs depends on the machine — dotenv picks up a real
+  // backend/.env if one exists — so this asserts the right thing either way.
+  const { config } = await import("../src/config.js");
+  const res = await request(app).post("/auth/forgot-password").send({ email: "flow@example.com" });
+
+  if (config.brevoApiKey) {
+    assert.equal(res.status, 200);
+    assert.match(res.body.message, /reset link/i);
+  } else {
+    assert.equal(res.status, 503);
+    assert.match(res.body.error, /email service/i);
+    assert.match(res.body.error, /placement cell/i, "it names who can help instead");
+  }
 });
 
 test("POST /auth/reset-password rejects a bogus token", async () => {
@@ -250,4 +268,101 @@ test("resetting a password invalidates every other outstanding reset token for t
     .post("/auth/reset-password")
     .send({ token: first.token, newPassword: "attackerpassword1" });
   assert.equal(staleAttempt.status, 400);
+});
+
+// --- changing your password while signed in ---------------------------------
+
+test("a signed-in account can change its own password", async () => {
+  // There was no route to this at all: the only way to a new password was to
+  // forget the old one and wait for an email.
+  const { hashPassword } = await import("../src/auth.js");
+  const owner = createUser({
+    email: "change-me@example.com",
+    passwordHash: await hashPassword("OldPass123"),
+    walletAddress: ethers.Wallet.createRandom().address,
+    encryptedPrivateKey: "iv:tag:ct",
+  });
+
+  const changed = await request(app)
+    .post("/auth/change-password")
+    .set("Authorization", authHeader(owner))
+    .send({ currentPassword: "OldPass123", newPassword: "BrandNew123" });
+  assert.equal(changed.status, 200);
+  assert.ok(changed.body.token, "a fresh token keeps this session alive");
+
+  const oldLogin = await request(app)
+    .post("/auth/login")
+    .send({ email: "change-me@example.com", password: "OldPass123" });
+  assert.equal(oldLogin.status, 401, "the old password stops working");
+
+  const newLogin = await request(app)
+    .post("/auth/login")
+    .send({ email: "change-me@example.com", password: "BrandNew123" });
+  assert.equal(newLogin.status, 200);
+});
+
+test("changing the password ends the other sessions but not this one", async () => {
+  const { hashPassword } = await import("../src/auth.js");
+  const owner = createUser({
+    email: "sessions@example.com",
+    passwordHash: await hashPassword("OldPass123"),
+    walletAddress: ethers.Wallet.createRandom().address,
+    encryptedPrivateKey: "iv:tag:ct",
+  });
+  const otherDevice = authHeader(owner);
+
+  const changed = await request(app)
+    .post("/auth/change-password")
+    .set("Authorization", otherDevice)
+    .send({ currentPassword: "OldPass123", newPassword: "BrandNew123" });
+
+  const stale = await request(app).get("/me").set("Authorization", otherDevice);
+  assert.equal(stale.status, 401, "the other device is signed out");
+
+  const current = await request(app).get("/me").set("Authorization", `Bearer ${changed.body.token}`);
+  assert.equal(current.status, 200, "the device that changed it carries on");
+});
+
+test("the current password has to be right, and the new one has to be different", async () => {
+  const { hashPassword } = await import("../src/auth.js");
+  const owner = createUser({
+    email: "guarded@example.com",
+    passwordHash: await hashPassword("OldPass123"),
+    walletAddress: ethers.Wallet.createRandom().address,
+    encryptedPrivateKey: "iv:tag:ct",
+  });
+
+  const wrong = await request(app)
+    .post("/auth/change-password")
+    .set("Authorization", authHeader(owner))
+    .send({ currentPassword: "NotMyPassword1", newPassword: "BrandNew123" });
+  assert.equal(wrong.status, 403);
+
+  const same = await request(app)
+    .post("/auth/change-password")
+    .set("Authorization", authHeader(owner))
+    .send({ currentPassword: "OldPass123", newPassword: "OldPass123" });
+  assert.equal(same.status, 400);
+
+  const weak = await request(app)
+    .post("/auth/change-password")
+    .set("Authorization", authHeader(owner))
+    .send({ currentPassword: "OldPass123", newPassword: "short" });
+  assert.equal(weak.status, 400);
+});
+
+test("signing out everywhere invalidates the token that asked for it", async () => {
+  const owner = createUser({
+    email: "everywhere@example.com",
+    passwordHash: "unused",
+    walletAddress: ethers.Wallet.createRandom().address,
+    encryptedPrivateKey: "iv:tag:ct",
+  });
+  const header = authHeader(owner);
+
+  const out = await request(app).post("/auth/sign-out-everywhere").set("Authorization", header);
+  assert.equal(out.status, 200);
+
+  const after = await request(app).get("/me").set("Authorization", header);
+  assert.equal(after.status, 401);
 });

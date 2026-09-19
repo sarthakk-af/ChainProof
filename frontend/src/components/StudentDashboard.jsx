@@ -28,6 +28,8 @@ import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import { formatDate, formatLPA } from "../utils/format.js";
+import { LoadingRows } from "./shared/Loading.jsx";
+import { useScrollToAlert } from "../utils/useScrollToAlert.js";
 
 /** True while either button for `id` is working (busy is "<id>:<action>"). */
 const isBusy = (busy, id) => typeof busy === "string" && busy.startsWith(`${id}:`);
@@ -46,6 +48,7 @@ export default function StudentDashboard() {
   const [tab, setTab] = useUrlTab(TABS.map((t) => t.id), "open");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  useScrollToAlert(error || notice);
 
   const verified = !!verification?.verified;
   // The roster name, never the on-chain one: a student is registered on-chain
@@ -65,6 +68,7 @@ export default function StudentDashboard() {
       </header>
 
       {!verified && <VerificationBanner verification={verification} />}
+      <OfferWaiting onOpen={() => setTab("mine")} />
 
       <Tabs
         tabs={TABS}
@@ -74,24 +78,26 @@ export default function StudentDashboard() {
       />
 
       {error && (
-        <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: "var(--space-4)" }}>
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{error}</span>
         </div>
       )}
       {notice && (
-        <div className="alert alert-info" role="status" style={{ marginBottom: 16 }}>
+        <div className="alert alert-info" role="status" style={{ marginBottom: "var(--space-4)" }}>
           <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{notice}</span>
         </div>
       )}
 
+      <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
       {tab === "open" && <OpenDrives onError={setError} onNotice={setNotice} />}
       {tab === "mine" && <MyApplications onError={setError} onNotice={setNotice} />}
       {tab === "notices" && <Announcements role="Student" />}
       {tab === "profile" && <ProfilePanel onError={setError} onNotice={setNotice} />}
       {tab === "resume" && <ResumeEditor onError={setError} onNotice={setNotice} />}
       {tab === "classmates" && <ClassmateLookup />}
+      </div>
     </div>
   );
 }
@@ -111,7 +117,7 @@ function VerificationBanner({ verification }) {
 
   if (rejected) {
     return (
-      <div className="alert alert-danger" style={{ marginBottom: 20 }} role="alert">
+      <div className="alert alert-danger" style={{ marginBottom: "var(--space-4)" }} role="alert">
         <XCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
         <span>
           <strong>Your placement cell couldn't confirm you.</strong>
@@ -127,11 +133,11 @@ function VerificationBanner({ verification }) {
   const needsRoll = missing.includes("rollNumber");
 
   return (
-    <div className="alert alert-warning" style={{ marginBottom: 20 }} role="status">
+    <div className="alert alert-warning" style={{ marginBottom: "var(--space-4)" }} role="status">
       <Clock size={16} style={{ flexShrink: 0, marginTop: 2 }} />
       <span>
         <strong>Not confirmed yet</strong> — you can browse everything, but not apply.
-        <span style={{ display: "block", marginTop: 6, fontSize: "0.82rem" }}>
+        <span style={{ display: "block", marginTop: 6, fontSize: "var(--text-sm)" }}>
           {needsRoll && "Add your roll number from the Profile tab. "}
           {waitingOnCell && `Your placement cell is confirming roll number ${verification.rollNumber}. `}
           {needsEmail && "Confirm your email address using the code we sent you. "}
@@ -143,12 +149,49 @@ function VerificationBanner({ verification }) {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * An offer only counts once the student answers it, so an unanswered one is
+ * the most important thing on their screen — and it was buried one tab away,
+ * where nothing hinted at it.
+ */
+function OfferWaiting({ onOpen }) {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    api.get("/drives/my-applications")
+      .then((d) => setCount((d.applications ?? []).filter((a) => a.awaitingResponse).length))
+      .catch(() => setCount(0));
+  }, []);
+
+  if (count === 0) return null;
+
+  return (
+    <div className="alert alert-info" role="status" style={{ marginBottom: "var(--space-4)" }}>
+      <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+      <span className="flex items-center gap-12" style={{ flexWrap: "wrap" }}>
+        <span>
+          {count === 1 ? "You have an offer waiting for your answer." : `${count} offers are waiting for your answer.`}
+        </span>
+        <button type="button" className="btn btn-primary btn-sm" onClick={onOpen}>
+          Answer it
+        </button>
+      </span>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 function OpenDrives({ onError, onNotice }) {
   const [drives, setDrives] = useState([]);
   const [busy, setBusy] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
-    api.get("/drives/open").then((d) => setDrives(d.drives)).catch((e) => onError(e.message));
+    api.get("/drives/open")
+      .then((d) => setDrives(d.drives))
+      .catch((e) => onError(e.message))
+      .finally(() => setLoading(false));
   }, [onError]);
 
   useEffect(() => { load(); }, [load]);
@@ -167,12 +210,14 @@ function OpenDrives({ onError, onNotice }) {
     }
   };
 
+  if (loading) return <LoadingRows rows={3} label="Looking for open drives" />;
+
   if (drives.length === 0) {
     return (
       <div className="empty-state glass-card">
         <Briefcase className="empty-state-icon" />
         <h3>No open drives</h3>
-        <p style={{ fontSize: "0.85rem" }}>Openings appear once your college agrees to host them.</p>
+        <p style={{ fontSize: "var(--text-sm)" }}>Openings appear once your college agrees to host them.</p>
       </div>
     );
   }
@@ -219,12 +264,14 @@ function OpenDrives({ onError, onNotice }) {
 
 function MyApplications({ onError, onNotice }) {
   const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
 
   const load = useCallback(() => {
     api.get("/drives/my-applications")
       .then((d) => setApplications(d.applications))
-      .catch((e) => onError(e.message));
+      .catch((e) => onError(e.message))
+      .finally(() => setLoading(false));
   }, [onError]);
 
   useEffect(() => { load(); }, [load]);
@@ -243,12 +290,14 @@ function MyApplications({ onError, onNotice }) {
     }
   };
 
+  if (loading) return <LoadingRows rows={2} label="Checking your applications" />;
+
   if (applications.length === 0) {
     return (
       <div className="empty-state glass-card">
         <ClipboardList className="empty-state-icon" />
         <h3>No applications yet</h3>
-        <p style={{ fontSize: "0.85rem" }}>Apply to an open drive and it'll show up here.</p>
+        <p style={{ fontSize: "var(--text-sm)" }}>Apply to an open drive and it'll show up here.</p>
       </div>
     );
   }
@@ -267,7 +316,7 @@ function MyApplications({ onError, onNotice }) {
 
           {a.awaitingResponse && (
             <div className="flex items-center gap-8" style={{ flexBasis: "100%", flexWrap: "wrap" }}>
-              <span style={{ fontSize: "0.8rem", marginRight: 4 }}>
+              <span style={{ fontSize: "var(--text-sm)", marginRight: 4 }}>
                 You have an offer. It only counts once you accept.
               </span>
               <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
@@ -360,7 +409,7 @@ function ProfilePanel({ onError, onNotice }) {
               <dt>Course</dt><dd>{profile.courseCode}</dd>
               <dt>Batch</dt><dd>{profile.batchYear}</dd>
             </dl>
-            <p className="form-hint" style={{ marginTop: 12 }}>
+            <p className="form-hint" style={{ marginTop: "var(--space-3)" }}>
               From the roster your placement cell uploaded, so it can't be edited here.
             </p>
           </div>
@@ -452,12 +501,12 @@ function RollNumberPanel({ verification, awaitingCell, onClaim, onError, onNotic
 
   if (awaitingCell) {
     return (
-      <div className="glass-card p-24" style={{ marginBottom: 20 }}>
-        <div className="flex items-center gap-12" style={{ marginBottom: 10 }}>
+      <div className="glass-card p-24" style={{ marginBottom: "var(--space-4)" }}>
+        <div className="flex items-center gap-12" style={{ marginBottom: "var(--space-2)" }}>
           <Clock size={20} style={{ color: "var(--accent-warning)", flexShrink: 0 }} />
           <h3 className="card-title">Waiting on your placement cell</h3>
         </div>
-        <p style={{ fontSize: "0.86rem" }}>
+        <p style={{ fontSize: "var(--text-sm)" }}>
           They are confirming roll number{" "}
           <span className="mono-addr">{verification?.rollNumber}</span>. Once they do, you
           can apply to drives.
@@ -467,7 +516,7 @@ function RollNumberPanel({ verification, awaitingCell, onClaim, onError, onNotic
   }
 
   return (
-    <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16" style={{ marginBottom: 20 }}>
+    <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16" style={{ marginBottom: "var(--space-4)" }}>
       <div>
         <h3 className="card-title">Confirm you study here</h3>
         <p className="card-lead">

@@ -35,14 +35,14 @@ export default function PendingApproval() {
   return (
     <div className="page-container page-status animate-fade-in-up">
       {isRejected ? (
-        <XCircle size={40} style={{ color: "var(--accent-danger)", marginBottom: 16 }} />
+        <XCircle size={40} style={{ color: "var(--accent-danger)", marginBottom: "var(--space-4)" }} />
       ) : (
-        <Clock size={40} style={{ color: "var(--accent-warning)", marginBottom: 16 }} />
+        <Clock size={40} style={{ color: "var(--accent-warning)", marginBottom: "var(--space-4)" }} />
       )}
-      <h2 style={{ marginBottom: 12 }}>
+      <h2 style={{ marginBottom: "var(--space-3)" }}>
         {isRejected ? "Registration rejected" : "Verification pending"}
       </h2>
-      <p style={{ marginBottom: 28 }}>
+      <p style={{ marginBottom: "var(--space-5)" }}>
         {isRejected ? (
           <>
             Your registration as <strong>{actor?.name}</strong> was reviewed and not approved.

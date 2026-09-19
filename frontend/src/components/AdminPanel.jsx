@@ -99,8 +99,8 @@ function LoginScreen({ onSignedIn }) {
           <div className="section-eyebrow flex items-center gap-6">
             <ShieldCheck size={13} /> Platform administration
           </div>
-          <h2 style={{ margin: "0 0 4px", fontSize: "1.6rem" }}>Admin sign in</h2>
-          <p style={{ fontSize: "0.85rem", margin: 0 }}>
+          <h2 style={{ margin: "0 0 4px", fontSize: "var(--text-xl)" }}>Admin sign in</h2>
+          <p style={{ fontSize: "var(--text-sm)", margin: 0 }}>
             Use <code>ADMIN_USERNAME</code> and <code>ADMIN_PASSWORD</code> from backend/.env.
             College and company accounts sign in on the <a href="/login">normal sign-in page</a>.
           </p>
@@ -169,7 +169,7 @@ function Console({ token, username, onSignOut, onExpired }) {
 
   return (
     <div className="page-container animate-fade-in-up">
-      <div className="flex items-center justify-between page-head" style={{ flexWrap: "wrap", gap: 8 }}>
+      <div className="flex items-center justify-between page-head" style={{ flexWrap: "wrap", gap: "var(--space-2)" }}>
         <div>
           <div className="section-eyebrow">
             <a href="/" style={{ color: "inherit" }}>ChainProof</a> · Platform administration
@@ -183,24 +183,24 @@ function Console({ token, username, onSignOut, onExpired }) {
       </div>
 
       {error && (
-        <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: "var(--space-4)" }}>
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{error}</span>
         </div>
       )}
       {notice && (
-        <div className="alert alert-info" role="status" style={{ marginBottom: 16 }}>
+        <div className="alert alert-info" role="status" style={{ marginBottom: "var(--space-4)" }}>
           <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{notice}</span>
         </div>
       )}
 
-      <Health chain={overview?.chain} counts={overview?.counts} />
+      <Health chain={overview?.chain} counts={overview?.counts} syncGaps={overview?.syncGaps} />
 
       {/* Until the college exists nothing else works, so its form gets the
           full width and comes first. */}
       {overview && !overview.college && (
-        <div style={{ marginBottom: 20 }}>
+        <div style={{ marginBottom: "var(--space-4)" }}>
           <CreateCollege
             token={token}
             onCreated={() => { setNotice("College created. The placement cell can sign in now."); load(); }}
@@ -413,7 +413,7 @@ function ActionLog({ token, onError, refreshKey }) {
       <div className="row-list">
         {actions.length === 0 && <div className="row-empty">Nothing yet.</div>}
         {actions.map((a) => (
-          <div key={a.id} className="row" style={{ display: "block", fontSize: "0.82rem" }}>
+          <div key={a.id} className="row" style={{ display: "block", fontSize: "var(--text-sm)" }}>
             <div>
               {humanAction(a.action)} · <strong>{a.actor_name || a.actor_address}</strong>
             </div>
@@ -437,10 +437,10 @@ function humanAction(code = "") {
 
 // ---------------------------------------------------------------------------
 
-function Health({ chain, counts }) {
+function Health({ chain, counts, syncGaps }) {
   if (!chain) return null;
   return (
-    <section style={{ marginBottom: 20 }}>
+    <section style={{ marginBottom: "var(--space-4)" }}>
       <div className="section-head">
         <div className="section-eyebrow">
           <Activity size={13} style={{ verticalAlign: "-2px" }} /> Health
@@ -475,8 +475,24 @@ function Health({ chain, counts }) {
             </div>
           </div>
 
+          {/* A gap means the local copy is behind the chain. Reconciliation
+              repairs it on its own; if it persists, the figures on every
+              dashboard are stale and this is the only place that says so. */}
+          {syncGaps?.length > 0 && (
+            <div className="alert alert-warning" role="status" style={{ marginTop: "var(--space-3)" }}>
+              <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+              <span>
+                {syncGaps.length === 1
+                  ? `Block ${syncGaps[0]} hasn't been copied locally yet.`
+                  : `${syncGaps.length} blocks haven't been copied locally yet (from ${syncGaps[0]}).`}{" "}
+                The figures on the dashboards may be behind until that clears — it retries
+                every minute.
+              </span>
+            </div>
+          )}
+
           {chain.low && (
-            <div className="alert alert-warning" role="status" style={{ marginTop: 12 }}>
+            <div className="alert alert-warning" role="status" style={{ marginTop: "var(--space-3)" }}>
               <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
               {/* Worth seeing before it stops anything rather than after: when
                   this empties, every signup fails and nothing else says why. */}
@@ -613,17 +629,17 @@ function CollegeCard({ college, token, onNotice, onError }) {
         <div className="row-meta">
           {college.registrationNumber || "No registration ID"} · {college.status}
         </div>
-        <div className="mono-addr" style={{ fontSize: "0.72rem", marginTop: 8 }} title={college.address}>
+        <div className="mono-addr" style={{ fontSize: "var(--text-xs)", marginTop: "var(--space-2)" }} title={college.address}>
           {shortAddr(college.address)}
         </div>
 
         {/* A lost-login fix, needed rarely — kept out of the way until asked for. */}
         {!resetting ? (
-          <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 14 }} onClick={() => setResetting(true)}>
+          <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: "var(--space-3)" }} onClick={() => setResetting(true)}>
             <KeyRound size={14} /> Reset placement cell password
           </button>
         ) : (
-          <form onSubmit={reset} className="flex flex-col gap-10" style={{ marginTop: 14 }}>
+          <form onSubmit={reset} className="flex flex-col gap-10" style={{ marginTop: "var(--space-3)" }}>
             <div className="form-group">
               <label htmlFor="c-newpass">New password for the placement cell</label>
               <PasswordInput

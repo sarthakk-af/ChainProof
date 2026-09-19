@@ -36,6 +36,21 @@ offer. The company cannot claim it hired someone who never said yes. A student
 cannot claim an offer nobody made. Announcements may say whatever they like —
 the signed record is what anyone checks them against.
 
+## Who the screens are for
+
+Agreed with the UI work, and the tie-breaker whenever a design question turns
+into a matter of taste.
+
+| Who | Where they are | The one thing they came to do |
+|---|---|---|
+| **Student** | Phone, between classes. Most of the real use. | See which drives they can apply to, apply, check where they stand. |
+| **Placement cell** | Laptop, in the office. | Admit a company, host a drive, confirm a student, upload the roster. |
+| **Company recruiter** | Laptop. | Post a drive, look through students, record who reached which stage. |
+| **Parent or anyone** | Phone, no account. | See whether the placement numbers are real. |
+
+Accessibility target: **WCAG 2.1 AA**, measured rather than assumed — contrast
+is checked against the rendered colours in both themes.
+
 ## The four accounts
 
 ```

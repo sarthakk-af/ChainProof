@@ -24,7 +24,7 @@ export default function PasswordInput({ shown, onToggle, withToggle = true, styl
       <input
         {...inputProps}
         type={visible ? "text" : "password"}
-        style={withToggle ? { paddingRight: 44, ...style } : style}
+        style={withToggle ? { paddingRight: "var(--space-7)", ...style } : style}
       />
       {withToggle && (
         <button

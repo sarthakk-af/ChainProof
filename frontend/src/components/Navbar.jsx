@@ -7,7 +7,9 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
-import { Link2, Sun, Moon, BarChart3, LayoutDashboard, User, LogOut, Info, LogIn, UserPlus } from "lucide-react";
+import {
+  Link2, Sun, Moon, BarChart3, LayoutDashboard, User, LogOut, Info, LogIn, UserPlus, Menu, X,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Link, usePath } from "../utils/navigation.jsx";
 
@@ -25,6 +27,7 @@ export default function Navbar() {
   const path = usePath();
   const signedIn = status === "authenticated" && user;
   const [theme, setTheme] = useState(currentTheme);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -46,100 +49,124 @@ export default function Navbar() {
     return () => observer.disconnect();
   }, []);
 
+  // Going somewhere closes the menu; so does Escape, and so does clicking away
+  // from it. A menu that stays open after you have used it is a menu you then
+  // have to dismiss.
+  useEffect(() => setMenuOpen(false), [path]);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    const onClick = (e) => {
+      if (navRef.current && !navRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onClick);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onClick);
+    };
+  }, [menuOpen]);
+
+  /**
+   * One description of where you can go, rendered twice: as a row of buttons
+   * on a wide screen, and as a labelled list inside the phone menu.
+   *
+   * On a phone these used to be five unlabelled icons in a row — a theme
+   * toggle, results, how it works, dashboard and account all looked alike, and
+   * the only way to tell them apart was to press one.
+   */
+  const destinations = [
+    {
+      to: "/results",
+      label: "Placement results",
+      Icon: BarChart3,
+      current: path === "/results" || path === "/public",
+      show: true,
+    },
+    { to: "/about", label: "How it works", Icon: Info, current: path === "/about", show: signedIn },
+    { to: "/", label: "Dashboard", Icon: LayoutDashboard, current: path === "/", show: signedIn },
+    { to: "/profile", label: "Account", Icon: User, current: path === "/profile", show: signedIn },
+    { to: "/login", label: "Sign in", Icon: LogIn, current: false, show: !signedIn && path !== "/login" },
+  ].filter((d) => d.show);
+
+  const themeLabel = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
+  const ThemeIcon = theme === "dark" ? Sun : Moon;
+
   return (
     <nav ref={navRef} className="navbar animate-fade-in">
       {/* Brand — always links back home */}
       <div className="flex items-center gap-12">
-        <Link to="/" className="navbar-brand" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+        <Link to="/" className="navbar-brand" style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}>
           <Link2 size={20} aria-hidden="true" /> ChainProof
         </Link>
         <span
           className="badge badge-warning nav-testnet"
-          style={{ fontSize: "0.68rem" }}
+          style={{ fontSize: "var(--text-xs)" }}
           title="Running on a private practice blockchain for development/demo purposes — not a public or production network"
         >
           <span aria-hidden="true">●</span> <span className="nav-label">Test Network</span>
         </span>
       </div>
 
-      {/* Right side */}
-      <div className="navbar-meta">
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={toggleTheme}
-          aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-        >
-          {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+      {/* Wide screens: every destination, named. */}
+      <div className="navbar-meta nav-wide">
+        <button type="button" className="btn btn-ghost btn-sm" onClick={toggleTheme} aria-label={themeLabel} title={themeLabel}>
+          <ThemeIcon size={16} />
         </button>
-        {/* One link per destination, and nothing repeated from the page below.
-            On a phone the labels hide and the icons remain; each keeps its
-            name for screen readers and as a tooltip. */}
-        <Link
-          to="/results"
-          className={`btn btn-ghost btn-sm${path === "/results" || path === "/public" ? " nav-current" : ""}`}
-          aria-label="Placement results"
-          title="Placement results"
-        >
-          <BarChart3 size={14} /> <span className="nav-label">Placement results</span>
-        </Link>
-
-        {!signedIn && (
-          <>
-            {path !== "/login" && (
-              <Link to="/login" className="btn btn-ghost btn-sm" aria-label="Sign in" title="Sign in">
-                <LogIn size={14} /> <span className="nav-label">Sign in</span>
-              </Link>
-            )}
-            {path !== "/signup" && (
-              <Link to="/signup" className="btn btn-primary btn-sm" aria-label="Create account" title="Create account">
-                <UserPlus size={14} /> <span className="nav-label">Create account</span>
-              </Link>
-            )}
-          </>
+        {destinations.map(({ to, label, Icon, current }) => (
+          <Link key={to} to={to} className={`btn btn-ghost btn-sm${current ? " nav-current" : ""}`} title={label}>
+            <Icon size={14} /> <span className="nav-label">{label}</span>
+          </Link>
+        ))}
+        {!signedIn && path !== "/signup" && (
+          <Link to="/signup" className="btn btn-primary btn-sm" title="Create account">
+            <UserPlus size={14} /> <span className="nav-label">Create account</span>
+          </Link>
         )}
-
         {signedIn && (
-          <>
-            {/* Signed-out visitors read the explanation on the home page; once
-                signed in, home is the dashboard, so it needs its own link. */}
-            <Link
-              to="/about"
-              className={`btn btn-ghost btn-sm${path === "/about" ? " nav-current" : ""}`}
-              aria-label="How it works"
-              title="How it works"
-            >
-              <Info size={14} /> <span className="nav-label">How it works</span>
-            </Link>
-            <Link
-              to="/"
-              className={`btn btn-ghost btn-sm${path === "/" ? " nav-current" : ""}`}
-              aria-label="Dashboard"
-              title="Dashboard"
-            >
-              <LayoutDashboard size={14} /> <span className="nav-label">Dashboard</span>
-            </Link>
-            <Link
-              to="/profile"
-              className={`btn btn-ghost btn-sm${path === "/profile" ? " nav-current" : ""}`}
-              aria-label="Account"
-              title={`Account · ${user.email}`}
-            >
-              <User size={14} /> <span className="nav-label">Account</span>
-            </Link>
-            <button
-              id="navbar-logout-btn"
-              className="btn btn-ghost btn-sm"
-              onClick={logout}
-              aria-label="Sign out"
-              title="Sign out"
-            >
-              <LogOut size={14} /> <span className="nav-label">Sign out</span>
-            </button>
-          </>
+          <button id="navbar-logout-btn" className="btn btn-ghost btn-sm" onClick={logout} title="Sign out">
+            <LogOut size={14} /> <span className="nav-label">Sign out</span>
+          </button>
         )}
       </div>
+
+      {/* Phones: one button, and everything named behind it. */}
+      <div className="nav-narrow">
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm nav-menu-button"
+          aria-expanded={menuOpen}
+          aria-controls="nav-menu"
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          {menuOpen ? <X size={16} /> : <Menu size={16} />} Menu
+        </button>
+      </div>
+
+      {menuOpen && (
+        <div className="nav-menu" id="nav-menu">
+          {destinations.map(({ to, label, Icon, current }) => (
+            <Link key={to} to={to} className={`btn btn-ghost nav-menu-item${current ? " nav-current" : ""}`}>
+              <Icon size={16} /> {label}
+            </Link>
+          ))}
+          {!signedIn && path !== "/signup" && (
+            <Link to="/signup" className="btn btn-primary nav-menu-item">
+              <UserPlus size={16} /> Create account
+            </Link>
+          )}
+          {signedIn && (
+            <button className="btn btn-ghost nav-menu-item" onClick={logout}>
+              <LogOut size={16} /> Sign out
+            </button>
+          )}
+          <button type="button" className="btn btn-ghost nav-menu-item" onClick={toggleTheme}>
+            <ThemeIcon size={16} /> {themeLabel}
+          </button>
+        </div>
+      )}
     </nav>
   );
 }

@@ -12,6 +12,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Plus, Pencil, Trash2, X, ExternalLink, Tag } from "lucide-react";
 import { api } from "../../utils/api.js";
+import { LoadingRows } from "../shared/Loading.jsx";
+import { useEscape } from "../../utils/useEscape.js";
 
 export default function ResumeEditor({ onError, onNotice }) {
   const [sections, setSections] = useState([]);
@@ -49,7 +51,7 @@ export default function ResumeEditor({ onError, onNotice }) {
     }
   };
 
-  if (loading) return <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading…</p>;
+  if (loading) return <LoadingRows rows={3} label="Opening your resume" />;
 
   return (
     <div className="stack">
@@ -65,7 +67,7 @@ export default function ResumeEditor({ onError, onNotice }) {
         const items = resume[section.key] ?? [];
         return (
           <div key={section.key} className="glass-card p-24">
-            <div className="flex items-start justify-between gap-12" style={{ marginBottom: 10 }}>
+            <div className="flex items-start justify-between gap-12" style={{ marginBottom: "var(--space-2)" }}>
               <div>
                 <h3 className="card-title">{section.label}</h3>
                 <p className="card-lead">
@@ -134,17 +136,17 @@ function ItemRow({ item, onEdit, onDelete, deleting }) {
     <div
       style={{
         borderLeft: "2px solid var(--border-subtle, rgba(255,255,255,0.12))",
-        paddingLeft: 14,
+        paddingLeft: "var(--space-3)",
       }}
     >
       <div className="flex items-start justify-between gap-12">
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: "0.92rem" }}>{item.title}</div>
+          <div style={{ fontWeight: 600, fontSize: "var(--text-base)" }}>{item.title}</div>
           {item.subtitle && (
-            <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>{item.subtitle}</div>
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>{item.subtitle}</div>
           )}
           {period && (
-            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 2 }}>{period}</div>
+            <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: 2 }}>{period}</div>
           )}
         </div>
         <div className="flex gap-8" style={{ flexShrink: 0 }}>
@@ -158,7 +160,7 @@ function ItemRow({ item, onEdit, onDelete, deleting }) {
       </div>
 
       {item.description && (
-        <p style={{ fontSize: "0.84rem", whiteSpace: "pre-wrap", marginTop: 6, lineHeight: 1.6 }}>
+        <p style={{ fontSize: "var(--text-sm)", whiteSpace: "pre-wrap", marginTop: 6, lineHeight: 1.6 }}>
           {item.description}
         </p>
       )}
@@ -167,7 +169,7 @@ function ItemRow({ item, onEdit, onDelete, deleting }) {
           href={item.url}
           target="_blank"
           rel="noopener noreferrer"
-          style={{ fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6 }}
+          style={{ fontSize: "var(--text-xs)", display: "inline-flex", alignItems: "center", gap: 4, marginTop: 6 }}
         >
           <ExternalLink size={12} /> {item.url.replace(/^https?:\/\//, "").slice(0, 48)}
         </a>
@@ -177,6 +179,7 @@ function ItemRow({ item, onEdit, onDelete, deleting }) {
 }
 
 function ItemForm({ section, existing, onCancel, onSaved, onError }) {
+  useEscape(onCancel);
   const [values, setValues] = useState({
     title: existing?.title ?? "",
     subtitle: existing?.subtitle ?? "",
@@ -206,11 +209,11 @@ function ItemForm({ section, existing, onCancel, onSaved, onError }) {
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-12" style={{ marginBottom: 16 }}>
+    <form onSubmit={submit} className="flex flex-col gap-12" style={{ marginBottom: "var(--space-4)" }}>
       <div className="flex items-center justify-between">
-        <strong style={{ fontSize: "0.85rem" }}>{existing ? "Edit entry" : `Add to ${section.label}`}</strong>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
-          <X size={13} />
+        <strong style={{ fontSize: "var(--text-sm)" }}>{existing ? "Edit entry" : `Add to ${section.label}`}</strong>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel} aria-label="Close without saving">
+          <X size={14} />
         </button>
       </div>
 
@@ -299,30 +302,30 @@ function SkillsPanel({ skills, onSaved, onError }) {
 
   return (
     <div className="glass-card p-24">
-      <div className="flex items-center gap-8" style={{ marginBottom: 10 }}>
+      <div className="flex items-center gap-8" style={{ marginBottom: "var(--space-2)" }}>
         <Tag size={15} />
         <h3 className="card-title">Skills</h3>
       </div>
-      <p className="card-lead" style={{ marginBottom: 12 }}>
+      <p className="card-lead" style={{ marginBottom: "var(--space-3)" }}>
         These are what a company filters on when it looks at this college.
       </p>
 
-      <div className="flex gap-8" style={{ flexWrap: "wrap", marginBottom: 14 }}>
+      <div className="flex gap-8" style={{ flexWrap: "wrap", marginBottom: "var(--space-3)" }}>
         {items.map((skill) => (
           <span key={skill} className="pill" style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             {skill}
             <button
               type="button"
+              className="chip-remove"
               onClick={() => { setItems(items.filter((s) => s !== skill)); setDirty(true); }}
-              style={{ background: "none", border: 0, cursor: "pointer", color: "inherit", padding: 0, lineHeight: 1 }}
               aria-label={`Remove ${skill}`}
             >
-              <X size={11} />
+              <X size={12} />
             </button>
           </span>
         ))}
         {items.length === 0 && (
-          <span style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>None yet.</span>
+          <span style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>None yet.</span>
         )}
       </div>
 

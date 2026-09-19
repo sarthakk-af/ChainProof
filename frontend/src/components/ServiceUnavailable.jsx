@@ -24,14 +24,14 @@ export default function ServiceUnavailable() {
 
   return (
     <div className="page-container page-status animate-fade-in-up">
-      <CloudOff size={40} style={{ color: "var(--accent-warning)", marginBottom: 16 }} />
-      <h2 style={{ marginBottom: 12 }}>The server isn't ready</h2>
+      <CloudOff size={40} style={{ color: "var(--accent-warning)", marginBottom: "var(--space-4)" }} />
+      <h2 style={{ marginBottom: "var(--space-3)" }}>The server isn't ready</h2>
 
-      <div className="glass-card p-24" style={{ textAlign: "left", marginBottom: 20 }}>
-        <p style={{ fontSize: "0.86rem", lineHeight: 1.7 }}>{serviceError}</p>
+      <div className="glass-card p-24" style={{ textAlign: "left", marginBottom: "var(--space-4)" }}>
+        <p style={{ fontSize: "var(--text-sm)", lineHeight: 1.7 }}>{serviceError}</p>
       </div>
 
-      <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginBottom: 24 }}>
+      <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginBottom: "var(--space-5)" }}>
         You're still signed in. This page checks again every few seconds.
       </p>
 

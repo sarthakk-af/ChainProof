@@ -157,8 +157,21 @@ export function AuthProvider({ children }) {
     [refreshActor]
   );
 
+  /**
+   * Replaces this session's token in place.
+   *
+   * Changing a password ends every session, including this one — the server
+   * hands back a fresh token so the person who just changed it is not thrown
+   * out of the screen they are standing on.
+   */
+  const setToken = useCallback((token) => {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+    setAuthToken(token);
+  }, []);
+
   const value = {
     status,
+    setToken,
     serviceError,
     resumeSession,
     verification,

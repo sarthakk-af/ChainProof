@@ -93,6 +93,9 @@ export default function AuthScreen({ initialMode = "login" }) {
     return () => clearTimeout(t);
   }, [resendCooldown]);
 
+  // Coming back to a field clears its complaint; leaving it judges it again.
+  // Without this the message sat there while the person was mid-fix, which
+  // reads as nagging rather than helping.
   const switchMode = (next) => {
     setMode(next);
     setError("");
@@ -175,14 +178,14 @@ export default function AuthScreen({ initialMode = "login" }) {
         {mode === "signup" && (
           <div className="flex items-center gap-8" style={{ marginBottom: -4 }}>
             <span className="badge badge-student">Step 1 of 2</span>
-            <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Account · next comes your role</span>
+            <span style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>Account · next comes your role</span>
           </div>
         )}
 
         {/* The heading gets the full width; the link to the other page sits
             under the form, where people look for it once they realise they are
             on the wrong one. */}
-        <h2 style={{ margin: "0 0 4px", fontSize: "1.6rem" }}>
+        <h2 style={{ margin: "0 0 4px", fontSize: "var(--text-xl)" }}>
           {mode === "signup"
             ? "Create your account"
             : mode === "forgot"
@@ -193,7 +196,7 @@ export default function AuthScreen({ initialMode = "login" }) {
         </h2>
 
         {mode === "verify" && (
-          <p style={{ fontSize: "0.88rem", margin: "0 0 4px" }}>
+          <p style={{ fontSize: "var(--text-sm)", margin: "0 0 4px" }}>
             We sent a 6-digit code to <strong>{email}</strong>. Enter it below to activate your account.
           </p>
         )}
@@ -207,6 +210,7 @@ export default function AuthScreen({ initialMode = "login" }) {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => { setEmail(e.target.value); setError(""); }}
+            onFocus={() => setEmailTouched(false)}
             onBlur={() => setEmailTouched(true)}
             autoComplete="email"
             required
@@ -218,11 +222,22 @@ export default function AuthScreen({ initialMode = "login" }) {
                 : undefined
             }
           />
-          <span id="auth-email-msg" aria-live="polite" style={{ fontSize: "0.78rem" }}>
+          {/* The single most useful sentence on this form: a student who signs
+              up with a personal address is not matched to the roster and waits
+              in a queue instead, with nothing having told them why. */}
+          {mode === "signup" && (
+            <p className="form-hint">
+              Students: use the college email address your placement cell has for you — that is
+              how your roll number is matched automatically.
+            </p>
+          )}
+          <span id="auth-email-msg" aria-live="polite" style={{ fontSize: "var(--text-xs)" }}>
             {emailServerError ? (
               <span style={{ color: "var(--accent-danger)" }}>{error}</span>
             ) : emailTouched && !emailFormatValid ? (
-              <span style={{ color: "var(--accent-danger)" }}>Enter a valid email address.</span>
+              <span className="field-message">
+                <AlertCircle size={13} aria-hidden="true" /> Enter a valid email address.
+              </span>
             ) : mode === "signup" && emailAvailability === "checking" ? (
               <span style={{ color: "var(--text-muted)" }}>Checking availability…</span>
             ) : mode === "signup" && emailAvailability === "taken" ? (
@@ -248,7 +263,7 @@ export default function AuthScreen({ initialMode = "login" }) {
               maxLength={6}
               value={otp}
               onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              style={{ fontFamily: "var(--font-mono)", fontSize: "1.3rem", letterSpacing: "0.4em", textAlign: "center" }}
+              style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-lg)", letterSpacing: "0.4em", textAlign: "center" }}
               required
             />
           </div>
@@ -269,6 +284,7 @@ export default function AuthScreen({ initialMode = "login" }) {
               placeholder={mode === "signup" ? `At least ${PASSWORD_MIN_LENGTH} characters` : "••••••••"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onFocus={() => setPasswordTouched(false)}
               onBlur={() => setPasswordTouched(true)}
               autoComplete={mode === "signup" ? "new-password" : "current-password"}
               minLength={mode === "signup" ? PASSWORD_MIN_LENGTH : undefined}
@@ -291,7 +307,7 @@ export default function AuthScreen({ initialMode = "login" }) {
                 <span
                   id="auth-password-msg"
                   aria-live="polite"
-                  style={{ fontSize: "0.72rem", color: `var(--accent-${strength.cls})` }}
+                  style={{ fontSize: "var(--text-xs)", color: `var(--accent-${strength.cls})` }}
                 >
                   {strength.label}
                   {passwordTouched && !passwordValid ? ` — needs ${PASSWORD_MIN_LENGTH}+ characters and a number` : ""}
@@ -311,13 +327,14 @@ export default function AuthScreen({ initialMode = "login" }) {
               placeholder="Re-enter your password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
+              onFocus={() => setConfirmTouched(false)}
               onBlur={() => setConfirmTouched(true)}
               autoComplete="new-password"
               required
               aria-invalid={confirmTouched && !confirmValid ? "true" : undefined}
               aria-describedby="auth-confirm-msg"
             />
-            <span id="auth-confirm-msg" aria-live="polite" style={{ fontSize: "0.78rem" }}>
+            <span id="auth-confirm-msg" aria-live="polite" style={{ fontSize: "var(--text-xs)" }}>
               {confirmTouched && confirmPassword && confirmPassword === password ? (
                 <span style={{ color: "var(--accent-success)", display: "inline-flex", alignItems: "center", gap: 4 }}>
                   <Check size={13} /> Passwords match
@@ -342,6 +359,11 @@ export default function AuthScreen({ initialMode = "login" }) {
           </div>
         )}
 
+        {/* Said here because somebody coming back to the link tomorrow needs to
+            know why it no longer works. */}
+        {mode === "forgot" && !infoMessage && (
+          <p className="form-hint">The link we send lasts one hour.</p>
+        )}
         {infoMessage && (
           <div className="alert alert-info" role="status">
             <Info size={16} style={{ flexShrink: 0, marginTop: 2 }} />

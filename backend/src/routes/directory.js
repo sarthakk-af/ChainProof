@@ -78,8 +78,13 @@ directoryRouter.post("/lookup", lookupLimiter, (req, res) => {
   const found = lookupStudent(college, String(rollNumber).trim().toUpperCase(), email);
   if (!found) {
     logger.info("directory_lookup_miss", { by: req.user.address });
+    // Says what to check, because the pair is the whole gate: a right roll
+    // number with the wrong address looks exactly like a wrong roll number,
+    // and without this the reader cannot tell which half they got wrong.
     return res.status(404).json({
-      error: "No student matches that roll number and email.",
+      error:
+        "No student matches that roll number and email together. Both have to be right, " +
+        "and the email is the one they signed up with — not always their college address.",
     });
   }
 

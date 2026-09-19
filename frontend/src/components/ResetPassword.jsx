@@ -50,9 +50,9 @@ export default function ResetPassword() {
   if (!token) {
     return (
       <div className="page-container page-status animate-fade-in-up">
-        <XCircle size={40} style={{ color: "var(--accent-danger)", marginBottom: 16 }} />
-        <h2 style={{ marginBottom: 12 }}>Invalid link</h2>
-        <p style={{ marginBottom: 24 }}>This page needs a reset token from the email link.</p>
+        <XCircle size={40} style={{ color: "var(--accent-danger)", marginBottom: "var(--space-4)" }} />
+        <h2 style={{ marginBottom: "var(--space-3)" }}>Invalid link</h2>
+        <p style={{ marginBottom: "var(--space-5)" }}>This page needs a reset token from the email link.</p>
         <Link to="/login" className="btn btn-primary"><ArrowLeft size={16} /> Back to sign in</Link>
       </div>
     );
@@ -61,9 +61,9 @@ export default function ResetPassword() {
   if (done) {
     return (
       <div className="page-container page-status animate-fade-in-up">
-        <CheckCircle2 size={40} style={{ color: "var(--accent-success)", marginBottom: 16 }} />
-        <h2 style={{ marginBottom: 12 }}>Password updated</h2>
-        <p style={{ marginBottom: 24 }}>You can now sign in with your new password.</p>
+        <CheckCircle2 size={40} style={{ color: "var(--accent-success)", marginBottom: "var(--space-4)" }} />
+        <h2 style={{ marginBottom: "var(--space-3)" }}>Password updated</h2>
+        <p style={{ marginBottom: "var(--space-5)" }}>You can now sign in with your new password.</p>
         <Link to="/login" className="btn btn-primary">Go to sign in</Link>
       </div>
     );
@@ -72,7 +72,7 @@ export default function ResetPassword() {
   return (
     <div className="page-container auth-page animate-fade-in-up">
       <form className="glass-card p-32 flex flex-col gap-16" onSubmit={handleSubmit} noValidate>
-        <h2 style={{ margin: "0 0 4px", fontSize: "1.6rem" }}>Choose a new password</h2>
+        <h2 style={{ margin: "0 0 4px", fontSize: "var(--text-xl)" }}>Choose a new password</h2>
         <div className="form-group">
           <label htmlFor="reset-password">New password</label>
           <p className="form-hint" style={{ margin: "0 0 6px" }}>
@@ -83,6 +83,7 @@ export default function ResetPassword() {
             placeholder={`At least ${PASSWORD_MIN_LENGTH} characters`}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            onFocus={() => setPasswordTouched(false)}
             onBlur={() => setPasswordTouched(true)}
             autoComplete="new-password"
             minLength={PASSWORD_MIN_LENGTH}
@@ -91,7 +92,7 @@ export default function ResetPassword() {
             aria-describedby="reset-password-msg"
           />
           {passwordTouched && !passwordValid && (
-            <span id="reset-password-msg" aria-live="polite" style={{ fontSize: "0.78rem", color: "var(--accent-danger)" }}>
+            <span id="reset-password-msg" aria-live="polite" style={{ fontSize: "var(--text-xs)", color: "var(--accent-danger)" }}>
               Needs {PASSWORD_MIN_LENGTH}+ characters and a number.
             </span>
           )}

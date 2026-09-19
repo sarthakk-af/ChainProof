@@ -38,23 +38,58 @@ export default function TalentPool() {
     api.get("/talent/facets").then(setFacets).catch((e) => setError(e.message));
   }, []);
 
-  const search = useCallback(() => {
-    setLoading(true);
+  const PAGE = 25;
+
+  const query = useCallback((offset) => {
     const params = new URLSearchParams();
     if (filters.courseCode) params.set("courseCode", filters.courseCode);
     if (filters.batchYear) params.set("batchYear", filters.batchYear);
     if (filters.minCgpa) params.set("minCgpa", filters.minCgpa);
     if (filters.placed) params.set("placed", filters.placed);
     if (skills.length) params.set("skills", skills.join(","));
-
-    api
-      .get(`/talent?${params.toString()}`)
-      .then(setResult)
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
+    params.set("limit", String(PAGE));
+    params.set("offset", String(offset));
+    return api.get(`/talent?${params.toString()}`);
   }, [filters, skills]);
 
-  useEffect(search, [search]);
+  /**
+   * Waits for the typing to stop before asking.
+   *
+   * The CGPA box fired a request per keystroke: typing "8.5" sent three, and
+   * the answers could arrive out of order.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const timer = setTimeout(() => {
+      query(0)
+        .then((r) => { if (!cancelled) setResult(r); })
+        .catch((e) => { if (!cancelled) setError(e.message); })
+        .finally(() => { if (!cancelled) setLoading(false); });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [query]);
+
+  /**
+   * The backend answers 25 at a time. Without this the page showed 25 while
+   * announcing "40 students match" — the other fifteen simply did not exist as
+   * far as the reader could tell.
+   */
+  const [loadingMore, setLoadingMore] = useState(false);
+  const showMore = () => {
+    setLoadingMore(true);
+    query(result.students.length)
+      .then((r) => setResult((prev) => ({ ...r, students: [...prev.students, ...r.students] })))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoadingMore(false));
+  };
+
+  // The way out of a search that found nothing. Without it the only move is to
+  // undo four separate controls by hand.
+  const clearFilters = () => {
+    setFilters({ courseCode: "", batchYear: "", minCgpa: "", placed: "" });
+    setSkills([]);
+  };
 
   const toggleSkill = (skill) =>
     setSkills((current) =>
@@ -119,7 +154,7 @@ export default function TalentPool() {
               <label htmlFor="tp-cgpa">Min. CGPA</label>
               <input
                 id="tp-cgpa"
-                type="number"
+                type="number" inputMode="decimal"
                 step="0.1"
                 min="0"
                 max="10"
@@ -169,16 +204,32 @@ export default function TalentPool() {
         <section>
           <div className="section-head">
             <div className="section-eyebrow">
-              {loading ? "Searching…" : `${result.total} student${result.total === 1 ? "" : "s"} match`}
+              {loading
+                ? "Searching…"
+                : `${result.total} student${result.total === 1 ? "" : "s"} match`}
             </div>
+            {/* The order is fixed and sensible, so say what it is rather than
+                adding a control that only has one useful setting. */}
+            {!loading && result.total > 1 && (
+              <span className="row-meta">
+                {result.students.length < result.total
+                  ? `Showing ${result.students.length} · highest CGPA first`
+                  : "Highest CGPA first"}
+              </span>
+            )}
           </div>
 
           {!loading && result.students.length === 0 ? (
             <div className="row-list">
-              <div className="row-empty">No students match those filters.</div>
+              <div className="row-empty">
+                <p style={{ marginBottom: "var(--space-3)" }}>No students match those filters.</p>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={clearFilters}>
+                  Clear the filters
+                </button>
+              </div>
             </div>
           ) : (
-            <div className="split-even" style={{ gap: 12 }}>
+            <div className="split-even" style={{ gap: "var(--space-3)" }}>
               {result.students.map((s) => (
                 <button
                   key={s.rollNumber}
@@ -201,7 +252,7 @@ export default function TalentPool() {
                   </div>
                   {s.headline && <div className="student-card-headline">{s.headline}</div>}
                   {s.skills.length > 0 && (
-                    <div className="flex gap-6" style={{ flexWrap: "wrap", marginTop: 8 }}>
+                    <div className="flex gap-6" style={{ flexWrap: "wrap", marginTop: "var(--space-2)" }}>
                       {s.skills.slice(0, 6).map((skill) => (
                         <span key={skill} className="pill">{skill}</span>
                       ))}
@@ -210,6 +261,14 @@ export default function TalentPool() {
                   )}
                 </button>
               ))}
+            </div>
+          )}
+
+          {!loading && result.students.length < result.total && (
+            <div className="flex justify-center" style={{ marginTop: "var(--space-4)" }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={showMore} disabled={loadingMore}>
+                {loadingMore ? <span className="spinner" /> : `Show ${Math.min(PAGE, result.total - result.students.length)} more`}
+              </button>
             </div>
           )}
         </section>
@@ -258,19 +317,19 @@ function StudentDetail({ rollNumber, onBack }) {
             <h3 style={{ marginBottom: 2 }}>
               <span className="mono-addr">{student.rollNumber}</span>
             </h3>
-            <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
+            <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
               {student.courseCode} · Batch {student.batchYear}
               {student.cgpa !== null && student.cgpa !== undefined && <> · CGPA {student.cgpa.toFixed(2)}</>}
               {student.placed && " · Already placed"}
             </div>
-            {student.headline && <p style={{ marginTop: 10 }}>{student.headline}</p>}
+            {student.headline && <p style={{ marginTop: "var(--space-2)" }}>{student.headline}</p>}
             {student.about && (
-              <p style={{ fontSize: "0.86rem", whiteSpace: "pre-wrap", marginTop: 10, lineHeight: 1.6 }}>
+              <p style={{ fontSize: "var(--text-sm)", whiteSpace: "pre-wrap", marginTop: "var(--space-2)", lineHeight: 1.6 }}>
                 {student.about}
               </p>
             )}
 
-            <div className="flex gap-12" style={{ flexWrap: "wrap", marginTop: 12, fontSize: "0.8rem" }}>
+            <div className="flex gap-12" style={{ flexWrap: "wrap", marginTop: "var(--space-3)", fontSize: "var(--text-sm)" }}>
               {Object.entries(student.links || {}).map(([key, url]) =>
                 url ? (
                   <a
@@ -291,8 +350,8 @@ function StudentDetail({ rollNumber, onBack }) {
 
           {student.skills?.length > 0 && (
             <div className="glass-card p-24">
-              <strong style={{ fontSize: "0.85rem" }}>Skills</strong>
-              <div className="flex gap-8" style={{ flexWrap: "wrap", marginTop: 10 }}>
+              <strong style={{ fontSize: "var(--text-sm)" }}>Skills</strong>
+              <div className="flex gap-8" style={{ flexWrap: "wrap", marginTop: "var(--space-2)" }}>
                 {student.skills.map((s) => (
                   <span key={s} className="pill">{s}</span>
                 ))}
@@ -305,21 +364,21 @@ function StudentDetail({ rollNumber, onBack }) {
             if (items.length === 0) return null;
             return (
               <div key={key} className="glass-card p-24">
-                <strong style={{ fontSize: "0.85rem" }}>{label}</strong>
-                <div className="flex flex-col gap-14" style={{ marginTop: 10 }}>
+                <strong style={{ fontSize: "var(--text-sm)" }}>{label}</strong>
+                <div className="flex flex-col gap-14" style={{ marginTop: "var(--space-2)" }}>
                   {items.map((item) => (
                     <div key={item.id}>
-                      <div style={{ fontWeight: 600, fontSize: "0.9rem" }}>{item.title}</div>
+                      <div style={{ fontWeight: 600, fontSize: "var(--text-base)" }}>{item.title}</div>
                       {item.subtitle && (
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{item.subtitle}</div>
+                        <div style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>{item.subtitle}</div>
                       )}
                       {(item.startedOn || item.endedOn) && (
-                        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                        <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
                           {[item.startedOn, item.endedOn].filter(Boolean).join(" – ")}
                         </div>
                       )}
                       {item.description && (
-                        <p style={{ fontSize: "0.84rem", whiteSpace: "pre-wrap", marginTop: 4, lineHeight: 1.6 }}>
+                        <p style={{ fontSize: "var(--text-sm)", whiteSpace: "pre-wrap", marginTop: 4, lineHeight: 1.6 }}>
                           {item.description}
                         </p>
                       )}
@@ -328,7 +387,7 @@ function StudentDetail({ rollNumber, onBack }) {
                           href={item.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          style={{ fontSize: "0.78rem", display: "inline-flex", alignItems: "center", gap: 4, marginTop: 4 }}
+                          style={{ fontSize: "var(--text-xs)", display: "inline-flex", alignItems: "center", gap: 4, marginTop: 4 }}
                         >
                           <ExternalLink size={12} /> link
                         </a>
@@ -355,11 +414,11 @@ function StudentDetail({ rollNumber, onBack }) {
 function ContactPanel({ student }) {
   if (!student.contactUnlocked) {
     return (
-      <div className="glass-card p-24" style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <div className="glass-card p-24" style={{ display: "flex", gap: "var(--space-3)", alignItems: "flex-start" }}>
         <Lock size={16} style={{ flexShrink: 0, marginTop: 2, color: "var(--text-muted)" }} />
         <div>
-          <strong style={{ fontSize: "0.88rem" }}>Contact details are hidden</strong>
-          <p style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: 4 }}>
+          <strong style={{ fontSize: "var(--text-sm)" }}>Contact details are hidden</strong>
+          <p style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)", marginTop: 4 }}>
             {student.contactUnlockedBy}
           </p>
         </div>
@@ -369,11 +428,11 @@ function ContactPanel({ student }) {
 
   return (
     <div className="glass-card p-24">
-      <div className="flex items-center gap-8" style={{ marginBottom: 8 }}>
+      <div className="flex items-center gap-8" style={{ marginBottom: "var(--space-2)" }}>
         <Unlock size={15} style={{ color: "var(--accent-success, #4ade80)" }} />
-        <strong style={{ fontSize: "0.88rem" }}>{student.contact.fullName}</strong>
+        <strong style={{ fontSize: "var(--text-sm)" }}>{student.contact.fullName}</strong>
       </div>
-      <div className="flex gap-16" style={{ flexWrap: "wrap", fontSize: "0.84rem" }}>
+      <div className="flex gap-16" style={{ flexWrap: "wrap", fontSize: "var(--text-sm)" }}>
         {student.contact.email && (
           <a href={`mailto:${student.contact.email}`} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             <Mail size={13} /> {student.contact.email}
@@ -385,7 +444,7 @@ function ContactPanel({ student }) {
           </span>
         )}
       </div>
-      <p style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: 10 }}>
+      <p style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "var(--space-2)" }}>
         {student.contactUnlockedBy}
       </p>
     </div>

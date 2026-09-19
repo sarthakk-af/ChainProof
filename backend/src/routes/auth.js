@@ -36,6 +36,7 @@ import { userAuth } from "../middleware/userAuth.js";
 import { tryComplete } from "../studentVerification.js";
 import { logger } from "../logger.js";
 import { EMAIL_RE } from "../limits.js";
+import { config } from "../config.js";
 
 export const authRouter = Router();
 
@@ -321,6 +322,63 @@ authRouter.post("/logout", userAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+/**
+ * Changes the password of the account you are signed in to.
+ *
+ * There was no way to do this at all: the only route to a new password was to
+ * forget the old one and wait for an email, which needs a working mail service
+ * and is absurd for someone who simply wants to change it.
+ *
+ * Changing it ends every other session, which is the point of changing it after
+ * using a shared machine. This session continues, with the fresh token the
+ * response carries.
+ */
+authRouter.post("/change-password", userAuth, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: "Enter your current password and the new one." });
+  }
+  if (!validatePassword(newPassword)) {
+    return res.status(400).json({ error: PASSWORD_RULE_MESSAGE });
+  }
+
+  const user = getUserById(req.user.id);
+  if (!user || !(await verifyPassword(currentPassword, user.password_hash))) {
+    logger.warn("change_password_wrong_current", { address: req.user.address });
+    return res.status(403).json({ error: "That isn't your current password." });
+  }
+  if (await verifyPassword(newPassword, user.password_hash)) {
+    return res.status(400).json({ error: "That is the password you already have." });
+  }
+
+  setPasswordHash(user.id, await hashPassword(newPassword));
+  bumpTokenVersion(user.id);
+  const fresh = getUserById(user.id);
+
+  logger.info("password_changed", { address: req.user.address });
+  res.json({
+    message: "Password changed. Any other device signed in as you has been signed out.",
+    token: signToken({
+      userId: fresh.id,
+      address: fresh.wallet_address,
+      tokenVersion: fresh.token_version,
+    }),
+  });
+});
+
+/**
+ * Ends every session for this account, including this one.
+ *
+ * The mechanism already existed — every token carries a version, and bumping it
+ * invalidates the lot — but nothing exposed it, so "I signed in on a lab
+ * computer and forgot to sign out" had no answer.
+ */
+authRouter.post("/sign-out-everywhere", userAuth, (req, res) => {
+  bumpTokenVersion(req.user.id);
+  logger.info("all_sessions_ended", { address: req.user.address });
+  res.json({ message: "Signed out on every device, including this one." });
+});
+
 authRouter.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   const { email } = req.body || {};
   if (!email) {
@@ -330,6 +388,18 @@ authRouter.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   // Always the same response, whether or not the account exists — otherwise
   // this endpoint becomes a way to check which emails are registered.
   const genericResponse = { message: "If that email is registered, a reset link has been sent." };
+
+  // Without a mail service there is no link and never will be, so saying "check
+  // your inbox" is a lie that costs someone their afternoon. This is an
+  // internal tool; naming the real obstacle is more use than hiding it.
+  if (!config.brevoApiKey) {
+    logger.warn("password_reset_without_email_service", { email });
+    return res.status(503).json({
+      error:
+        "Password reset can't be sent: this server has no email service configured. " +
+        "Ask your placement cell to reset it for you.",
+    });
+  }
 
   const user = getUserByEmail(email);
   if (!user) {

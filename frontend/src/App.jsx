@@ -34,10 +34,24 @@ import Navbar             from "./components/Navbar.jsx";
 import AuthScreen         from "./components/AuthScreen.jsx";
 import { navigate, usePath } from "./utils/navigation.jsx";
 import { ErrorBoundary }  from "./components/ErrorBoundary.jsx";
+import NotFound         from "./components/NotFound.jsx";
+import SiteFooter       from "./components/SiteFooter.jsx";
 
 // ── Inner shell (has access to context) ──────────────────────────────────────
 // Pages with their own address that only make sense when signed out.
 const AUTH_PATHS = { "/login": "login", "/signup": "signup" };
+
+// Every address this app answers to. Anything else is a 404 — which it never
+// used to be: an unknown path quietly rendered the landing page, or the
+// dashboard once signed in, so a mistyped or stale link looked like it worked.
+const KNOWN_PATHS = new Set([
+  "/", "/results", "/public", "/about", "/privacy", "/profile",
+  "/login", "/signup", "/reset-password",
+]);
+
+// The pages a visitor can read without an account. They get the footer, and
+// they get it whether or not somebody is signed in.
+const PUBLIC_PATHS = new Set(["/", "/results", "/public", "/about", "/privacy"]);
 
 function AppShell() {
   const { status, actor, verification } = useAuth();
@@ -50,6 +64,8 @@ function AppShell() {
   }, [status, path]);
 
   const renderMain = () => {
+    if (!KNOWN_PATHS.has(path)) return <NotFound />;
+
     // Viewable by anyone, signed in or not — that's the whole point. /public is
     // kept so older links still work.
     if (path === "/results" || path === "/public") return <PublicDashboard />;
@@ -93,10 +109,21 @@ function AppShell() {
     return <LandingPage />;
   };
 
+  // A signed-out visitor gets the footer everywhere; a signed-in one gets it
+  // on the public pages, where it is still the way to the results and the
+  // privacy page.
+  // "/" is the landing page to a visitor and the dashboard to a signed-in
+  // user, so it belongs in one list and not the other.
+  const showFooter =
+    status !== "authenticated"
+      ? path !== "/reset-password"
+      : PUBLIC_PATHS.has(path) && path !== "/";
+
   return (
     <>
       <Navbar />
       <main>{renderMain()}</main>
+      {showFooter && <SiteFooter />}
     </>
   );
 }

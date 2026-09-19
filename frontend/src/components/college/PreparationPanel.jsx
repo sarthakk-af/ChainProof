@@ -25,6 +25,8 @@ import {
 import { api } from "../../utils/api.js";
 import { getIdempotencyKey } from "../../utils/idempotency.js";
 import { formatDate } from "../../utils/format.js";
+import { LoadingRows } from "../shared/Loading.jsx";
+import { useEscape } from "../../utils/useEscape.js";
 
 export default function PreparationPanel({ onError, onNotice }) {
   const [events, setEvents] = useState([]);
@@ -47,7 +49,7 @@ export default function PreparationPanel({ onError, onNotice }) {
 
   useEffect(load, [load]);
 
-  if (loading) return <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Loading…</p>;
+  if (loading) return <LoadingRows rows={3} label="Reading the preparation record" />;
 
   return (
     <div className="stack">
@@ -144,6 +146,7 @@ export default function PreparationPanel({ onError, onNotice }) {
 }
 
 function EventForm({ kinds, onCancel, onSaved, onError }) {
+  useEscape(onCancel);
   const today = new Date().toISOString().slice(0, 10);
   const [values, setValues] = useState({
     kind: kinds[0]?.key ?? "Training",
@@ -234,7 +237,7 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
           <label htmlFor="pe-attendance">Students who attended</label>
           <input
             id="pe-attendance"
-            type="number"
+            type="number" inputMode="decimal"
             min="0"
             value={values.attendance}
             onChange={set("attendance")}
@@ -247,7 +250,7 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
           </label>
           <input
             id="pe-batch"
-            type="number"
+            type="number" inputMode="decimal"
             min="2000"
             max="2100"
             value={values.batchYear}
@@ -263,13 +266,14 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
       </p>
 
       <button type="submit" className="btn btn-primary" disabled={busy}>
-        {busy ? <span className="spinner" /> : <><CheckCircle2 size={14} /> Record on-chain</>}
+        {busy ? <span className="spinner" /> : <><CheckCircle2 size={14} /> Add to the record</>}
       </button>
     </form>
   );
 }
 
 function CancelForm({ eventId, onCancel, onSaved, onError }) {
+  useEscape(onCancel);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -289,7 +293,7 @@ function CancelForm({ eventId, onCancel, onSaved, onError }) {
   };
 
   return (
-    <form onSubmit={submit} className="flex flex-col gap-12" style={{ marginTop: 16 }}>
+    <form onSubmit={submit} className="flex flex-col gap-12" style={{ marginTop: "var(--space-4)" }}>
       <div className="form-group">
         <label htmlFor={`pc-${eventId}`}>Why didn't it happen?</label>
         <input

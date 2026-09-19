@@ -24,7 +24,7 @@ import {
   ROLE,
   STATUS,
 } from "../chain.js";
-import { syncActor, syncAfterWrite } from "../indexer.js";
+import { syncActor, syncAfterWrite, pendingSyncFailures } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
 import { serializeActor, STATUS_NAMES } from "../serializers.js";
 import { validateRegistrationNumber } from "../registrationNumber.js";
@@ -127,8 +127,14 @@ adminRouter.get("/overview", async (_req, res) => {
     chain = { error: err.message };
   }
 
+  // Blocks whose events could not be mirrored. The numbers on every dashboard
+  // come from that mirror, so a gap here means the figures are quietly behind
+  // — worth seeing before somebody notices the totals look wrong.
+  const syncGaps = pendingSyncFailures();
+
   res.json({
     chain,
+    syncGaps,
     college: colleges.length > 0 ? serializeActor(colleges[0]) : null,
     counts: {
       colleges: colleges.length,

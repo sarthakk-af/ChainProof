@@ -49,15 +49,40 @@ export function useUrlTab(ids, fallback) {
  * @param {string} props.label  Accessible name for the tab bar.
  */
 export default function Tabs({ tabs, value, onChange, label }) {
+  /**
+   * Arrow keys move between tabs, as they do in every other tabbed interface.
+   * Without this a keyboard user tabs through all seven to reach the last one,
+   * and the role="tablist" we already claimed was a promise we did not keep.
+   */
+  const onKeyDown = (e) => {
+    const order = tabs.map((t) => t.id);
+    const at = order.indexOf(value);
+    let next = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = order[(at + 1) % order.length];
+    if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = order[(at - 1 + order.length) % order.length];
+    if (e.key === "Home") next = order[0];
+    if (e.key === "End") next = order[order.length - 1];
+    if (!next) return;
+    e.preventDefault();
+    onChange(next);
+    // Follow the selection, so what is focused and what is shown agree.
+    document.getElementById(`tab-${next}`)?.focus();
+  };
+
   return (
     <div className="tabs-row">
-      <div className="seg tabs" role="tablist" aria-label={label}>
+      <div className="seg tabs" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
         {tabs.map(({ id, label: text, icon: Icon, count }) => (
           <button
             key={id}
+            id={`tab-${id}`}
             type="button"
             role="tab"
             aria-selected={id === value}
+            aria-controls={`panel-${id}`}
+            // Only the selected tab is in the tab order; the arrows reach the
+            // rest. That is what a tablist is supposed to do.
+            tabIndex={id === value ? 0 : -1}
             onClick={() => onChange(id)}
           >
             {Icon && <Icon size={14} aria-hidden="true" />}

@@ -22,6 +22,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertCircle, ChevronRight } from "lucide-react";
 import { api } from "../utils/api.js";
 import { formatDate, formatLPA } from "../utils/format.js";
+import { LoadingRows } from "./shared/Loading.jsx";
 
 const TABS = [
   { id: "companies", label: "Companies" },
@@ -143,7 +144,7 @@ export default function PublicDashboard() {
   if (!college && error) {
     return (
       <div className="page-container animate-fade-in-up">
-        <div className="alert alert-danger" role="alert" style={{ marginTop: 40 }}>
+        <div className="alert alert-danger" role="alert" style={{ marginTop: "var(--space-7)" }}>
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>
             The placement record couldn't be loaded right now ({error}). Please try again in
@@ -157,7 +158,7 @@ export default function PublicDashboard() {
   if (!college) {
     return (
       <div className="page-container animate-fade-in-up">
-        <div className="pub-empty" style={{ marginTop: 40 }}>
+        <div className="pub-empty" style={{ marginTop: "var(--space-7)" }}>
           <strong>Nothing published yet</strong>
           The college hasn't been set up on this platform yet. Figures appear here as soon as
           it declares its first batch.
@@ -185,7 +186,7 @@ export default function PublicDashboard() {
       </header>
 
       {error && (
-        <div className="alert alert-danger" role="alert" style={{ marginBottom: 18 }}>
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: "var(--space-4)" }}>
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{error}</span>
         </div>
@@ -218,7 +219,7 @@ export default function PublicDashboard() {
           <Headline figures={batchFigures} drives={batchDrives} preparation={preparation} />
 
           {batchFigures?.declaredStrengthRevisions > 0 && (
-            <div className="alert alert-warning" role="status" style={{ fontSize: "0.82rem" }}>
+            <div className="alert alert-warning" role="status" style={{ fontSize: "var(--text-sm)" }}>
               <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
               <span>
                 The college has changed the declared size of this batch{" "}
@@ -534,7 +535,7 @@ function DriveDetail({ drive }) {
  * college later said did not happen stay visible, struck through.
  */
 function Preparation({ preparation, batch }) {
-  if (!preparation) return <p className="pub-note">Loading…</p>;
+  if (!preparation) return <LoadingRows rows={3} label="Reading the preparation record" />;
   const { summary, events } = preparation;
 
   if (events.length === 0) {

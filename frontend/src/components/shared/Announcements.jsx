@@ -12,6 +12,8 @@ import { Megaphone, Pencil, Trash2, Globe, Users, AlertCircle, X } from "lucide-
 import { useAuth } from "../../context/AuthContext.jsx";
 import { api } from "../../utils/api.js";
 import { formatDate } from "../../utils/format.js";
+import { LoadingRows } from "./Loading.jsx";
+import { useEscape } from "../../utils/useEscape.js";
 
 /**
  * @param {Object} props
@@ -56,7 +58,7 @@ export default function Announcements({ role, drives = [] }) {
   };
 
   return (
-    <div className="stack" style={{ gap: 12 }}>
+    <div className="stack" style={{ gap: "var(--space-3)" }}>
       <div className="section-head" style={{ marginBottom: 0 }}>
         <div className="section-eyebrow">Placement notices ({items.length})</div>
         {canPost && !composing && !editing && (
@@ -91,7 +93,7 @@ export default function Announcements({ role, drives = [] }) {
         />
       )}
 
-      {loading && <p className="form-hint">Loading…</p>}
+      {loading && <LoadingRows rows={2} label="Fetching notices" />}
 
       {!loading && items.length === 0 && (
         <div className="row-list"><div className="row-empty">No placement notices yet.</div></div>
@@ -128,18 +130,18 @@ function isOwn(item, address) {
 function NoticeCard({ item, canManage, onEdit, onDelete, deleting }) {
   return (
     <div className="glass-card p-24">
-      <div className="flex items-start justify-between gap-12" style={{ marginBottom: 8 }}>
+      <div className="flex items-start justify-between gap-12" style={{ marginBottom: "var(--space-2)" }}>
         <div>
           <strong className="item-title">{item.title}</strong>
           <div
             style={{
-              fontSize: "0.75rem",
+              fontSize: "var(--text-xs)",
               color: "var(--text-muted)",
               marginTop: 4,
               display: "flex",
               flexWrap: "wrap",
               alignItems: "center",
-              gap: 8,
+              gap: "var(--space-2)",
             }}
           >
             <span>{item.authorName || item.authorRole}</span>
@@ -153,7 +155,7 @@ function NoticeCard({ item, canManage, onEdit, onDelete, deleting }) {
                 <span title={`Edited ${formatDate(Math.floor(item.editedAt / 1000))}`}>edited</span>
               </>
             )}
-            <span className="pill pill-muted" style={{ fontSize: "0.68rem" }}>
+            <span className="pill pill-muted" style={{ fontSize: "var(--text-xs)" }}>
               {item.audience === "public" ? <Globe size={10} /> : <Users size={10} />}
               {item.audience === "public" ? "Public" : "Students"}
             </span>
@@ -172,10 +174,10 @@ function NoticeCard({ item, canManage, onEdit, onDelete, deleting }) {
         )}
       </div>
 
-      <p style={{ fontSize: "0.88rem", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{item.body}</p>
+      <p style={{ fontSize: "var(--text-sm)", whiteSpace: "pre-wrap", lineHeight: 1.6 }}>{item.body}</p>
 
       {item.driveRoleTitle && (
-        <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginTop: 10 }}>
+        <p style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginTop: "var(--space-2)" }}>
           About: {item.driveRoleTitle} (drive #{item.driveId})
         </p>
       )}
@@ -184,6 +186,7 @@ function NoticeCard({ item, canManage, onEdit, onDelete, deleting }) {
 }
 
 function NoticeComposer({ role, drives, existing, onCancel, onSaved, onError }) {
+  useEscape(onCancel);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [body, setBody] = useState(existing?.body ?? "");
   const [audience, setAudience] = useState(existing?.audience ?? "students");
@@ -214,7 +217,7 @@ function NoticeComposer({ role, drives, existing, onCancel, onSaved, onError }) 
         <h3 className="card-title">
           {existing ? "Edit notice" : "New notice"}
         </h3>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel}>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={onCancel} aria-label="Close without saving">
           <X size={14} />
         </button>
       </div>
@@ -266,7 +269,7 @@ function NoticeComposer({ role, drives, existing, onCancel, onSaved, onError }) 
         </div>
       )}
 
-      <p style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+      <p style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
         Notices can be edited and withdrawn — they're announcements, not records. The
         drive, event or result a notice is about is already on the blockchain and can't be
         changed by anyone.

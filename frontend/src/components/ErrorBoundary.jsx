@@ -28,9 +28,9 @@ export class ErrorBoundary extends React.Component {
     if (this.state.hasError) {
       return (
         <div className="page-container page-status animate-fade-in-up">
-          <AlertTriangle size={40} style={{ color: "var(--accent-danger)", marginBottom: 16 }} />
-          <h2 style={{ marginBottom: 12 }}>Something went wrong</h2>
-          <p style={{ marginBottom: 24 }}>
+          <AlertTriangle size={40} style={{ color: "var(--accent-danger)", marginBottom: "var(--space-4)" }} />
+          <h2 style={{ marginBottom: "var(--space-3)" }}>Something went wrong</h2>
+          <p style={{ marginBottom: "var(--space-5)" }}>
             This screen hit an unexpected error. Reloading usually fixes it — if it keeps
             happening, that's worth reporting.
           </p>

@@ -9,6 +9,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import {
+  Ban,
   Briefcase,
   Users,
   Megaphone,
@@ -27,6 +28,8 @@ import { api } from "../utils/api.js";
 import { uploadToIPFS } from "../utils/ipfsService.js";
 import { getIdempotencyKey } from "../utils/idempotency.js";
 import { formatDate } from "../utils/format.js";
+import { LoadingRows } from "./shared/Loading.jsx";
+import { useScrollToAlert } from "../utils/useScrollToAlert.js";
 
 const STAGES = ["Shortlisted", "Assessment", "Interview", "Offered", "NotSelected"];
 const STAGE_LABEL = {
@@ -47,13 +50,18 @@ export default function CompanyDashboard() {
   const { actor } = useAuth();
   const [tab, setTab] = useUrlTab(TABS.map((t) => t.id), "drives");
   const [drives, setDrives] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [showPost, setShowPost] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  useScrollToAlert(error || notice);
 
   const load = useCallback(() => {
-    api.get("/drives/mine").then((d) => setDrives(d.drives)).catch((e) => setError(e.message));
+    api.get("/drives/mine")
+      .then((d) => setDrives(d.drives))
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -77,18 +85,19 @@ export default function CompanyDashboard() {
       />
 
       {error && (
-        <div className="alert alert-danger" role="alert" style={{ marginBottom: 16 }}>
+        <div className="alert alert-danger" role="alert" style={{ marginBottom: "var(--space-4)" }}>
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{error}</span>
         </div>
       )}
       {notice && (
-        <div className="alert alert-info" role="status" style={{ marginBottom: 16 }}>
+        <div className="alert alert-info" role="status" style={{ marginBottom: "var(--space-4)" }}>
           <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{notice}</span>
         </div>
       )}
 
+      <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
       {tab === "students" && <TalentPool />}
       {tab === "notices" && <Announcements role="Company" drives={drives} />}
 
@@ -97,7 +106,7 @@ export default function CompanyDashboard() {
       <div className="section-head">
         <div className="section-eyebrow">Your drives ({drives.length})</div>
         <button className="btn btn-primary btn-sm" onClick={() => setShowPost((v) => !v)}>
-          <Plus size={14} /> {showPost ? "Cancel" : "Post an opening"}
+          <Plus size={14} /> {showPost ? "Cancel" : "Post a drive"}
         </button>
       </div>
 
@@ -108,11 +117,13 @@ export default function CompanyDashboard() {
         />
       )}
 
-      {drives.length === 0 && !showPost ? (
+      {loading ? (
+        <LoadingRows rows={2} label="Fetching your drives" />
+      ) : drives.length === 0 && !showPost ? (
         <div className="empty-state glass-card">
           <Briefcase className="empty-state-icon" />
-          <h3>No openings yet</h3>
-          <p style={{ fontSize: "0.85rem" }}>Post one and the college will decide whether to host it.</p>
+          <h3>No drives yet</h3>
+          <p style={{ fontSize: "var(--text-sm)" }}>Post one and the college will decide whether to host it.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-10">
@@ -131,6 +142,7 @@ export default function CompanyDashboard() {
       )}
       </>
       )}
+      </div>
     </div>
   );
 }
@@ -196,7 +208,7 @@ function PostDriveForm({ onPosted, onError }) {
   };
 
   return (
-    <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-12" style={{ marginBottom: 16 }}>
+    <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-12" style={{ marginBottom: "var(--space-4)" }}>
       <div className="form-grid">
         <div className="form-group">
           <label htmlFor="d-role">Role title</label>
@@ -215,15 +227,15 @@ function PostDriveForm({ onPosted, onError }) {
         )}
         <div className="form-group">
           <label htmlFor="d-package">Annual package (₹)</label>
-          <input id="d-package" type="number" value={form.annualPackage} onChange={set("annualPackage")} placeholder="650000" required />
+          <input id="d-package" type="number" inputMode="decimal" value={form.annualPackage} onChange={set("annualPackage")} placeholder="650000" required />
         </div>
         <div className="form-group">
           <label htmlFor="d-cgpa">Minimum CGPA <span className="label-optional">(optional)</span></label>
-          <input id="d-cgpa" type="number" step="0.01" min="0" max="10" value={form.minCgpa} onChange={set("minCgpa")} placeholder="7.00" />
+          <input id="d-cgpa" type="number" inputMode="decimal" step="0.01" min="0" max="10" value={form.minCgpa} onChange={set("minCgpa")} placeholder="7.00" />
         </div>
         <div className="form-group">
           <label htmlFor="d-batch">Batch year</label>
-          <input id="d-batch" type="number" value={form.batchYear} onChange={set("batchYear")} placeholder="2026" required />
+          <input id="d-batch" type="number" inputMode="decimal" value={form.batchYear} onChange={set("batchYear")} placeholder="2026" required />
         </div>
         <div className="form-group">
           <label htmlFor="d-deadline">Applications close</label>
@@ -255,6 +267,7 @@ function PostDriveForm({ onPosted, onError }) {
 function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) {
   const [applicants, setApplicants] = useState([]);
   const [busy, setBusy] = useState(null);
+  const [confirming, setConfirming] = useState(null);
 
   const loadApplicants = useCallback(() => {
     if (!expanded) return;
@@ -285,6 +298,33 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
     }
   };
 
+  /**
+   * Stops a drive the company posted.
+   *
+   * Closing ends applications; cancelling calls the whole thing off. Both were
+   * in the backend and on the chain from the start, with no button anywhere —
+   * so a drive posted with the wrong date or the wrong package simply stood
+   * there, collecting applications nobody intended to read.
+   */
+  const stopDrive = async (action) => {
+    setBusy(action);
+    onError("");
+    try {
+      await api.post(`/drives/${drive.id}/${action}`, {});
+      onNotice(
+        action === "close"
+          ? "Applications closed. The drive and everything recorded against it stay on the record."
+          : "Drive cancelled. It stays on the record as cancelled — nothing is erased."
+      );
+      setConfirming(null);
+      onChanged();
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const publishCount = async () => {
     setBusy("count");
     onError("");
@@ -305,7 +345,7 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
     <div className="glass-card is-interactive" style={{ padding: "16px 20px" }}>
       <div
         className="flex items-center justify-between"
-        style={{ cursor: "pointer", flexWrap: "wrap", gap: 8 }}
+        style={{ cursor: "pointer", flexWrap: "wrap", gap: "var(--space-2)" }}
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
@@ -314,7 +354,7 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
       >
         <div>
           <strong className="item-title">{drive.roleTitle}</strong>
-          <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+          <div style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)" }}>
             {drive.collegeName} · batch {drive.batchYear} · {formatDate(drive.driveDate)}
           </div>
         </div>
@@ -330,20 +370,50 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
       </div>
 
       {expanded && (
-        <div style={{ marginTop: 16 }}>
-          <div className="flex items-center justify-between" style={{ marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-            <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
+        <div style={{ marginTop: "var(--space-4)" }}>
+          <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-3)", flexWrap: "wrap", gap: "var(--space-2)" }}>
+            <span style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
               {drive.applicationsReceived} applied
               {drive.applicationCount !== null && ` · ${drive.applicationCount} published on-chain`}
             </span>
-            {unpublished && (
-              <button className="btn btn-ghost btn-sm" onClick={publishCount} disabled={busy === "count"}>
-                {busy === "count" ? <span className="spinner" /> : <><Lock size={14} /> Publish the applicant count</>}
-              </button>
-            )}
+            <span className="flex gap-8" style={{ flexWrap: "wrap" }}>
+              {unpublished && (
+                <button className="btn btn-ghost btn-sm" onClick={publishCount} disabled={busy === "count"}>
+                  {busy === "count" ? <span className="spinner" /> : <><Lock size={14} /> Publish the applicant count</>}
+                </button>
+              )}
+              {/* Stopping a drive is rare and permanent, so it asks first and
+                  says what survives: the record, which is the point. */}
+              {drive.status === "Approved" && !confirming && (
+                <button className="btn btn-ghost btn-sm" onClick={() => setConfirming("choose")}>
+                  <Ban size={14} /> Stop this drive
+                </button>
+              )}
+            </span>
           </div>
+
+          {confirming === "choose" && (
+            <div className="alert alert-warning" role="status" style={{ marginBottom: "var(--space-3)", display: "block" }}>
+              <p style={{ marginBottom: "var(--space-2)" }}>
+                <strong>Close applications</strong> keeps the drive and lets you carry on recording
+                stages. <strong>Cancel the drive</strong> calls it off entirely. Either way the
+                drive and everything already recorded stay on the record — nothing is erased.
+              </p>
+              <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => stopDrive("close")} disabled={!!busy}>
+                  {busy === "close" ? <span className="spinner" /> : "Close applications"}
+                </button>
+                <button className="btn btn-danger btn-sm" onClick={() => stopDrive("cancel")} disabled={!!busy}>
+                  {busy === "cancel" ? <span className="spinner" /> : "Cancel the drive"}
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setConfirming(null)}>
+                  Never mind
+                </button>
+              </div>
+            </div>
+          )}
           {unpublished && (
-            <p style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: 12 }}>
+            <p style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginBottom: "var(--space-3)" }}>
               The public funnel shows the figure you sign, not the one our database
               counted — because this platform is run by the college whose success rate
               that number shapes.
@@ -356,8 +426,8 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
             <div className="flex flex-col gap-8">
               {applicants.map((a) => (
                 <div key={a.address} className="glass-card" style={{ padding: "10px 14px" }}>
-                  <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-                    <span style={{ fontSize: "0.85rem" }}>
+                  <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: "var(--space-2)", marginBottom: "var(--space-2)" }}>
+                    <span style={{ fontSize: "var(--text-sm)" }}>
                       <span className="mono-addr">{a.rollNumber}</span> · {a.fullName}
                       {a.cgpa !== null && <span style={{ color: "var(--text-muted)" }}> · CGPA {a.cgpa.toFixed(2)}</span>}
                     </span>
