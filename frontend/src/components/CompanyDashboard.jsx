@@ -150,6 +150,7 @@ export default function CompanyDashboard() {
 // ---------------------------------------------------------------------------
 
 function PostDriveForm({ onPosted, onError }) {
+  const idempotencyRef = React.useRef(null);
   const [colleges, setColleges] = useState([]);
   const [form, setForm] = useState({
     collegeAddress: "",
@@ -194,10 +195,10 @@ function PostDriveForm({ onPosted, onError }) {
         annualPackage: Number(form.annualPackage),
         minCgpa: form.minCgpa === "" ? 0 : Number(form.minCgpa),
         batchYear: Number(form.batchYear),
-        applicationDeadline: Math.floor(new Date(form.applicationDeadline).getTime() / 1000),
-        driveDate: Math.floor(new Date(form.driveDate).getTime() / 1000),
+        applicationDeadline: Math.floor(new Date(form.applicationDeadline).getTime() / 1000) + 86399,
+        driveDate: Math.floor(new Date(form.driveDate).getTime() / 1000) + 86399,
         ipfsHash,
-        idempotencyKey: getIdempotencyKey("post-drive", JSON.stringify(form)),
+        idempotencyKey: getIdempotencyKey(idempotencyRef, JSON.stringify(form)),
       });
       onPosted();
     } catch (err) {
@@ -265,6 +266,7 @@ function PostDriveForm({ onPosted, onError }) {
 // ---------------------------------------------------------------------------
 
 function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) {
+  const idempotencyRef = React.useRef(null);
   const [applicants, setApplicants] = useState([]);
   const [busy, setBusy] = useState(null);
   const [confirming, setConfirming] = useState(null);
@@ -286,7 +288,7 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
         studentAddress: address,
         stage,
         label: "",
-        idempotencyKey: getIdempotencyKey("stage", `${drive.id}:${address}:${stage}`),
+        idempotencyKey: getIdempotencyKey(idempotencyRef, `${drive.id}:${address}:${stage}`),
       });
       onNotice(`Recorded: ${STAGE_LABEL[stage]}`);
       loadApplicants();
