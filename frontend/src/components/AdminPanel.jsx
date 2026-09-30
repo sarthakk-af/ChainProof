@@ -262,7 +262,20 @@ function Accounts({ token, onChanged, onNotice, onError }) {
       .catch((err) => onError(err.message));
   }, [token, role, query, onError]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    setBusy("loading");
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams();
+      if (role) params.set("role", role);
+      if (query.trim()) params.set("q", query.trim());
+      adminApi(`/admin/accounts?${params.toString()}`, { token })
+        .then((d) => { if (!cancelled) setAccounts(d.accounts); })
+        .catch((err) => { if (!cancelled) onError(err.message); })
+        .finally(() => { if (!cancelled) setBusy(null); });
+    }, 250);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [token, role, query, onError]);
 
   const act = async (account, action) => {
     setBusy(account.address);

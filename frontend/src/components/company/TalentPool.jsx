@@ -279,7 +279,7 @@ export default function TalentPool() {
 
 // ---------------------------------------------------------------------------
 
-function StudentDetail({ rollNumber, onBack }) {
+export function StudentDetail({ rollNumber, onBack }) {
   const [student, setStudent] = useState(null);
   const [error, setError] = useState("");
 

@@ -20,7 +20,7 @@ import {
   Lock,
   ChevronRight,
 } from "lucide-react";
-import TalentPool from "./company/TalentPool.jsx";
+import TalentPool, { StudentDetail } from "./company/TalentPool.jsx";
 import Announcements from "./shared/Announcements.jsx";
 import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -53,6 +53,7 @@ export default function CompanyDashboard() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [showPost, setShowPost] = useState(false);
+  const [viewingStudent, setViewingStudent] = useState(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   useScrollToAlert(error || notice);
@@ -97,7 +98,12 @@ export default function CompanyDashboard() {
         </div>
       )}
 
-      <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
+      {viewingStudent ? (
+        <div className="animate-fade-in-up" style={{ marginTop: "var(--space-4)" }}>
+          <StudentDetail rollNumber={viewingStudent} onBack={() => setViewingStudent(null)} />
+        </div>
+      ) : (
+        <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
       {tab === "students" && <TalentPool />}
       {tab === "notices" && <Announcements role="Company" drives={drives} />}
 
@@ -136,6 +142,7 @@ export default function CompanyDashboard() {
               onChanged={() => { load(); }}
               onError={setError}
               onNotice={setNotice}
+              onViewStudent={setViewingStudent}
             />
           ))}
         </div>
@@ -265,7 +272,7 @@ function PostDriveForm({ onPosted, onError }) {
 
 // ---------------------------------------------------------------------------
 
-function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) {
+function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice, onViewStudent }) {
   const idempotencyRef = React.useRef(null);
   const [applicants, setApplicants] = useState([]);
   const [busy, setBusy] = useState(null);
@@ -430,7 +437,15 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice }) 
                 <div key={a.address} className="glass-card" style={{ padding: "10px 14px" }}>
                   <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: "var(--space-2)", marginBottom: "var(--space-2)" }}>
                     <span style={{ fontSize: "var(--text-sm)" }}>
-                      <span className="mono-addr">{a.rollNumber}</span> · {a.fullName}
+                      <span className="mono-addr">{a.rollNumber}</span> ·{" "}
+                      <button 
+                        type="button"
+                        className="btn-link"
+                        style={{ fontSize: "inherit", padding: 0 }}
+                        onClick={() => onViewStudent(a.rollNumber)}
+                      >
+                        {a.fullName}
+                      </button>
                       {a.cgpa !== null && <span style={{ color: "var(--text-muted)" }}> · CGPA {a.cgpa.toFixed(2)}</span>}
                     </span>
                     <span className="badge badge-student">{a.stage ? STAGE_LABEL[a.stage] ?? a.stage : "Applied"}</span>

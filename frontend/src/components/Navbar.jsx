@@ -23,7 +23,7 @@ function currentTheme() {
 }
 
 export default function Navbar() {
-  const { status, user, logout } = useAuth();
+  const { status, user, actor, logout } = useAuth();
   const path = usePath();
   const signedIn = status === "authenticated" && user;
   const [theme, setTheme] = useState(currentTheme);
@@ -101,6 +101,11 @@ export default function Navbar() {
         <Link to="/" className="navbar-brand" style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)" }}>
           <Link2 size={20} aria-hidden="true" /> ChainProof
         </Link>
+        {actor?.role && (
+          <span className={`badge badge-${actor.role.toLowerCase()}`} style={{ fontSize: "var(--text-xs)" }}>
+            {actor.role}
+          </span>
+        )}
         <span
           className="badge badge-warning nav-testnet"
           style={{ fontSize: "var(--text-xs)" }}

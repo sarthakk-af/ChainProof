@@ -59,6 +59,9 @@ export function getProfile(address) {
  *      checking against something the company committed to publicly.
  */
 export function checkEligibility(profile, drive) {
+  if (drive.application_deadline * 1000 < Date.now()) {
+    return { eligible: false, reason: "Applications for this drive have closed." };
+  }
   if (!profile) {
     return { eligible: false, reason: "Complete your profile before applying." };
   }

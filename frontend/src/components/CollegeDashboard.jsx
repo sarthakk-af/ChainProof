@@ -395,9 +395,11 @@ function RosterPanel({ onError, onNotice }) {
       .map((line) => line.trim())
       .filter(Boolean)
       .map((line) => {
-        const [rollNumber, fullName, courseCode, batchYear, email] = line
-          .split(",")
-          .map((p) => (p ?? "").trim());
+        // A simple regex to split by commas but ignore commas inside double quotes.
+        // It matches either a quoted field or an unquoted field.
+        const match = line.match(/(?:"[^"]*"|[^,])+/g) || [];
+        const [rollNumber, fullName, courseCode, batchYear, email] = match
+          .map((p) => p.replace(/^"|"$/g, "").trim());
         return { rollNumber, fullName, courseCode, batchYear, email };
       });
 
@@ -786,6 +788,17 @@ function VerificationsPanel({ onError, onNotice }) {
                   value={details[p.userId]?.batchYear ?? ""}
                   onChange={setField(p.userId, "batchYear")}
                   placeholder="2026"
+                />
+              </div>
+              <div className="form-group span-all">
+                <label htmlFor={`v-reason-${p.userId}`}>
+                  Rejection note <span className="label-optional">(optional)</span>
+                </label>
+                <input
+                  id={`v-reason-${p.userId}`}
+                  value={details[p.userId]?.reason ?? ""}
+                  onChange={setField(p.userId, "reason")}
+                  placeholder="If declining, tell them why"
                 />
               </div>
             </div>

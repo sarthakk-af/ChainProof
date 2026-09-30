@@ -63,6 +63,14 @@ function AppShell() {
     if (status === "authenticated" && AUTH_PATHS[path]) navigate("/", { replace: true });
   }, [status, path]);
 
+  useEffect(() => {
+    if (status === "authenticated" && actor) {
+      document.documentElement.dataset.role = actor.role.toLowerCase();
+    } else {
+      delete document.documentElement.dataset.role;
+    }
+  }, [status, actor]);
+
   const renderMain = () => {
     if (!KNOWN_PATHS.has(path)) return <NotFound />;
 
@@ -134,6 +142,7 @@ export default function App() {
   // separate token type, and mixing the two is how an admin session ends up
   // being accepted as a user session.
   if (window.location.pathname === "/admin") {
+    document.documentElement.dataset.role = "admin";
     return (
       <ErrorBoundary>
         <AdminPanel />
