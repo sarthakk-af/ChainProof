@@ -18,7 +18,7 @@ import {
   CheckCircle2,
   Send,
   Lock,
-  ChevronRight,
+  ChevronRight
 } from "lucide-react";
 import TalentPool, { StudentDetail } from "./company/TalentPool.jsx";
 import Announcements from "./shared/Announcements.jsx";
@@ -150,6 +150,7 @@ export default function CompanyDashboard() {
       </>
       )}
       </div>
+      )}
     </div>
   );
 }
