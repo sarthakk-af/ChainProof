@@ -1,5 +1,6 @@
 import { db } from "./connection.js";
 import { RESUME_KIND_KEYS, MAX_ITEMS_PER_KIND } from "../resume.js";
+import { LISTED_STUDENT_SQL } from "./directory.js";
 
 /**
  * resume.js — the repeatable half of a student profile, and their skills.
@@ -168,7 +169,9 @@ export function skillsForAddresses(addresses) {
  * get nothing back.
  */
 export function skillVocabulary(collegeAddress, { batchYear, limit = 100 } = {}) {
-  const clauses = ["p.college_address = ?"];
+  // Only skills of students the pool actually lists, or a recruiter picks a
+  // skill and gets nobody back.
+  const clauses = ["p.college_address = ?", LISTED_STUDENT_SQL];
   const params = [norm(collegeAddress)];
   if (batchYear) {
     clauses.push("p.batch_year = ?");

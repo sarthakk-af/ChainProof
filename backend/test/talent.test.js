@@ -423,3 +423,66 @@ test("a company cannot use the student lookup to get around anonymity", async ()
     .send({ rollNumber: "21CE1041", email: "asha@college.test" });
   assert.equal(res.status, 403);
 });
+
+// --- who the pool lists ---------------------------------------------------------
+
+test("a student still waiting on the placement cell is not listed", async () => {
+  // Has a profile (filled in while queued) but no on-chain identity yet.
+  const waiting = createUser({
+    email: "waiting@college.test",
+    passwordHash: "hash",
+    walletAddress: ethers.Wallet.createRandom().address,
+    encryptedPrivateKey: "iv:tag:ct",
+  });
+  upsertProfile(waiting.wallet_address, college.wallet_address, {
+    roll_number: "21CE7001",
+    course_code: "CSE",
+    batch_year: 2026,
+  });
+
+  const list = await request(app).get("/talent").set("Authorization", authHeader(acme));
+  assert.ok(!list.body.students.some((s) => s.rollNumber === "21CE7001"));
+  const detail = await request(app).get("/talent/21CE7001").set("Authorization", authHeader(acme));
+  assert.equal(detail.status, 404);
+});
+
+test("a suspended student is not listed", async () => {
+  const suspended = makeAccount({
+    email: "suspended@college.test",
+    role: ROLE.Student,
+    status: STATUS.Suspended,
+    name: "Student",
+    collegeAddress: college.wallet_address,
+  });
+  upsertProfile(suspended.wallet_address, college.wallet_address, {
+    roll_number: "21CE7002",
+    course_code: "CIVIL",
+    batch_year: 2026,
+  });
+
+  const list = await request(app).get("/talent").set("Authorization", authHeader(acme));
+  assert.ok(!list.body.students.some((s) => s.rollNumber === "21CE7002"));
+  // Nor does it leak into the filter options.
+  const facets = await request(app).get("/talent/facets").set("Authorization", authHeader(acme));
+  assert.ok(!facets.body.courses.some((c) => c.code === "CIVIL"));
+});
+
+test("an account whose roll number was taken back is not listed", async () => {
+  // Registered on-chain, but the college released the row it claimed, which
+  // clears the roster details from its profile.
+  const released = makeAccount({
+    email: "released@college.test",
+    role: ROLE.Student,
+    name: "Student",
+    collegeAddress: college.wallet_address,
+  });
+  upsertProfile(released.wallet_address, college.wallet_address, {
+    roll_number: null,
+    course_code: null,
+    batch_year: null,
+    headline: "Not really from here",
+  });
+
+  const list = await request(app).get("/talent").set("Authorization", authHeader(acme));
+  assert.ok(!list.body.students.some((s) => s.headline === "Not really from here"));
+});

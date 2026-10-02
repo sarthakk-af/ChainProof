@@ -80,6 +80,7 @@ export {
   getOutcomeHistory,
   getCurrentStages,
   setOfferResponse,
+  clearOfferResponseBefore,
   getOfferResponse,
   setPlacement,
 } from "./outcomes.js";

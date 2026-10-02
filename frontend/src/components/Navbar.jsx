@@ -102,8 +102,8 @@ export default function Navbar() {
           <Link2 size={20} aria-hidden="true" /> ChainProof
         </Link>
         {actor?.role && (
-          <span className={`badge badge-${actor.role.toLowerCase()}`} style={{ fontSize: "var(--text-xs)" }}>
-            {actor.role}
+          <span className="nav-portal-label">
+            {actor.role} Portal
           </span>
         )}
         <span

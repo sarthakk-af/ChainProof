@@ -181,6 +181,98 @@
   --shadow-success: 4px 4px 0 rgba(92,150,120,0.16);
 }
 
+/* --- Role-Based Theme Overrides ---
+   These kick in automatically because App.jsx sets document.documentElement.dataset.role.
+   They give each portal a distinct, premium identity without breaking the unified ChainProof aesthetic. */
+
+/* Student: Vibrant Blue / Cyan Accents */
+:root[data-role="student"] {
+  --accent-primary: #2563EB;
+  --accent-secondary: #3B82F6;
+  --accent-success: #10B981;
+  --cover: #1E3A8A;
+  --cover-2: #1E40AF;
+  --cover-text: #FFFFFF;
+  --glass-bg: rgba(247, 244, 234, 0.9);
+  --navbar-bg: rgba(247, 244, 234, 0.95);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-role="student"], :root[data-theme="dark"][data-role="student"] {
+    --accent-primary: #60A5FA;
+    --accent-secondary: #93C5FD;
+    --cover: #1E3A8A;
+    --cover-text: #FFFFFF;
+    --glass-bg: rgba(21, 32, 26, 0.8);
+    --navbar-bg: rgba(21, 32, 26, 0.95);
+  }
+}
+
+/* Company: Deep Purple / Indigo Accents */
+:root[data-role="company"] {
+  --accent-primary: #7C3AED;
+  --accent-secondary: #8B5CF6;
+  --accent-success: #10B981;
+  --cover: #4C1D95;
+  --cover-2: #5B21B6;
+  --cover-text: #FFFFFF;
+  --glass-bg: rgba(247, 244, 234, 0.9);
+  --navbar-bg: rgba(247, 244, 234, 0.95);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-role="company"], :root[data-theme="dark"][data-role="company"] {
+    --accent-primary: #A78BFA;
+    --accent-secondary: #C4B5FD;
+    --cover: #4C1D95;
+    --cover-text: #FFFFFF;
+    --glass-bg: rgba(21, 32, 26, 0.8);
+    --navbar-bg: rgba(21, 32, 26, 0.95);
+  }
+}
+
+/* College: Slate / Crimson Accents */
+:root[data-role="college"] {
+  --accent-primary: #E11D48;
+  --accent-secondary: #F43F5E;
+  --accent-success: #10B981;
+  --cover: #881337;
+  --cover-2: #9F1239;
+  --cover-text: #FFFFFF;
+  --glass-bg: rgba(247, 244, 234, 0.9);
+  --navbar-bg: rgba(247, 244, 234, 0.95);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-role="college"], :root[data-theme="dark"][data-role="college"] {
+    --accent-primary: #FB7185;
+    --accent-secondary: #FDA4AF;
+    --cover: #881337;
+    --cover-text: #FFFFFF;
+    --glass-bg: rgba(21, 32, 26, 0.8);
+    --navbar-bg: rgba(21, 32, 26, 0.95);
+  }
+}
+
+/* Admin: Sleek Monochrome / Gold Accents */
+:root[data-role="admin"] {
+  --accent-primary: #D97706;
+  --accent-secondary: #F59E0B;
+  --accent-success: #10B981;
+  --cover: #000000;
+  --cover-2: #111111;
+  --cover-text: #FDE68A;
+  --glass-bg: rgba(247, 244, 234, 0.9);
+  --navbar-bg: rgba(247, 244, 234, 0.95);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-role="admin"], :root[data-theme="dark"][data-role="admin"] {
+    --accent-primary: #FCD34D;
+    --accent-secondary: #FDE68A;
+    --cover: #000000;
+    --cover-text: #FDE68A;
+    --glass-bg: rgba(21, 32, 26, 0.8);
+    --navbar-bg: rgba(21, 32, 26, 0.95);
+  }
+}
+
 /* --- Reset & Base --- */
 *, *::before, *::after { box-sizing: border-box; margin: 0;; padding: 0;; }
 
@@ -228,6 +320,8 @@ button:focus-visible,
 /* --- Glassmorphism Card (kept the name — now a crisp paper card) --- */
 .glass-card {
   background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
@@ -420,9 +514,42 @@ button.pill:hover { border-color: var(--text-primary); }
 .navbar {
   position: sticky; top: 0; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
-  padding: var(--space-2) var(--space-6);
+  padding: var(--space-3) var(--space-6);
   background: var(--navbar-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-glow);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+}
+
+:root[data-role="student"] .navbar,
+:root[data-role="company"] .navbar,
+:root[data-role="college"] .navbar,
+:root[data-role="admin"] .navbar {
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-glow);
+}
+
+:root[data-role="student"] .navbar-brand,
+:root[data-role="company"] .navbar-brand,
+:root[data-role="college"] .navbar-brand,
+:root[data-role="admin"] .navbar-brand {
+  color: var(--text-primary);
+}
+
+:root[data-role="student"] .btn-ghost,
+:root[data-role="company"] .btn-ghost,
+:root[data-role="college"] .btn-ghost,
+:root[data-role="admin"] .btn-ghost {
+  color: var(--text-primary);
+  border-color: var(--border-glow);
+}
+:root[data-role="student"] .btn-ghost:hover,
+:root[data-role="company"] .btn-ghost:hover,
+:root[data-role="college"] .btn-ghost:hover,
+:root[data-role="admin"] .btn-ghost:hover {
+  background: var(--state-hover);
+  border-color: var(--text-primary);
 }
 
 .navbar-brand {
@@ -430,6 +557,26 @@ button.pill:hover { border-color: var(--text-primary); }
   font-size: var(--text-lg);
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.nav-portal-label {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text-secondary);
+  opacity: 0.9;
+  letter-spacing: 0.5px;
+  border-left: 1px solid var(--border-glow);
+  padding-left: var(--space-3);
+  margin-left: -4px;
+}
+
+:root[data-role="student"] .nav-portal-label,
+:root[data-role="company"] .nav-portal-label,
+:root[data-role="college"] .nav-portal-label,
+:root[data-role="admin"] .nav-portal-label {
+  color: var(--accent-primary);
+  border-left-color: var(--border-glow);
 }
 
 .navbar-meta { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; row-gap: var(--space-2); }

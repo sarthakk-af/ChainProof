@@ -231,7 +231,15 @@ contract DriveOutcomes {
 
         (address company, address college, bool acceptsOutcomes) =
             placementDrive.driveAuthority(_driveId);
-        if (!acceptsOutcomes) revert DriveNotOpen(_driveId);
+        if (!acceptsOutcomes) {
+            // A called-off drive can still be wound down. Without this, an offer
+            // it had already made could never be withdrawn — and an accepted one
+            // would count as a placement forever, for a drive that never ran.
+            bool windingDown =
+                _stage == Stage.NotSelected &&
+                placementDrive.driveStatus(_driveId) == PlacementDrive.DriveStatus.Cancelled;
+            if (!windingDown) revert DriveNotOpen(_driveId);
+        }
         if (msg.sender != company) revert NotDriveCompany(msg.sender, _driveId);
 
         if (actorRegistry.getActorRole(_student) != ActorRegistry.Role.Student) {
@@ -278,6 +286,15 @@ contract DriveOutcomes {
         ) {
             _releaseAcceptedOffer(_student, college);
         }
+
+        // A new offer is a new question. The earlier answer belonged to an offer
+        // that was withdrawn, so it must not stand in for this one: left in
+        // place, the student could never answer the new offer, and withdrawing
+        // it would release the old acceptance a second time — un-placing a
+        // student whose offer from another drive still stands.
+        if (_stage == Stage.Offered && offerResponse[_driveId][_student] != OfferResponse.None) {
+            delete offerResponse[_driveId][_student];
+        }
     }
 
     /**
@@ -288,6 +305,12 @@ contract DriveOutcomes {
      */
     function answerOffer(uint256 _driveId, OfferResponse _response) external {
         if (_response == OfferResponse.None) revert InvalidOfferResponse();
+
+        // An offer from a drive that was called off can't be taken up: the
+        // company can only withdraw it, and accepting it would count a
+        // placement for a drive that never ran.
+        (, address college, bool open) = placementDrive.driveAuthority(_driveId);
+        if (!open) revert DriveNotOpen(_driveId);
 
         if (currentStage[_driveId][msg.sender] != Stage.Offered) {
             revert NoStandingOffer(_driveId, msg.sender);
@@ -302,7 +325,6 @@ contract DriveOutcomes {
         emit OfferAnswered(_driveId, msg.sender, _response, block.timestamp);
 
         if (_response == OfferResponse.Accepted) {
-            (, address college, ) = placementDrive.driveAuthority(_driveId);
             uint16 batchYear = _driveBatchYear(_driveId);
             _claimAcceptedOffer(msg.sender, college, batchYear);
         }

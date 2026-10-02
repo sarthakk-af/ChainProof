@@ -169,3 +169,20 @@ test("no profile at all is refused", () => {
   assert.equal(result.eligible, false);
   assert.match(result.reason, /Complete your profile/);
 });
+
+test("a roll number keeps its separators", () => {
+  // The roster allows / and -; stripping them meant a student could never
+  // type the roll number their college had listed.
+  assert.equal(parseField("roll_number", "21-ce/1042").value, "21-CE/1042");
+});
+
+test("a value that arrives as a number is read as text", () => {
+  // A roll number or phone from a spreadsheet often comes through unquoted.
+  assert.equal(parseField("roll_number", 21001).value, "21001");
+  assert.equal(parseField("phone", 9876543210).value, "9876543210");
+});
+
+test("a course code keeps its hyphen", () => {
+  // "MECH-B" has to stay "MECH-B", or a declared batch matches no roster row.
+  assert.equal(parseField("course_code", "mech-b").value, "MECH-B");
+});

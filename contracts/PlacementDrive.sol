@@ -473,6 +473,11 @@ contract PlacementDrive {
         return (drive.company, drive.college, open);
     }
 
+    /// @notice A drive's current lifecycle status. `None` if it was never posted.
+    function driveStatus(uint256 _driveId) external view returns (DriveStatus) {
+        return drives[_driveId].status;
+    }
+
     /// @notice Whether a drive exists at all.
     function driveExists(uint256 _driveId) external view returns (bool) {
         return drives[_driveId].status != DriveStatus.None;

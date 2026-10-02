@@ -18,18 +18,24 @@ export function addOutcome(outcome) {
   ).run({ ...outcome, studentAddress: outcome.studentAddress.toLowerCase() });
 }
 
-/** Every stage recorded for a student in a drive, oldest first. */
+/**
+ * Every stage recorded for a student in a drive, oldest first.
+ * @dev Ordered by block, not by row id. Rows are inserted in whatever order
+ *      the mirror happened to process them — a block that failed and was
+ *      repaired later lands after newer ones — so the id says nothing about
+ *      when the stage was recorded on-chain.
+ */
 export function getOutcomeHistory(driveId, studentAddress) {
   return db
     .prepare(
       `SELECT * FROM drive_outcomes
         WHERE drive_id = ? AND LOWER(student_address) = LOWER(?)
-        ORDER BY id ASC`
+        ORDER BY block_number ASC, id ASC`
     )
     .all(driveId, studentAddress);
 }
 
-/** The stage currently standing for each student in a drive. */
+/** The stage currently standing for each student in a drive — the latest on-chain. */
 export function getCurrentStages(driveId) {
   return db
     .prepare(
@@ -37,8 +43,10 @@ export function getCurrentStages(driveId) {
          FROM drive_outcomes o
         WHERE drive_id = ?
           AND id = (
-            SELECT MAX(id) FROM drive_outcomes
+            SELECT id FROM drive_outcomes
              WHERE drive_id = o.drive_id AND student_address = o.student_address
+             ORDER BY block_number DESC, id DESC
+             LIMIT 1
           )`
     )
     .all(driveId);
@@ -53,6 +61,20 @@ export function setOfferResponse({ driveId, studentAddress, response, timestamp,
        timestamp    = excluded.timestamp,
        block_number = excluded.block_number`
   ).run(driveId, studentAddress.toLowerCase(), response, timestamp, blockNumber);
+}
+
+/**
+ * Forgets an answer that belonged to an earlier offer.
+ * @dev The contract clears its answer when the company makes the offer again —
+ *      the new offer is a new question. Only an answer from an earlier block is
+ *      cleared: the mirror may see a re-offer after the answer to it, and that
+ *      answer is the one that stands.
+ */
+export function clearOfferResponseBefore(driveId, studentAddress, blockNumber) {
+  db.prepare(
+    `DELETE FROM offer_responses
+      WHERE drive_id = ? AND LOWER(student_address) = LOWER(?) AND block_number < ?`
+  ).run(driveId, studentAddress, blockNumber);
 }
 
 export function getOfferResponse(driveId, studentAddress) {

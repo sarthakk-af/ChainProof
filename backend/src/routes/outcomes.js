@@ -74,10 +74,6 @@ outcomesRouter.post("/:driveId/stage", issueLimiter, async (req, res) => {
   if (drive.company_address.toLowerCase() !== req.user.address.toLowerCase()) {
     return res.status(403).json({ error: "That isn't your drive." });
   }
-  if (drive.status !== DRIVE_STATUS.Approved && drive.status !== DRIVE_STATUS.Closed) {
-    return res.status(409).json({ error: "That drive isn't accepting outcomes." });
-  }
-
   const { studentAddress, stage, label, ipfsHash, idempotencyKey } = req.body || {};
   if (!ethers.isAddress(studentAddress)) {
     return res.status(400).json({ error: "A valid studentAddress is required." });
@@ -86,6 +82,20 @@ outcomesRouter.post("/:driveId/stage", issueLimiter, async (req, res) => {
   if (stageNumber === undefined || stageNumber === STAGE.None) {
     return res.status(400).json({
       error: `Invalid stage. Expected one of: ${Object.keys(STAGE).filter((s) => s !== "None").join(", ")}`,
+    });
+  }
+
+  // A cancelled drive accepts one thing: "Not selected", so an offer it had
+  // already made can be withdrawn rather than standing forever. Same rule as
+  // the contract.
+  const open = drive.status === DRIVE_STATUS.Approved || drive.status === DRIVE_STATUS.Closed;
+  const windingDown = drive.status === DRIVE_STATUS.Cancelled && stageNumber === STAGE.NotSelected;
+  if (!open && !windingDown) {
+    return res.status(409).json({
+      error:
+        drive.status === DRIVE_STATUS.Cancelled
+          ? "That drive was cancelled. You can only mark applicants as not selected."
+          : "That drive isn't accepting outcomes.",
     });
   }
 
@@ -172,6 +182,11 @@ outcomesRouter.post("/:driveId/answer", issueLimiter, async (req, res) => {
   const driveId = Number(req.params.driveId);
   const drive = getDrive(driveId);
   if (!drive) return res.status(404).json({ error: "No such drive." });
+  // The contract refuses this too. Accepting an offer from a called-off drive
+  // would count a placement for a drive that never ran.
+  if (drive.status !== DRIVE_STATUS.Approved && drive.status !== DRIVE_STATUS.Closed) {
+    return res.status(409).json({ error: "That drive was called off, so its offer can't be accepted." });
+  }
 
   const { response } = req.body || {};
   const responseNumber = OFFER_RESPONSE[response];

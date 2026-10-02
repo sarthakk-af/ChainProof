@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import PasswordInput from "./shared/PasswordInput.jsx";
 import { shortAddr } from "../utils/format.js";
-import { noEmojis, alphanumericOnly } from "../utils/validation.js";
+import { noEmojis, registrationIdChars } from "../utils/validation.js";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 const TOKEN_KEY = "chainproof_admin_session";
@@ -110,10 +110,13 @@ function LoginScreen({ onSignedIn }) {
         <form onSubmit={submit} className="flex flex-col gap-16">
           <div className="form-group">
             <label htmlFor="a-user">Username</label>
+            {/* Whatever ADMIN_USERNAME is in backend/.env, which may contain
+                . _ or -. Only spaces are dropped: restricting it further locked
+                out any admin whose username wasn't purely alphanumeric. */}
             <input
               id="a-user"
               value={form.username}
-              onChange={(e) => setForm((f) => ({ ...f, username: alphanumericOnly(e.target.value) }))}
+              onChange={(e) => setForm((f) => ({ ...f, username: e.target.value.replace(/\s/g, "") }))}
               autoComplete="username"
               placeholder="admin"
               maxLength={50}
@@ -575,7 +578,7 @@ function CreateCollege({ token, onCreated, onError }) {
 
       <div className="form-group">
         <label htmlFor="c-reg">Registration / accreditation ID</label>
-        <input id="c-reg" value={form.registrationNumber} onChange={(e) => set("registrationNumber", alphanumericOnly)({ target: { value: e.target.value.toUpperCase() } })} placeholder="EDU/MH/2024/0142" maxLength={21} required />
+        <input id="c-reg" value={form.registrationNumber} onChange={set("registrationNumber", registrationIdChars)} placeholder="EDU/MH/2024/0142" maxLength={50} required />
         <p className="form-hint">
           Published publicly so anyone can look it up independently.
         </p>

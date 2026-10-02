@@ -357,10 +357,13 @@ meRouter.post("/register", registerLimiter, async (req, res) => {
     logger.info("company_registered", { address: req.user.address, name: companyName });
     // The actor row comes from the mirror, which is normally updated above. If
     // that update failed the registration still happened, so answer with what
-    // was asked for rather than null, and let reconciliation fill in the rest.
+    // was asked for, and let reconciliation fill in the rest. (serializeActor
+    // throws on a missing row rather than returning null, so the row is checked
+    // first — otherwise a successful registration was reported as a failure.)
+    const actorRow = getActor(req.user.address);
     res.status(201).json({
       actor:
-        serializeActor(getActor(req.user.address)) ?? {
+        actorRow ? serializeActor(actorRow) : {
           address: req.user.address,
           role: "Company",
           status: "Pending",

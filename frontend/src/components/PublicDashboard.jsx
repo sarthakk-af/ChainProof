@@ -399,7 +399,9 @@ function Companies({ drives, batch }) {
                 {d.minCgpa ? `CGPA ${d.minCgpa.toFixed(2)}` : "No cutoff"}
               </span>
               <span className="cell-flow">
-                {d.status === "Cancelled" ? (
+                {/* A drive can be called off after it made offers — those are
+                    real records, so its funnel is shown like any other. */}
+                {d.status === "Cancelled" && !hasResults(d.funnel) ? (
                   <span className="pub-flow">
                     <span className="pending">called off before any results</span>
                   </span>
@@ -420,6 +422,12 @@ function Companies({ drives, batch }) {
       </p>
     </>
   );
+}
+
+/** Whether a company recorded anything at all against a drive. */
+function hasResults(funnel) {
+  if (!funnel) return false;
+  return ["shortlisted", "assessed", "interviewed", "offered", "accepted"].some((k) => funnel[k] > 0);
 }
 
 /** Applied → offered → accepted, in one line. */
@@ -514,7 +522,10 @@ function DriveDetail({ drive }) {
           {drive.status === "Cancelled" && (
             <>
               <dt>Status</dt>
-              <dd>Called off after it was announced</dd>
+              <dd>
+                Called off after it was announced
+                {hasResults(f) && " — the stages recorded before then still stand"}
+              </dd>
             </>
           )}
         </dl>

@@ -31,7 +31,7 @@ import {
   syncAfterWrite,
 } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
-import { serializeDrive, STAGE_NAMES } from "../serializers.js";
+import { serializeDrive, STAGE_NAMES, DRIVE_STATUS_NAMES } from "../serializers.js";
 import { validateIpfsHash } from "../ipfsHash.js";
 import { byteLength } from "../limits.js";
 import {
@@ -44,7 +44,7 @@ import {
 import { issueLimiter, announceLimiter } from "../middleware/chainWriteLimiter.js";
 import { logger } from "../logger.js";
 import { publicChainError } from "../chainErrors.js";
-import { noEmojis, cleanText } from "../validation.js";
+import { cleanText } from "../validation.js";
 
 /**
  * drives.js — a company's openings, and students applying to them.
@@ -425,8 +425,14 @@ drivesRouter.get("/my-applications", (req, res) => {
         appliedAt: a.applied_at,
         stage: mine ? STAGE_NAMES[mine.stage] : "Applied",
         stageLabel: mine?.label ?? null,
-        // An offer needs an answer, and only the student can give it.
-        awaitingResponse: !!mine && mine.stage === STAGE.Offered && !response,
+        // An offer needs an answer, and only the student can give it — unless
+        // the drive was called off, when it can no longer be accepted.
+        awaitingResponse:
+          !!mine &&
+          mine.stage === STAGE.Offered &&
+          !response &&
+          (a.status === DRIVE_STATUS.Approved || a.status === DRIVE_STATUS.Closed),
+        driveStatus: DRIVE_STATUS_NAMES[a.status] ?? null,
       };
     }),
   });

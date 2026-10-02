@@ -6,6 +6,7 @@ import {
   getUserByEmail,
   setEmailVerified,
   setPasswordHash,
+  bumpTokenVersion,
   getActor,
   listActors,
   setRegistrationNumber,
@@ -456,6 +457,9 @@ adminRouter.post("/college/reset-password", async (req, res) => {
   }
 
   setPasswordHash(user.id, await hashPassword(password));
+  // A lost or stolen login is the reason for a reset, so every session signed
+  // in with the old password has to end too — otherwise whoever had it keeps it.
+  bumpTokenVersion(user.id);
   logger.info("college_password_reset", { email: user.email });
   res.json({ ok: true, email: user.email });
 });

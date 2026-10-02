@@ -352,6 +352,16 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice, on
 
   const unpublished = drive.applicationCount !== drive.applicationsReceived;
 
+  // Which stages can still be recorded. A running drive takes any; a cancelled
+  // one only "Not selected", so an offer it made can be withdrawn rather than
+  // standing forever; one that never ran takes none. Same rule as the contract.
+  const recordable =
+    drive.status === "Approved" || drive.status === "Closed"
+      ? STAGES
+      : drive.status === "Cancelled"
+        ? ["NotSelected"]
+        : [];
+
   return (
     <div className="glass-card is-interactive" style={{ padding: "16px 20px" }}>
       <div
@@ -431,6 +441,14 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice, on
             </p>
           )}
 
+          {drive.status === "Cancelled" && applicants.length > 0 && (
+            <p style={{ fontSize: "var(--text-xs)", color: "var(--text-muted)", marginBottom: "var(--space-3)" }}>
+              This drive was cancelled. Mark anyone holding an offer as not selected, or
+              their offer stays on the record — and counts as a placement if they had
+              accepted it.
+            </p>
+          )}
+
           {applicants.length === 0 ? (
             <div className="empty-state"><p>Nobody has applied yet.</p></div>
           ) : (
@@ -453,7 +471,7 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice, on
                     <span className="badge badge-student">{a.stage ? STAGE_LABEL[a.stage] ?? a.stage : "Applied"}</span>
                   </div>
                   <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
-                    {STAGES.filter((s) => s !== a.stage).map((s) => (
+                    {recordable.filter((s) => s !== a.stage).map((s) => (
                       <button
                         key={s}
                         className="btn btn-ghost btn-sm"

@@ -79,6 +79,8 @@ The contracts decide purely from `msg.sender` — the wallet that signed the tra
 
 - **Accepting** increments `standingAcceptedOffers[student]`. The first time a student has one, they're marked placed, and `placedCount[college][batchYear]` goes up.
 - **Withdrawing an accepted offer** (the company records a later stage) decrements that counter. The student is un-placed only when it reaches zero. So someone holding two accepted offers stays placed if one is withdrawn.
+- **An offer made again is a new question.** Recording `Offered` again clears the student's earlier answer, so they can answer the new offer. This also stops a double count. Before the fix, an answer stayed attached to an offer that had already been withdrawn. Withdrawing a re-made offer then released the old acceptance a second time, which un-placed a student whose offer from another drive still stood.
+- **A cancelled drive can only be wound down.** Its offers can't be accepted any more. The company can still record `NotSelected`, so an offer it already made can be withdrawn. Otherwise an accepted offer would count as a placement forever, for a drive that never ran.
 - **Un-placing uses the cohort the student was originally counted in** (`placedUnderCollege`, `placedUnderBatchYear`). The count always falls in the same place it rose.
 - **Every change emits `PlacementChanged`** with the new total, so the backend mirrors the contract's own answer rather than recomputing it.
 
@@ -93,13 +95,13 @@ The contracts decide purely from `msg.sender` — the wallet that signed the tra
 
 Solidity 0.8.20 with the optimiser on at 200 runs — the usual middle ground for contracts deployed once but called often.
 
-### Contract tests — 213
+### Contract tests — 222
 
 | File | Tests | Covers |
 |---|---|---|
 | `ActorRegistry.test.js` | 72 | roles, split admission, resubmission, suspension, batch sizes, byte limits |
 | `PlacementDrive.test.js` | 54 | who may post, approve, cancel; terms can't be edited; applicant count |
-| `DriveOutcomes.test.js` | 42 | company-only stages, student-only answers, placement up and down, two-offer case |
+| `DriveOutcomes.test.js` | 51 | company-only stages, student-only answers, placement up and down, two-offer case, re-offers, cancelled drives |
 | `PreparationLog.test.js` | 28 | college-only authorship, bounds, no edits, cancellation, counting |
 | `v2-integration.test.js` | 17 | a full season across all contracts |
 
@@ -211,7 +213,7 @@ How it stays correct:
 | `/admin` | administrator | create the college, accounts, suspend/restore, action log |
 | `/public` | anyone | batches, drives and funnels, recruiters, preparation, public notices |
 
-### Backend tests — 187
+### Backend tests — 206
 
 These run against a temporary SQLite file with no blockchain. They cover validation, authorisation, the privacy boundaries (a company never sees names; one company's applicant doesn't unlock for another), notices, resumes, preparation counting, batch-revision counting, verification ordering, idempotency and the indexer's position handling.
 
@@ -272,8 +274,8 @@ Paths that actually send transactions are covered by the live suites below inste
 
 | Check | Result |
 |---|---|
-| Contract tests | 213 / 213 |
-| Backend tests | 187 / 187 |
+| Contract tests | 222 / 222 |
+| Backend tests | 206 / 206 |
 | Live suites | all 3 pass against a running stack |
 | Frontend | builds, and lint passes |
 | Public dashboard | checked visually in dark and light themes, at desktop and phone widths |

@@ -24,6 +24,21 @@ import { db } from "./connection.js";
 const norm = (address) => String(address ?? "").toLowerCase();
 
 /**
+ * Who belongs in the pool: a verified student who can act, holding a roster row.
+ *
+ * Exported as SQL over the alias `p` (student_profiles). A profile row alone
+ * proved nothing — one exists for a student still waiting on the placement
+ * cell, one who was turned down, one who is suspended, and one whose wrongly
+ * claimed roll number was taken back — and every one of them was listed to
+ * recruiters as if they were a confirmed student here.
+ *
+ * Role 1 = Student, status 2 = Active (see chain.js's ROLE and STATUS).
+ */
+export const LISTED_STUDENT_SQL = `p.roll_number IS NOT NULL
+  AND EXISTS (SELECT 1 FROM actors act
+               WHERE act.address = p.address AND act.role = 1 AND act.status = 2)`;
+
+/**
  * Searches the pool a company may see.
  *
  * @param {string} collegeAddress The college whose students these are.
@@ -41,7 +56,7 @@ const norm = (address) => String(address ?? "").toLowerCase();
 export function searchTalentPool(collegeAddress, filters = {}) {
   const { batchYear, courseCode, minCgpaScaled, skills = [], placed, limit = 25, offset = 0 } = filters;
 
-  const clauses = ["p.college_address = @college"];
+  const clauses = ["p.college_address = @college", LISTED_STUDENT_SQL];
   const params = { college: norm(collegeAddress), limit, offset };
 
   if (batchYear) {
@@ -106,7 +121,7 @@ export function getTalentProfile(collegeAddress, rollNumber) {
               EXISTS (SELECT 1 FROM placements pl
                        WHERE pl.student_address = p.address AND pl.placed = 1) AS is_placed
          FROM student_profiles p
-        WHERE p.college_address = ? AND p.roll_number = ?`
+        WHERE p.college_address = ? AND p.roll_number = ? AND ${LISTED_STUDENT_SQL}`
     )
     .get(norm(collegeAddress), rollNumber);
 }
@@ -122,18 +137,18 @@ export function talentFacets(collegeAddress) {
   const college = norm(collegeAddress);
   const courses = db
     .prepare(
-      `SELECT course_code AS code, COUNT(*) AS students
-         FROM student_profiles
-        WHERE college_address = ? AND course_code IS NOT NULL
-        GROUP BY course_code ORDER BY course_code`
+      `SELECT p.course_code AS code, COUNT(*) AS students
+         FROM student_profiles p
+        WHERE p.college_address = ? AND p.course_code IS NOT NULL AND ${LISTED_STUDENT_SQL}
+        GROUP BY p.course_code ORDER BY p.course_code`
     )
     .all(college);
   const batches = db
     .prepare(
-      `SELECT batch_year AS year, COUNT(*) AS students
-         FROM student_profiles
-        WHERE college_address = ? AND batch_year IS NOT NULL
-        GROUP BY batch_year ORDER BY batch_year DESC`
+      `SELECT p.batch_year AS year, COUNT(*) AS students
+         FROM student_profiles p
+        WHERE p.college_address = ? AND p.batch_year IS NOT NULL AND ${LISTED_STUDENT_SQL}
+        GROUP BY p.batch_year ORDER BY p.batch_year DESC`
     )
     .all(college);
   return { courses, batches };

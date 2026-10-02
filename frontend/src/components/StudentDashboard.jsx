@@ -24,13 +24,14 @@ import {
 import ResumeEditor from "./student/ResumeEditor.jsx";
 import ClassmateLookup from "./student/ClassmateLookup.jsx";
 import Announcements from "./shared/Announcements.jsx";
+import ConfirmEmail from "./shared/ConfirmEmail.jsx";
 import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import { formatDate, formatLPA } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
 import { useScrollToAlert } from "../utils/useScrollToAlert.js";
-import { noEmojis, alphanumericOnly } from "../utils/validation.js";
+import { noEmojis, rollNumberChars } from "../utils/validation.js";
 
 /** True while either button for `id` is working (busy is "<id>:<action>"). */
 const isBusy = (busy, id) => typeof busy === "string" && busy.startsWith(`${id}:`);
@@ -69,6 +70,9 @@ export default function StudentDashboard() {
       </header>
 
       {!verified && <VerificationBanner verification={verification} />}
+      {!verified && verification?.missing?.includes("email") && (
+        <ConfirmEmail style={{ marginBottom: "var(--space-4)" }} />
+      )}
       <OfferWaiting onOpen={() => setTab("mine")} />
 
       <Tabs
@@ -141,7 +145,7 @@ function VerificationBanner({ verification }) {
         <span style={{ display: "block", marginTop: 6, fontSize: "var(--text-sm)" }}>
           {needsRoll && "Add your roll number from the Profile tab. "}
           {waitingOnCell && `Your placement cell is confirming roll number ${verification.rollNumber}. `}
-          {needsEmail && "Confirm your email address using the code we sent you. "}
+          {needsEmail && "Confirm your email address with the code we sent you, just below. "}
         </span>
       </span>
     </div>
@@ -314,6 +318,12 @@ function MyApplications({ onError, onNotice }) {
             </div>
           </div>
           <span className="badge badge-student">{a.stageLabel || a.stage}</span>
+
+          {a.stage === "Offered" && a.driveStatus === "Cancelled" && (
+            <div className="row-meta" style={{ flexBasis: "100%", color: "var(--accent-warning)" }}>
+              This drive was called off, so its offer can no longer be accepted.
+            </div>
+          )}
 
           {a.awaitingResponse && (
             <div className="flex items-center gap-8" style={{ flexBasis: "100%", flexWrap: "wrap" }}>
@@ -542,9 +552,9 @@ function RollNumberPanel({ verification, awaitingCell, onClaim, onError, onNotic
         <input
           id="rp-roll"
           value={rollNumber}
-          onChange={(e) => setRollNumber(alphanumericOnly(e.target.value).toUpperCase())}
+          onChange={(e) => setRollNumber(rollNumberChars(e.target.value))}
           placeholder="e.g. 21CE1042"
-          maxLength={20}
+          maxLength={32}
           required
         />
       </div>

@@ -43,6 +43,7 @@ process.env.DB_PATH = TEST_DB_PATH;
 const {
   db,
   upsertProfile,
+  upsertActor,
   addResumeItem,
   getResumeItem,
   updateResumeItem,
@@ -57,6 +58,7 @@ const { parseResumeItem, parseSkills, normalizeSkill, MAX_ITEMS_PER_KIND } = awa
   "../src/resume.js"
 );
 const { parseField } = await import("../src/studentProfile.js");
+const { ROLE, STATUS } = await import("../src/chain.js");
 
 const college = ethers.Wallet.createRandom().address.toLowerCase();
 const asha = ethers.Wallet.createRandom().address.toLowerCase();
@@ -65,6 +67,19 @@ const rahul = ethers.Wallet.createRandom().address.toLowerCase();
 before(() => {
   upsertProfile(asha, college, { roll_number: "21CE1041", full_name: "Asha", batch_year: 2026 });
   upsertProfile(rahul, college, { roll_number: "21CE1042", full_name: "Rahul", batch_year: 2026 });
+  // Verified students: the skill vocabulary only counts students the talent
+  // pool actually lists.
+  for (const address of [asha, rahul]) {
+    upsertActor({
+      address,
+      role: ROLE.Student,
+      status: STATUS.Active,
+      name: "Student",
+      college,
+      registeredAtBlock: 1,
+      updatedAtBlock: 1,
+    });
+  }
 });
 
 after(() => {

@@ -31,7 +31,7 @@ import { api } from "../utils/api.js";
 import { shortAddr, formatDate, formatLPA } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
 import { useScrollToAlert } from "../utils/useScrollToAlert.js";
-import { noEmojis, alphanumericOnly, numbersOnly } from "../utils/validation.js";
+import { noEmojis, courseCodeChars, numbersOnly } from "../utils/validation.js";
 
 /** True while either button for `id` is working (busy is "<id>:<action>"). */
 const isBusy = (busy, id) => typeof busy === "string" && busy.startsWith(`${id}:`);
@@ -614,7 +614,7 @@ function BatchesPanel({ onError, onNotice }) {
         <div className="form-grid cols-2">
           <div className="form-group">
             <label htmlFor="b-course">Course</label>
-            <input id="b-course" value={courseCode} onChange={(e) => setCourseCode(alphanumericOnly(e.target.value).toUpperCase())} placeholder="CSE" maxLength={20} required />
+            <input id="b-course" value={courseCode} onChange={(e) => setCourseCode(courseCodeChars(e.target.value))} placeholder="CSE" maxLength={20} required />
           </div>
           <div className="form-group">
             <label htmlFor="b-year">Batch year</label>
@@ -778,7 +778,7 @@ function VerificationsPanel({ onError, onNotice }) {
                 <input
                   id={`v-course-${p.userId}`}
                   value={details[p.userId]?.courseCode ?? ""}
-                  onChange={(e) => setField(p.userId, "courseCode", alphanumericOnly)({ target: { value: e.target.value.toUpperCase() } })}
+                  onChange={setField(p.userId, "courseCode", courseCodeChars)}
                   placeholder="CSE"
                   maxLength={20}
                 />

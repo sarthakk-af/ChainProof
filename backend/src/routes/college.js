@@ -5,6 +5,7 @@ import {
   listActors,
   getUserByAddress,
   clearVerificationForUser,
+  patchProfile,
   releaseRosterClaimByRoll,
   upsertRosterEntries,
   listRoster,
@@ -60,7 +61,7 @@ import { approveQueuedStudent, rejectQueuedStudent } from "../studentVerificatio
 import { registerLimiter, recordLimiter } from "../middleware/chainWriteLimiter.js";
 import { logger } from "../logger.js";
 import { publicChainError } from "../chainErrors.js";
-import { noEmojis, alphanumericOnly, cleanText } from "../validation.js";
+import { cleanText } from "../validation.js";
 
 /**
  * college.js — everything the placement cell does.
@@ -225,6 +226,10 @@ collegeRouter.post("/roster/:rollNumber/release", (req, res) => {
 
   const holder = getUserByAddress(released);
   if (holder) clearVerificationForUser(holder.id);
+  // The roster details were copied onto that account's profile when it claimed
+  // the row. Left there, it kept presenting as this student — in the talent
+  // pool, and to anyone looking the roll number up.
+  patchProfile(released, { roll_number: null, full_name: null, course_code: null, batch_year: null });
   const actor = getActor(released);
   const registeredOnChain = !!actor && actor.role === ROLE.Student;
 
@@ -516,13 +521,14 @@ collegeRouter.post("/events/:id/cancel", recordLimiter, async (req, res) => {
  */
 collegeRouter.post("/batches", registerLimiter, async (req, res) => {
   const { courseCode, batchYear, strength } = req.body || {};
-  const code = alphanumericOnly(courseCode).toUpperCase();
+  // The same rule the roster and profiles use, so "MECH-B" declared here is the
+  // same course as "MECH-B" on the roster. Stripping to letters and digits
+  // turned it into "MECHB", which matched nothing.
+  const courseCheck = parseField("course_code", courseCode);
+  if (courseCheck.error) return res.status(400).json({ error: courseCheck.error });
+  const code = courseCheck.value;
   const year = Number(batchYear);
   const size = Number(strength);
-
-  if (!code || code.length > 20) {
-    return res.status(400).json({ error: "A course code of 1-20 characters is required." });
-  }
   if (!Number.isInteger(year) || year < 2000 || year > 2100) {
     return res.status(400).json({ error: "Batch year must be between 2000 and 2100." });
   }

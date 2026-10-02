@@ -493,6 +493,118 @@ describe("DriveOutcomes", function () {
   });
 
   // ===========================================================================
+  describe("Placement — an offer made again after a withdrawal", function () {
+    let driveId;
+    beforeEach(async function () {
+      driveId = await openDrive();
+      await acceptOffer(driveId, company1, student1);
+      await driveOutcomes.connect(company1).recordStage(driveId, student1.address, Stage.NotSelected, "", "");
+    });
+
+    it("should clear the earlier answer, so the new offer can be answered", async function () {
+      await driveOutcomes.connect(company1).recordStage(driveId, student1.address, Stage.Offered, "Re-offer", "");
+      expect(await driveOutcomes.offerResponse(driveId, student1.address)).to.equal(Answer.None);
+
+      await expect(driveOutcomes.connect(student1).answerOffer(driveId, Answer.Accepted))
+        .to.emit(driveOutcomes, "PlacementChanged")
+        .withArgs(student1.address, college1.address, BATCH, true, 1);
+    });
+
+    it("should not release the old acceptance a second time", async function () {
+      // The bug this guards: accept A and B, then A withdraws, re-offers and
+      // withdraws again. The second withdrawal used to release A's acceptance
+      // again and un-place a student whose offer from B still stood.
+      const other = await openDrive(company2);
+      await acceptOffer(other, company2, student1);
+      expect(await driveOutcomes.standingAcceptedOffers(student1.address)).to.equal(1);
+
+      await driveOutcomes.connect(company1).recordStage(driveId, student1.address, Stage.Offered, "", "");
+      await driveOutcomes.connect(company1).recordStage(driveId, student1.address, Stage.NotSelected, "", "");
+
+      expect(await driveOutcomes.standingAcceptedOffers(student1.address)).to.equal(1);
+      expect(await driveOutcomes.isPlaced(student1.address)).to.be.true;
+      expect(await driveOutcomes.placedCount(college1.address, BATCH)).to.equal(1);
+    });
+
+    it("should count a re-accepted offer once, and release it once", async function () {
+      await driveOutcomes.connect(company1).recordStage(driveId, student1.address, Stage.Offered, "", "");
+      await driveOutcomes.connect(student1).answerOffer(driveId, Answer.Accepted);
+      expect(await driveOutcomes.placedCount(college1.address, BATCH)).to.equal(1);
+
+      await driveOutcomes.connect(company1).recordStage(driveId, student1.address, Stage.NotSelected, "", "");
+      expect(await driveOutcomes.standingAcceptedOffers(student1.address)).to.equal(0);
+      expect(await driveOutcomes.placedCount(college1.address, BATCH)).to.equal(0);
+    });
+
+    it("should let a student who declined answer a fresh offer", async function () {
+      await driveOutcomes.connect(company1).recordStage(driveId, student2.address, Stage.Offered, "", "");
+      await driveOutcomes.connect(student2).answerOffer(driveId, Answer.Declined);
+      await driveOutcomes.connect(company1).recordStage(driveId, student2.address, Stage.Interview, "", "");
+      await driveOutcomes.connect(company1).recordStage(driveId, student2.address, Stage.Offered, "", "");
+
+      await expect(driveOutcomes.connect(student2).answerOffer(driveId, Answer.Accepted)).to.not.be.reverted;
+      expect(await driveOutcomes.isPlaced(student2.address)).to.be.true;
+    });
+  });
+
+  // ===========================================================================
+  describe("A drive that was called off", function () {
+    let driveId;
+    beforeEach(async function () {
+      driveId = await openDrive();
+    });
+
+    it("should refuse an answer to its offer once it is cancelled", async function () {
+      await driveOutcomes.connect(company1).recordStage(driveId, student1.address, Stage.Offered, "", "");
+      await placementDrive.connect(company1).cancelDrive(driveId);
+
+      await expect(driveOutcomes.connect(student1).answerOffer(driveId, Answer.Accepted))
+        .to.be.revertedWithCustomError(driveOutcomes, "DriveNotOpen")
+        .withArgs(driveId);
+      expect(await driveOutcomes.isPlaced(student1.address)).to.be.false;
+    });
+
+    it("should let the company withdraw an accepted offer after cancelling", async function () {
+      // Otherwise the placement would count forever, for a drive that never ran.
+      await acceptOffer(driveId, company1, student1);
+      await placementDrive.connect(college1).cancelDrive(driveId);
+
+      await expect(
+        driveOutcomes.connect(company1).recordStage(driveId, student1.address, Stage.NotSelected, "Drive cancelled", "")
+      )
+        .to.emit(driveOutcomes, "PlacementChanged")
+        .withArgs(student1.address, college1.address, BATCH, false, 0);
+    });
+
+    it("should allow only winding down — no new stages on a cancelled drive", async function () {
+      await placementDrive.connect(company1).cancelDrive(driveId);
+      for (const stage of [Stage.Shortlisted, Stage.Assessment, Stage.Interview, Stage.Offered]) {
+        await expect(
+          driveOutcomes.connect(company1).recordStage(driveId, student1.address, stage, "", "")
+        ).to.be.revertedWithCustomError(driveOutcomes, "DriveNotOpen");
+      }
+    });
+
+    it("should still refuse another company winding it down", async function () {
+      await placementDrive.connect(company1).cancelDrive(driveId);
+      await expect(
+        driveOutcomes.connect(company2).recordStage(driveId, student1.address, Stage.NotSelected, "", "")
+      ).to.be.revertedWithCustomError(driveOutcomes, "NotDriveCompany");
+    });
+
+    it("should refuse winding down a drive the college declined", async function () {
+      const id = Number(await placementDrive.nextDriveId());
+      await placementDrive
+        .connect(company1)
+        .postDrive(college1.address, "SDE", 650000, 700, BATCH, DEADLINE, DRIVE_DATE, CID);
+      await placementDrive.connect(college1).rejectDrive(id);
+      await expect(
+        driveOutcomes.connect(company1).recordStage(id, student1.address, Stage.NotSelected, "", "")
+      ).to.be.revertedWithCustomError(driveOutcomes, "DriveNotOpen");
+    });
+  });
+
+  // ===========================================================================
   describe("placementFor — numerator and denominator together", function () {
     it("should pair placed students with the cohort the college declared", async function () {
       const driveId = await openDrive();

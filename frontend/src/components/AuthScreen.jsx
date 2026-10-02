@@ -127,10 +127,10 @@ export default function AuthScreen({ initialMode = "login" }) {
     setInfoMessage("");
     try {
       if (mode === "signup") {
+        // Signing up signs straight in, and App.jsx moves a signed-in account
+        // off this page — so the emailed code is taken on the next screen (see
+        // shared/ConfirmEmail.jsx), not here.
         await signup(email.trim(), password);
-        // The account exists now but has no session — it only becomes
-        // usable once the emailed code comes back through verify-email.
-        setMode("verify");
       } else if (mode === "forgot") {
         const { message } = await forgotPassword(email.trim());
         setInfoMessage(message);

@@ -13,7 +13,8 @@ import React, { useState, useEffect } from "react";
 import { GraduationCap, Building2, AlertCircle, ArrowRight, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
-import { noEmojis, alphanumericOnly } from "../utils/validation.js";
+import { noEmojis, alphanumericOnly, rollNumberChars } from "../utils/validation.js";
+import ConfirmEmail from "./shared/ConfirmEmail.jsx";
 
 const ROLES = [
   {
@@ -52,7 +53,7 @@ function websiteError(value) {
 }
 
 export default function Registration() {
-  const { registerActor, claimRollNumber } = useAuth();
+  const { registerActor, claimRollNumber, verification } = useAuth();
   const [role, setRole] = useState(null);
 
   return (
@@ -95,6 +96,11 @@ export default function Registration() {
         ))}
       </div>
 
+      {/* A student is verified only once their email is confirmed too, and
+          straight after signing up this is the first screen they see. */}
+      {role === "Student" && verification && !verification.emailVerified && (
+        <ConfirmEmail style={{ marginBottom: "var(--space-4)" }} />
+      )}
       {role === "Student" && <StudentForm onClaim={claimRollNumber} />}
       {role === "Company" && <CompanyForm onRegister={registerActor} />}
     </div>
@@ -187,9 +193,9 @@ function StudentForm({ onClaim }) {
         <input
           id="reg-roll"
           value={rollNumber}
-          onChange={(e) => setRollNumber(alphanumericOnly(e.target.value).toUpperCase())}
+          onChange={(e) => setRollNumber(rollNumberChars(e.target.value))}
           placeholder="e.g. 21CE1042"
-          maxLength={20}
+          maxLength={32}
           required
         />
         <p className="form-hint">

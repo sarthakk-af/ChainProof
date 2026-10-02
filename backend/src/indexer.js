@@ -5,7 +5,10 @@ import {
   placementDriveRead,
   driveOutcomesRead,
   preparationLogRead,
+  STAGE,
 } from "./chain.js";
+
+const STAGE_OFFERED = STAGE.Offered;
 import { deployment } from "./config.js";
 import { logger } from "./logger.js";
 import {
@@ -23,6 +26,7 @@ import {
   setDriveApplicationCount,
   addOutcome,
   setOfferResponse,
+  clearOfferResponseBefore,
   setPlacement,
   upsertPreparationEvent,
   setPreparationCancelled,
@@ -67,7 +71,7 @@ function syncBatchStrength(args, log) {
 }
 
 /** A company posting its own opening. Every field is the company's own. */
-function syncDrivePosted(args, log) {
+async function syncDrivePosted(args, log) {
   const [
     driveId,
     company,
@@ -80,6 +84,9 @@ function syncDrivePosted(args, log) {
     driveDate,
     ipfsHash,
   ] = args;
+  // The block's timestamp, as the contract's own `postedAt` is. This column
+  // used to hold the block *number*, under a name that promised a time.
+  const block = await log.getBlock();
   upsertDrive({
     id: Number(driveId),
     companyAddress: company,
@@ -94,7 +101,7 @@ function syncDrivePosted(args, log) {
     // DrivePosted is always immediately followed by a DriveStatusChanged to
     // Proposed in the same transaction; this is just the value until it lands.
     status: 1,
-    postedAt: Number(log.blockNumber),
+    postedAt: Number(block?.timestamp ?? Math.floor(Date.now() / 1000)),
     blockNumber: log.blockNumber,
   });
 }
@@ -126,6 +133,12 @@ function syncStageRecorded(args, log) {
     timestamp: Number(timestamp),
     blockNumber: log.blockNumber,
   });
+  // An offer made again replaces the question, so the contract clears the
+  // earlier answer. Mirrored here, or the student is shown as having already
+  // answered an offer they have never seen.
+  if (Number(newStage) === STAGE_OFFERED) {
+    clearOfferResponseBefore(Number(driveId), student, log.blockNumber);
+  }
 }
 
 function syncOfferAnswered(args, log) {
