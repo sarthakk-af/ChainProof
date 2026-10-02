@@ -17,6 +17,7 @@
  * Kept in one module for the same reason as the profile fields: this list will
  * change, and validation, the API, and the form should all move when it does.
  */
+import { noEmojis } from "./validation.js";
 
 /**
  * The kinds of entry a resume holds.
@@ -93,7 +94,7 @@ const URL_PATTERN = /^https?:\/\/[^\s<>"']{3,}$/;
  */
 function parsePeriod(raw, label) {
   if (raw === undefined || raw === null || String(raw).trim() === "") return { value: null };
-  const value = String(raw).trim().replace(/\s+/g, " ");
+  const value = noEmojis(raw).trim().replace(/\s+/g, " ");
   if (Buffer.byteLength(value, "utf8") > MAX.period) {
     return { error: `${label} must be ${MAX.period} characters or fewer.` };
   }
@@ -106,7 +107,7 @@ function parseText(raw, { label, maxBytes, required = false, multiline = false }
     if (required) return { error: `${label} is required.` };
     return { value: null };
   }
-  let value = String(raw).replace(/\r\n?/g, "\n");
+  let value = noEmojis(raw).replace(/\r\n?/g, "\n");
   // eslint-disable-next-line no-control-regex
   value = value.replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "");
   value = multiline
@@ -208,7 +209,7 @@ const MAX_SKILL_BYTES = 40;
  * their own skills back in a flattened form.
  */
 export function normalizeSkill(raw) {
-  const display = String(raw ?? "").trim().replace(/\s+/g, " ");
+  const display = noEmojis(raw).trim().replace(/\s+/g, " ");
   if (display === "") return null;
   if (Buffer.byteLength(display, "utf8") > MAX_SKILL_BYTES) return null;
   const skill = display.toLowerCase().replace(/[^a-z0-9+#]/g, "");

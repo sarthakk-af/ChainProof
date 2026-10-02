@@ -44,6 +44,7 @@ import {
 import { issueLimiter, announceLimiter } from "../middleware/chainWriteLimiter.js";
 import { logger } from "../logger.js";
 import { publicChainError } from "../chainErrors.js";
+import { noEmojis, cleanText } from "../validation.js";
 
 /**
  * drives.js — a company's openings, and students applying to them.
@@ -90,7 +91,7 @@ drivesRouter.post("/", announceLimiter, async (req, res) => {
     return res.status(400).json({ error: "That college isn't currently verified and active." });
   }
 
-  const title = String(roleTitle ?? "").trim();
+  const title = cleanText(roleTitle);
   if (!title || byteLength(title) > MAX_ROLE_TITLE_BYTES) {
     return res.status(400).json({ error: `Role title must be 1-${MAX_ROLE_TITLE_BYTES} bytes.` });
   }

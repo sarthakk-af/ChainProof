@@ -49,6 +49,7 @@ import { registerLimiter } from "../middleware/chainWriteLimiter.js";
 import { logger } from "../logger.js";
 import { requireNotSuspended } from "../middleware/notSuspended.js";
 import { publicChainError } from "../chainErrors.js";
+import { cleanText } from "../validation.js";
 
 export const meRouter = Router();
 
@@ -294,7 +295,7 @@ meRouter.post("/register", registerLimiter, async (req, res) => {
     return res.status(409).json({ error: "This account is already registered on-chain" });
   }
 
-  const companyName = String(name ?? "").trim();
+  const companyName = cleanText(name);
   if (!companyName) {
     return res.status(400).json({ error: "Company name is required" });
   }

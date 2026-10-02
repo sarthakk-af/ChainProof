@@ -37,6 +37,7 @@ import { tryComplete } from "../studentVerification.js";
 import { logger } from "../logger.js";
 import { EMAIL_RE } from "../limits.js";
 import { config } from "../config.js";
+import { noEmojis } from "../validation.js";
 
 export const authRouter = Router();
 
@@ -107,7 +108,7 @@ const resendOtpLimiter = rateLimit({
 // this is signup-only, unlike /forgot-password, which deliberately never
 // confirms whether an email exists.
 authRouter.get("/check-email", checkEmailLimiter, (req, res) => {
-  const { email } = req.query;
+  const email = noEmojis(req.query.email);
   if (!email || typeof email !== "string") {
     return res.status(400).json({ error: "email is required" });
   }
@@ -122,7 +123,8 @@ async function issueAndSendOtp(user) {
 }
 
 authRouter.post("/signup", signupLimiter, async (req, res) => {
-  const { email, password } = req.body || {};
+  const { password } = req.body || {};
+  const email = noEmojis(req.body?.email).trim();
   if (!email || !password) {
     return res.status(400).json({ error: "email and password are required" });
   }
@@ -220,7 +222,8 @@ authRouter.post("/signup", signupLimiter, async (req, res) => {
 });
 
 authRouter.post("/verify-email", verifyEmailLimiter, async (req, res) => {
-  const { email, otp } = req.body || {};
+  const { otp } = req.body || {};
+  const email = noEmojis(req.body?.email).trim();
   if (!email || !otp) {
     return res.status(400).json({ error: "email and otp are required" });
   }
@@ -264,7 +267,7 @@ authRouter.post("/verify-email", verifyEmailLimiter, async (req, res) => {
 });
 
 authRouter.post("/resend-otp", resendOtpLimiter, async (req, res) => {
-  const { email } = req.body || {};
+  const email = noEmojis(req.body?.email).trim();
   if (!email) {
     return res.status(400).json({ error: "email is required" });
   }
@@ -287,7 +290,8 @@ authRouter.post("/resend-otp", resendOtpLimiter, async (req, res) => {
 });
 
 authRouter.post("/login", loginLimiter, async (req, res) => {
-  const { email, password } = req.body || {};
+  const { password } = req.body || {};
+  const email = noEmojis(req.body?.email).trim();
   if (!email || !password) {
     return res.status(400).json({ error: "email and password are required" });
   }
@@ -380,7 +384,7 @@ authRouter.post("/sign-out-everywhere", userAuth, (req, res) => {
 });
 
 authRouter.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
-  const { email } = req.body || {};
+  const email = noEmojis(req.body?.email).trim();
   if (!email) {
     return res.status(400).json({ error: "email is required" });
   }

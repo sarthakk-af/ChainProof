@@ -14,6 +14,7 @@ import { Plus, Pencil, Trash2, X, ExternalLink, Tag } from "lucide-react";
 import { api } from "../../utils/api.js";
 import { LoadingRows } from "../shared/Loading.jsx";
 import { useEscape } from "../../utils/useEscape.js";
+import { noEmojis } from "../../utils/validation.js";
 
 export default function ResumeEditor({ onError, onNotice }) {
   const [sections, setSections] = useState([]);
@@ -190,7 +191,7 @@ function ItemForm({ section, existing, onCancel, onSaved, onError }) {
   });
   const [busy, setBusy] = useState(false);
 
-  const set = (k) => (e) => setValues((v) => ({ ...v, [k]: e.target.value }));
+  const set = (k, transform) => (e) => setValues((v) => ({ ...v, [k]: transform ? transform(e.target.value) : e.target.value }));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -219,24 +220,24 @@ function ItemForm({ section, existing, onCancel, onSaved, onError }) {
 
       <div className="form-group">
         <label htmlFor="ri-title">{section.titleLabel}</label>
-        <input id="ri-title" value={values.title} onChange={set("title")} required />
+        <input id="ri-title" value={values.title} onChange={set("title", noEmojis)} maxLength={100} required />
       </div>
 
       <div className="form-group">
         <label htmlFor="ri-subtitle">
           {section.subtitleLabel} <span className="label-optional">(optional)</span>
         </label>
-        <input id="ri-subtitle" value={values.subtitle} onChange={set("subtitle")} />
+        <input id="ri-subtitle" value={values.subtitle} onChange={set("subtitle", noEmojis)} maxLength={100} />
       </div>
 
       <div className="flex gap-12" style={{ flexWrap: "wrap" }}>
         <div className="form-group" style={{ flex: "1 1 140px" }}>
           <label htmlFor="ri-start">From</label>
-          <input id="ri-start" value={values.startedOn} onChange={set("startedOn")} placeholder="Jun 2025" />
+          <input id="ri-start" value={values.startedOn} onChange={set("startedOn")} maxLength={50} placeholder="Jun 2025" />
         </div>
         <div className="form-group" style={{ flex: "1 1 140px" }}>
           <label htmlFor="ri-end">To</label>
-          <input id="ri-end" value={values.endedOn} onChange={set("endedOn")} placeholder="Aug 2025 or Present" />
+          <input id="ri-end" value={values.endedOn} onChange={set("endedOn")} maxLength={50} placeholder="Aug 2025 or Present" />
         </div>
       </div>
 
@@ -244,14 +245,14 @@ function ItemForm({ section, existing, onCancel, onSaved, onError }) {
         <label htmlFor="ri-desc">
           Description <span className="label-optional">(optional)</span>
         </label>
-        <textarea id="ri-desc" rows={3} value={values.description} onChange={set("description")} />
+        <textarea id="ri-desc" rows={3} value={values.description} onChange={set("description", noEmojis)} maxLength={2000} />
       </div>
 
       <div className="form-group">
         <label htmlFor="ri-url">
           Link <span className="label-optional">(optional)</span>
         </label>
-        <input id="ri-url" value={values.url} onChange={set("url")} placeholder="https://…" />
+        <input id="ri-url" type="url" value={values.url} onChange={(e) => set("url", noEmojis)({ target: { value: e.target.value.replace(/\s/g, "") } })} maxLength={255} placeholder="https://…" />
       </div>
 
       <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
@@ -332,7 +333,7 @@ function SkillsPanel({ skills, onSaved, onError }) {
       <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
         <input
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => setDraft(noEmojis(e.target.value))}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
@@ -340,6 +341,7 @@ function SkillsPanel({ skills, onSaved, onError }) {
             }
           }}
           placeholder="e.g. PostgreSQL"
+          maxLength={50}
           style={{ flex: "1 1 180px" }}
         />
         <button type="button" className="btn btn-ghost btn-sm" onClick={add}>

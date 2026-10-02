@@ -31,6 +31,7 @@ import { api } from "../utils/api.js";
 import { shortAddr, formatDate, formatLPA } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
 import { useScrollToAlert } from "../utils/useScrollToAlert.js";
+import { noEmojis, alphanumericOnly, numbersOnly } from "../utils/validation.js";
 
 /** True while either button for `id` is working (busy is "<id>:<action>"). */
 const isBusy = (busy, id) => typeof busy === "string" && busy.startsWith(`${id}:`);
@@ -613,15 +614,15 @@ function BatchesPanel({ onError, onNotice }) {
         <div className="form-grid cols-2">
           <div className="form-group">
             <label htmlFor="b-course">Course</label>
-            <input id="b-course" value={courseCode} onChange={(e) => setCourseCode(e.target.value.toUpperCase())} placeholder="CSE" required />
+            <input id="b-course" value={courseCode} onChange={(e) => setCourseCode(alphanumericOnly(e.target.value).toUpperCase())} placeholder="CSE" maxLength={20} required />
           </div>
           <div className="form-group">
             <label htmlFor="b-year">Batch year</label>
-            <input id="b-year" type="number" inputMode="decimal" value={batchYear} onChange={(e) => setBatchYear(e.target.value)} placeholder="2026" required />
+            <input id="b-year" type="text" inputMode="numeric" value={batchYear} onChange={(e) => setBatchYear(numbersOnly(e.target.value).slice(0, 4))} placeholder="2026" required />
           </div>
           <div className="form-group span-all">
             <label htmlFor="b-strength">Total students</label>
-            <input id="b-strength" type="number" inputMode="decimal" value={strength} onChange={(e) => setStrength(e.target.value)} placeholder="180" required />
+            <input id="b-strength" type="text" inputMode="numeric" value={strength} onChange={(e) => setStrength(numbersOnly(e.target.value))} placeholder="180" required />
           </div>
         </div>
         <button type="submit" className="btn btn-primary" disabled={busy}>
@@ -680,8 +681,8 @@ function VerificationsPanel({ onError, onNotice }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const setField = (userId, key) => (e) =>
-    setDetails((d) => ({ ...d, [userId]: { ...(d[userId] ?? {}), [key]: e.target.value } }));
+  const setField = (userId, key, transform) => (e) =>
+    setDetails((d) => ({ ...d, [userId]: { ...(d[userId] ?? {}), [key]: transform ? transform(e.target.value) : e.target.value } }));
 
   const approve = async (userId) => {
     const entry = details[userId] ?? {};
@@ -767,8 +768,9 @@ function VerificationsPanel({ onError, onNotice }) {
                 <input
                   id={`v-name-${p.userId}`}
                   value={details[p.userId]?.fullName ?? ""}
-                  onChange={setField(p.userId, "fullName")}
+                  onChange={setField(p.userId, "fullName", noEmojis)}
                   placeholder="As on college records"
+                  maxLength={100}
                 />
               </div>
               <div className="form-group">
@@ -776,17 +778,18 @@ function VerificationsPanel({ onError, onNotice }) {
                 <input
                   id={`v-course-${p.userId}`}
                   value={details[p.userId]?.courseCode ?? ""}
-                  onChange={setField(p.userId, "courseCode")}
+                  onChange={(e) => setField(p.userId, "courseCode", alphanumericOnly)({ target: { value: e.target.value.toUpperCase() } })}
                   placeholder="CSE"
+                  maxLength={20}
                 />
               </div>
               <div className="form-group">
                 <label htmlFor={`v-batch-${p.userId}`}>Batch year</label>
                 <input
                   id={`v-batch-${p.userId}`}
-                  type="number" inputMode="decimal"
+                  type="text" inputMode="numeric"
                   value={details[p.userId]?.batchYear ?? ""}
-                  onChange={setField(p.userId, "batchYear")}
+                  onChange={(e) => setField(p.userId, "batchYear", numbersOnly)({ target: { value: e.target.value.slice(0, 4) } })}
                   placeholder="2026"
                 />
               </div>
@@ -797,8 +800,9 @@ function VerificationsPanel({ onError, onNotice }) {
                 <input
                   id={`v-reason-${p.userId}`}
                   value={details[p.userId]?.reason ?? ""}
-                  onChange={setField(p.userId, "reason")}
+                  onChange={setField(p.userId, "reason", noEmojis)}
                   placeholder="If declining, tell them why"
+                  maxLength={255}
                 />
               </div>
             </div>

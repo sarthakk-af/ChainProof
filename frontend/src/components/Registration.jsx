@@ -13,6 +13,7 @@ import React, { useState, useEffect } from "react";
 import { GraduationCap, Building2, AlertCircle, ArrowRight, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
+import { noEmojis, alphanumericOnly } from "../utils/validation.js";
 
 const ROLES = [
   {
@@ -186,8 +187,9 @@ function StudentForm({ onClaim }) {
         <input
           id="reg-roll"
           value={rollNumber}
-          onChange={(e) => setRollNumber(e.target.value.toUpperCase())}
+          onChange={(e) => setRollNumber(alphanumericOnly(e.target.value).toUpperCase())}
           placeholder="e.g. 21CE1042"
+          maxLength={20}
           required
         />
         <p className="form-hint">
@@ -209,8 +211,9 @@ function StudentForm({ onClaim }) {
             step={f.type === "decimal2" ? "0.01" : undefined}
             min={f.min ?? undefined}
             max={f.max ?? undefined}
+            maxLength={f.type === "text" ? 100 : undefined}
             value={values[f.key] ?? ""}
-            onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+            onChange={(e) => setValues((v) => ({ ...v, [f.key]: f.type === "text" ? noEmojis(e.target.value) : e.target.value }))}
           />
           {f.help && <p className="form-hint">{f.help}</p>}
         </div>
@@ -269,7 +272,13 @@ function CompanyForm({ onRegister }) {
     <form onSubmit={submit} className="glass-card p-24 flex flex-col gap-16 animate-fade-in-up">
       <div className="form-group">
         <label htmlFor="reg-name">Company name</label>
-        <input id="reg-name" value={name} onChange={(e) => setName(e.target.value)} required />
+        <input 
+          id="reg-name" 
+          value={name} 
+          onChange={(e) => setName(noEmojis(e.target.value))} 
+          maxLength={100}
+          required 
+        />
       </div>
 
       <div className="form-group">
@@ -277,9 +286,10 @@ function CompanyForm({ onRegister }) {
         <input
           id="reg-cin"
           value={registrationNumber}
-          onChange={(e) => setRegistrationNumber(e.target.value.toUpperCase())}
+          onChange={(e) => setRegistrationNumber(alphanumericOnly(e.target.value).toUpperCase())}
           onBlur={() => setTouched((t) => ({ ...t, cin: true }))}
           placeholder="L12345MH2020PLC123456"
+          maxLength={21}
           required
         />
         <p style={{ fontSize: "var(--text-xs)", marginTop: 4, color: touched.cin && cinMsg ? "var(--accent-danger)" : "var(--text-muted)" }}>
@@ -293,10 +303,12 @@ function CompanyForm({ onRegister }) {
         </label>
         <input
           id="reg-web"
+          type="url"
           value={website}
-          onChange={(e) => setWebsite(e.target.value)}
+          onChange={(e) => setWebsite(noEmojis(e.target.value).replace(/\s/g, ""))}
           onBlur={() => setTouched((t) => ({ ...t, web: true }))}
           placeholder="https://example.com"
+          maxLength={255}
         />
         {touched.web && webMsg && (
           <p style={{ fontSize: "var(--text-xs)", color: "var(--accent-danger)", marginTop: 4 }}>{webMsg}</p>

@@ -15,6 +15,7 @@ import { LogIn, UserPlus, Mail, Check, AlertCircle, Info, ArrowLeft, ShieldCheck
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import { Link } from "../utils/navigation.jsx";
+import { noEmojis } from "../utils/validation.js";
 import PasswordInput from "./shared/PasswordInput.jsx";
 
 // Mirrors backend/src/auth.js's validatePassword — client-side is UX only,
@@ -208,8 +209,9 @@ export default function AuthScreen({ initialMode = "login" }) {
             id="auth-email"
             type="email"
             placeholder="you@example.com"
+            maxLength={255}
             value={email}
-            onChange={(e) => { setEmail(e.target.value); setError(""); }}
+            onChange={(e) => { setEmail(noEmojis(e.target.value).replace(/\s/g, "")); setError(""); }}
             onFocus={() => setEmailTouched(false)}
             onBlur={() => setEmailTouched(true)}
             autoComplete="email"
@@ -288,6 +290,7 @@ export default function AuthScreen({ initialMode = "login" }) {
               onBlur={() => setPasswordTouched(true)}
               autoComplete={mode === "signup" ? "new-password" : "current-password"}
               minLength={mode === "signup" ? PASSWORD_MIN_LENGTH : undefined}
+              maxLength={128}
               required
               aria-invalid={mode === "signup" && passwordTouched && !passwordValid ? "true" : undefined}
               aria-describedby="auth-password-msg"
@@ -330,6 +333,7 @@ export default function AuthScreen({ initialMode = "login" }) {
               onFocus={() => setConfirmTouched(false)}
               onBlur={() => setConfirmTouched(true)}
               autoComplete="new-password"
+              maxLength={128}
               required
               aria-invalid={confirmTouched && !confirmValid ? "true" : undefined}
               aria-describedby="auth-confirm-msg"

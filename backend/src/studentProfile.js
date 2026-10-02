@@ -40,8 +40,10 @@
  *   single spaces. A paragraph field must not: collapsing it would run every
  *   line of an "about" section into one. Newlines survive; runs of blank lines
  *   are squeezed to one, and other control characters are dropped.
+ *   are squeezed to one, and other control characters are dropped.
  * @property {string} [help]      Shown to the user when the value is rejected.
  */
+import { noEmojis } from "./validation.js";
 
 /**
  * Links a student may add to their profile.
@@ -238,9 +240,10 @@ export function parseField(column, raw) {
     // rather than two — the same normalisation reasoning as registration numbers.
     // URLs opt out: a path segment is case-sensitive and upper-casing one turns
     // a working link into a 404.
+    const cleanStr = spec.preserveCase ? String(raw) : noEmojis(raw);
     const trimmed = spec.multiline
-      ? normalizeParagraph(String(raw))
-      : String(raw).trim().replace(/\s+/g, " ");
+      ? normalizeParagraph(cleanStr)
+      : cleanStr.trim().replace(/\s+/g, " ");
     const value = spec.pattern && !spec.preserveCase ? trimmed.toUpperCase() : trimmed;
     if (spec.maxBytes && byteLength(value) > spec.maxBytes) {
       return { error: `${spec.label} must be ${spec.maxBytes} bytes or fewer.` };

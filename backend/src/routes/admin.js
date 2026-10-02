@@ -32,6 +32,8 @@ import { adminSessionAuth } from "../middleware/adminSessionAuth.js";
 import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { publicChainError } from "../chainErrors.js";
+import { noEmojis, cleanText } from "../validation.js";
+import { byteLength, MAX_NAME_BYTES } from "../limits.js";
 
 /**
  * admin.js — the platform owner.
@@ -161,13 +163,16 @@ adminRouter.post("/college", async (req, res) => {
     });
   }
 
-  const collegeName = String(name ?? "").trim();
+  const collegeName = cleanText(name);
   if (!collegeName) return res.status(400).json({ error: "Institution name is required." });
+  if (byteLength(collegeName) > MAX_NAME_BYTES) {
+    return res.status(400).json({ error: `Institution name must be ${MAX_NAME_BYTES} bytes or fewer.` });
+  }
 
   const regCheck = validateRegistrationNumber("College", registrationNumber);
   if (regCheck.error) return res.status(400).json({ error: regCheck.error });
 
-  const loginEmail = String(email ?? "").trim();
+  const loginEmail = noEmojis(email).trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
     return res.status(400).json({ error: "Enter a valid email for the placement cell login." });
   }
@@ -357,7 +362,7 @@ adminRouter.post("/accounts/:address/suspend", async (req, res) => {
     });
   }
 
-  const reason = String(req.body?.reason ?? "").trim().replace(/\s+/g, " ").slice(0, 200);
+  const reason = cleanText(req.body?.reason).replace(/\s+/g, " ").slice(0, 200);
 
   try {
     const receipt = await withVerifierLock(async (nonce) => {

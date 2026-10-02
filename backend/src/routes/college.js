@@ -60,6 +60,7 @@ import { approveQueuedStudent, rejectQueuedStudent } from "../studentVerificatio
 import { registerLimiter, recordLimiter } from "../middleware/chainWriteLimiter.js";
 import { logger } from "../logger.js";
 import { publicChainError } from "../chainErrors.js";
+import { noEmojis, alphanumericOnly, cleanText } from "../validation.js";
 
 /**
  * college.js — everything the placement cell does.
@@ -298,7 +299,7 @@ collegeRouter.post("/verifications/:userId/reject", (req, res) => {
   if (!Number.isInteger(userId)) {
     return res.status(400).json({ error: "Invalid user id" });
   }
-  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 500) : "";
+  const reason = typeof req.body?.reason === "string" ? cleanText(req.body.reason).slice(0, 500) : "";
 
   const result = rejectQueuedStudent({ userId, collegeAddress: req.user.address, reason });
   if (result.error) return res.status(400).json({ error: result.error });
@@ -343,11 +344,11 @@ collegeRouter.post("/events", recordLimiter, async (req, res) => {
     });
   }
 
-  const titleText = String(title ?? "").trim().replace(/\s+/g, " ");
+  const titleText = cleanText(title).replace(/\s+/g, " ");
   if (!titleText || Buffer.byteLength(titleText, "utf8") > 120) {
     return res.status(400).json({ error: "A title of 1-120 bytes is required." });
   }
-  const conductedByText = String(conductedBy ?? "").trim().replace(/\s+/g, " ");
+  const conductedByText = cleanText(conductedBy).replace(/\s+/g, " ");
   if (!conductedByText || Buffer.byteLength(conductedByText, "utf8") > 100) {
     return res.status(400).json({ error: "Say who conducted it (1-100 bytes)." });
   }
@@ -478,7 +479,7 @@ collegeRouter.post("/events/:id/cancel", recordLimiter, async (req, res) => {
     return res.status(409).json({ error: "That event is already cancelled." });
   }
 
-  const reason = String(req.body?.reason ?? "").trim().replace(/\s+/g, " ").slice(0, 200);
+  const reason = cleanText(req.body?.reason).replace(/\s+/g, " ").slice(0, 200);
 
   try {
     const receipt = await withWalletLock(req.user.address, async (nonce) => {
@@ -515,7 +516,7 @@ collegeRouter.post("/events/:id/cancel", recordLimiter, async (req, res) => {
  */
 collegeRouter.post("/batches", registerLimiter, async (req, res) => {
   const { courseCode, batchYear, strength } = req.body || {};
-  const code = String(courseCode ?? "").trim().toUpperCase();
+  const code = alphanumericOnly(courseCode).toUpperCase();
   const year = Number(batchYear);
   const size = Number(strength);
 
@@ -652,7 +653,7 @@ collegeRouter.post("/companies/:address/reject", (req, res) =>
   decideCompany(req, res, {
     method: "rejectActor",
     event: "company_rejected",
-    reason: typeof req.body?.reason === "string" ? req.body.reason.trim().slice(0, 500) : "",
+    reason: typeof req.body?.reason === "string" ? cleanText(req.body.reason).slice(0, 500) : "",
   })
 );
 

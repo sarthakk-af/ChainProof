@@ -30,6 +30,7 @@ import { getIdempotencyKey } from "../utils/idempotency.js";
 import { formatDate } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
 import { useScrollToAlert } from "../utils/useScrollToAlert.js";
+import { noEmojis, numbersOnly } from "../utils/validation.js";
 
 const STAGES = ["Shortlisted", "Assessment", "Interview", "Offered", "NotSelected"];
 const STAGE_LABEL = {
@@ -179,7 +180,7 @@ function PostDriveForm({ onPosted, onError }) {
     }).catch(() => {});
   }, []);
 
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set = (k, transform) => (e) => setForm((f) => ({ ...f, [k]: transform ? transform(e.target.value) : e.target.value }));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -221,7 +222,7 @@ function PostDriveForm({ onPosted, onError }) {
       <div className="form-grid">
         <div className="form-group">
           <label htmlFor="d-role">Role title</label>
-          <input id="d-role" value={form.roleTitle} onChange={set("roleTitle")} placeholder="Software Engineer" required />
+          <input id="d-role" value={form.roleTitle} onChange={set("roleTitle", noEmojis)} placeholder="Software Engineer" maxLength={100} required />
         </div>
         {/* With one college on the platform it is already chosen, so the picker
             only appears when there is actually a choice to make. */}
@@ -236,7 +237,7 @@ function PostDriveForm({ onPosted, onError }) {
         )}
         <div className="form-group">
           <label htmlFor="d-package">Annual package (₹)</label>
-          <input id="d-package" type="number" inputMode="decimal" value={form.annualPackage} onChange={set("annualPackage")} placeholder="650000" required />
+          <input id="d-package" type="number" inputMode="numeric" value={form.annualPackage} onChange={set("annualPackage", numbersOnly)} placeholder="650000" min="0" required />
         </div>
         <div className="form-group">
           <label htmlFor="d-cgpa">Minimum CGPA <span className="label-optional">(optional)</span></label>
@@ -244,7 +245,7 @@ function PostDriveForm({ onPosted, onError }) {
         </div>
         <div className="form-group">
           <label htmlFor="d-batch">Batch year</label>
-          <input id="d-batch" type="number" inputMode="decimal" value={form.batchYear} onChange={set("batchYear")} placeholder="2026" required />
+          <input id="d-batch" type="text" inputMode="numeric" value={form.batchYear} onChange={(e) => set("batchYear", numbersOnly)({ target: { value: e.target.value.slice(0, 4) } })} placeholder="2026" required />
         </div>
         <div className="form-group">
           <label htmlFor="d-deadline">Applications close</label>
@@ -256,7 +257,7 @@ function PostDriveForm({ onPosted, onError }) {
         </div>
         <div className="form-group span-all">
           <label htmlFor="d-desc">Description <span className="label-optional">(optional)</span></label>
-          <textarea id="d-desc" rows={3} value={form.description} onChange={set("description")} />
+          <textarea id="d-desc" rows={3} value={form.description} onChange={set("description", noEmojis)} maxLength={2000} />
         </div>
       </div>
 

@@ -30,6 +30,7 @@ import { api } from "../utils/api.js";
 import { formatDate, formatLPA } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
 import { useScrollToAlert } from "../utils/useScrollToAlert.js";
+import { noEmojis, alphanumericOnly } from "../utils/validation.js";
 
 /** True while either button for `id` is working (busy is "<id>:<action>"). */
 const isBusy = (busy, id) => typeof busy === "string" && busy.startsWith(`${id}:`);
@@ -434,13 +435,15 @@ function ProfilePanel({ onError, onNotice }) {
                   id={`p-${f.key}`}
                   rows={3}
                   value={values[f.key] ?? ""}
-                  onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                  onChange={(e) => setValues((v) => ({ ...v, [f.key]: f.type === "text" ? noEmojis(e.target.value) : e.target.value }))}
+                  maxLength={2000}
                 />
               ) : (
                 <input
                   id={`p-${f.key}`}
                   value={values[f.key] ?? ""}
-                  onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                  onChange={(e) => setValues((v) => ({ ...v, [f.key]: f.type === "text" ? noEmojis(e.target.value) : e.target.value }))}
+                  maxLength={f.type === "text" ? 100 : undefined}
                 />
               )}
               {f.help && <p className="form-hint">{f.help}</p>}
@@ -539,8 +542,9 @@ function RollNumberPanel({ verification, awaitingCell, onClaim, onError, onNotic
         <input
           id="rp-roll"
           value={rollNumber}
-          onChange={(e) => setRollNumber(e.target.value.toUpperCase())}
+          onChange={(e) => setRollNumber(alphanumericOnly(e.target.value).toUpperCase())}
           placeholder="e.g. 21CE1042"
+          maxLength={20}
           required
         />
       </div>

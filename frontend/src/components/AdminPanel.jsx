@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import PasswordInput from "./shared/PasswordInput.jsx";
 import { shortAddr } from "../utils/format.js";
+import { noEmojis, alphanumericOnly } from "../utils/validation.js";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 const TOKEN_KEY = "chainproof_admin_session";
@@ -112,9 +113,10 @@ function LoginScreen({ onSignedIn }) {
             <input
               id="a-user"
               value={form.username}
-              onChange={(e) => setForm((f) => ({ ...f, username: e.target.value }))}
+              onChange={(e) => setForm((f) => ({ ...f, username: alphanumericOnly(e.target.value) }))}
               autoComplete="username"
               placeholder="admin"
+              maxLength={50}
               required
             />
           </div>
@@ -125,6 +127,7 @@ function LoginScreen({ onSignedIn }) {
               value={form.password}
               onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
               autoComplete="current-password"
+              maxLength={128}
               required
             />
           </div>
@@ -378,8 +381,9 @@ function Accounts({ token, onChanged, onNotice, onError }) {
                 <input
                   aria-label={`Why are you suspending ${a.name}?`}
                   value={reason}
-                  onChange={(e) => setReason(e.target.value)}
+                  onChange={(e) => setReason(noEmojis(e.target.value))}
                   placeholder="Reason (goes on the blockchain with the suspension)"
+                  maxLength={255}
                   style={{ flex: "1 1 260px" }}
                 />
                 <button
@@ -533,7 +537,7 @@ function CreateCollege({ token, onCreated, onError }) {
     password: "",
   });
   const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const set = (k, transform) => (e) => setForm((f) => ({ ...f, [k]: transform ? transform(e.target.value) : e.target.value }));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -566,12 +570,12 @@ function CreateCollege({ token, onCreated, onError }) {
 
       <div className="form-group">
         <label htmlFor="c-name">Institution name</label>
-        <input id="c-name" value={form.name} onChange={set("name")} required />
+        <input id="c-name" value={form.name} onChange={set("name", noEmojis)} maxLength={100} required />
       </div>
 
       <div className="form-group">
         <label htmlFor="c-reg">Registration / accreditation ID</label>
-        <input id="c-reg" value={form.registrationNumber} onChange={set("registrationNumber")} placeholder="EDU/MH/2024/0142" required />
+        <input id="c-reg" value={form.registrationNumber} onChange={(e) => set("registrationNumber", alphanumericOnly)({ target: { value: e.target.value.toUpperCase() } })} placeholder="EDU/MH/2024/0142" maxLength={21} required />
         <p className="form-hint">
           Published publicly so anyone can look it up independently.
         </p>
@@ -579,19 +583,19 @@ function CreateCollege({ token, onCreated, onError }) {
 
       <div className="form-group">
         <label htmlFor="c-web">Website <span className="label-optional">(optional)</span></label>
-        <input id="c-web" value={form.website} onChange={set("website")} placeholder="https://example.com" />
+        <input id="c-web" type="url" value={form.website} onChange={(e) => set("website", noEmojis)({ target: { value: e.target.value.replace(/\s/g, "") } })} placeholder="https://example.com" maxLength={255} />
       </div>
 
       <h3 className="card-title" style={{ marginTop: 4, marginBottom: 0 }}>Placement cell login</h3>
 
       <div className="form-group">
         <label htmlFor="c-email">Email</label>
-        <input id="c-email" type="email" value={form.email} onChange={set("email")} required />
+        <input id="c-email" type="email" value={form.email} onChange={(e) => set("email", noEmojis)({ target: { value: e.target.value.replace(/\s/g, "") } })} maxLength={255} required />
       </div>
 
       <div className="form-group">
         <label htmlFor="c-pass">Password</label>
-        <PasswordInput id="c-pass" value={form.password} onChange={set("password")} autoComplete="new-password" required />
+        <PasswordInput id="c-pass" value={form.password} onChange={set("password")} autoComplete="new-password" maxLength={128} required />
         <p className="form-hint">
           At least 8 characters, including a number. Hand these to your placement cell.
         </p>
@@ -661,6 +665,7 @@ function CollegeCard({ college, token, onNotice, onError }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="At least 8 characters, including a number"
+                maxLength={128}
               />
             </div>
             <div className="flex gap-8">
