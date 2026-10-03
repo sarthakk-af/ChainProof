@@ -35,7 +35,7 @@ export function AuthProvider({ children }) {
 
   const refreshActor = useCallback(async () => {
     const me = await api.get("/me");
-    setUser({ email: me.email, address: me.address });
+    setUser({ email: me.email, address: me.address, isCollegeLogin: !!me.isCollegeLogin });
     setActor(me.actor);
     setVerification(me.verification ?? null);
     setProfile(me.profile ?? null);

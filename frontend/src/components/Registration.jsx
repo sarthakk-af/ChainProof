@@ -54,8 +54,42 @@ function websiteError(value) {
 }
 
 export default function Registration() {
-  const { registerActor, claimRollNumber, verification } = useAuth();
+  const { registerActor, claimRollNumber, verification, user, logout } = useAuth();
   const [role, setRole] = useState(null);
+
+  // Whose screen this is. A browser stays signed in, so this page can greet
+  // someone who expected the home page and has no idea which account it is.
+  const signedInAs = (
+    <p style={{ marginBottom: "var(--space-5)", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
+      Signed in as <strong>{user?.email}</strong>.{" "}
+      <button type="button" className="btn-link" onClick={logout}>
+        Not you? Sign out
+      </button>
+    </p>
+  );
+
+  // The placement cell's login, created by the administrator, has nothing to
+  // choose here: the college can't register itself. It lands here only when
+  // the college doesn't exist on the blockchain — not set up yet, or erased by
+  // a restart of a local test chain.
+  if (user?.isCollegeLogin) {
+    return (
+      <div className="page-container animate-fade-in-up" style={{ maxWidth: 680, marginTop: "var(--space-8)" }}>
+        <h2 style={{ marginBottom: 4 }}>The college isn't set up</h2>
+        {signedInAs}
+        <div className="alert alert-warning" role="status">
+          <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
+          <span>
+            This is your placement cell's login, but the college doesn't exist on the blockchain
+            yet. That happens before the platform is set up, and on a test setup each time the
+            local blockchain is restarted. The platform administrator needs to create the college
+            at <strong>/admin</strong> using this same email. Your login keeps working, and your
+            dashboard opens as soon as that's done.
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-container animate-fade-in-up" style={{ maxWidth: 680, marginTop: "var(--space-8)" }}>
@@ -66,9 +100,10 @@ export default function Registration() {
         </span>
       </div>
       <h2 style={{ marginBottom: 4 }}>Choose your role</h2>
-      <p style={{ marginBottom: "var(--space-5)", fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
+      <p style={{ marginBottom: 4, fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
         You can look around before this is finished — nothing here locks you out.
       </p>
+      {signedInAs}
 
       <div className="flex flex-col gap-12" style={{ marginBottom: "var(--space-6)" }} role="radiogroup" aria-label="Choose your role">
         {ROLES.map(({ value, label, icon: Icon, blurb }) => (

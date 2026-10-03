@@ -59,6 +59,11 @@ meRouter.get("/", (req, res) => {
   res.json({
     email: user.email,
     address: req.user.address,
+    // The placement cell's login, which the administrator creates. Lets the
+    // interface tell it apart when it has no on-chain identity — before the
+    // college is set up, or after a local chain reset erased it — instead of
+    // offering it the student and company sign-up it can't use.
+    isCollegeLogin: !!user.is_college_login,
     actor: actorRow ? serializeActor(actorRow) : null,
     profile: serializeProfile(getProfile(req.user.address)),
     // Everything the interface needs to tell someone exactly what is still

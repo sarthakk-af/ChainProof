@@ -1473,3 +1473,13 @@ input[aria-invalid="true"], textarea[aria-invalid="true"] { border-color: var(--
   text-align: left;
 }
 .btn-link-quiet:hover { text-decoration: underline; }
+
+/* The same, inline in a sentence: it takes the text size around it. Used by
+   the applicant names in a company's drive and "Not you? Sign out" — which
+   rendered as bare browser buttons while this class didn't exist. */
+.btn-link {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  color: var(--accent-primary); font: inherit;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.btn-link:hover { color: var(--text-primary); }
