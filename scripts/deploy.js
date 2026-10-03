@@ -157,7 +157,7 @@ export const DEPLOYMENT = ${JSON.stringify(deploymentManifest, null, 2)};
   console.log(`  Network:           ${network}`);
   console.log("=".repeat(60));
   console.log("\n  Next Steps:");
-  console.log("  1. cd backend && npm start     (see backend/.env.example)");
+  console.log("  1. cd backend && npm start     (settings: .env at the project root)");
   console.log("  2. cd frontend && npm run dev");
   console.log("  No wallet/MetaMask needed — sign up with email/password in the app.");
   console.log("=".repeat(60) + "\n");

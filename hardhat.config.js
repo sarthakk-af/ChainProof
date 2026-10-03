@@ -1,5 +1,12 @@
 require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
+// The project's single .env, at the repository root — shared with the backend.
+require("dotenv").config({ path: require("path").join(__dirname, ".env"), quiet: true });
+
+/** Hardhat wants a 0x-prefixed key; a key pasted without one is accepted too. */
+function withHexPrefix(key) {
+  const trimmed = key.trim();
+  return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+}
 
 /**
  * @type {import('hardhat/config').HardhatUserConfig}
@@ -34,8 +41,8 @@ module.exports = {
   // -------------------------------------------------------------------------
   // Artifact Output Path
   // -------------------------------------------------------------------------
-  // Outputting artifacts directly to the frontend/src/contracts directory
-  // allows Vite to resolve ABIs without extra copy scripts in the CI pipeline.
+  // Compiled output stays in ./artifacts. The deploy script copies just the
+  // addresses and ABIs the app needs into frontend/src/contracts/deployment.js.
   paths: {
     sources: "./contracts",
     tests: "./test",
@@ -66,10 +73,13 @@ module.exports = {
 
     // Polygon Amoy Testnet — the intended target. Nothing is deployed there yet;
     // everything runs on the local node above.
+    // The deploying key becomes the contracts' verifier, and the backend signs
+    // with the same DEPLOYER_PRIVATE_KEY from the same .env — one key, so the
+    // two can never disagree about who the verifier is.
     amoy: {
       url: process.env.AMOY_RPC_URL || "",
       accounts: process.env.DEPLOYER_PRIVATE_KEY
-        ? [process.env.DEPLOYER_PRIVATE_KEY]
+        ? [withHexPrefix(process.env.DEPLOYER_PRIVATE_KEY)]
         : [],
       chainId: 80002,
     },
@@ -89,12 +99,12 @@ module.exports = {
   // -------------------------------------------------------------------------
   // Etherscan / Block Explorer Verification
   // -------------------------------------------------------------------------
-  // Amoy, because that is where this project deploys. The only key here used to
-  // be Sepolia's, which no part of this project has ever deployed to.
+  // A single Etherscan key, which covers Polygon Amoy through Etherscan's
+  // multichain (v2) API. Per-network keys such as a separate Polygonscan key
+  // belong to the v1 API, which was switched off in 2025 — verification
+  // configured that way fails.
   etherscan: {
-    apiKey: {
-      polygonAmoy: process.env.POLYGONSCAN_API_KEY || "",
-    },
+    apiKey: process.env.ETHERSCAN_API_KEY || "",
   },
 
   // -------------------------------------------------------------------------

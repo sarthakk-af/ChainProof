@@ -34,3 +34,6 @@ Thumbs.db
 
 # Claude Code project config (local tooling, not meant to be shared)
 .claude/
+
+# Backups of real .env files, made when they were consolidated (hold secrets)
+env-backup*/

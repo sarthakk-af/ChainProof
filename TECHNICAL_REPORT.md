@@ -1,6 +1,6 @@
 # ChainProof — Technical Report
 
-How ChainProof works under the hood, written so every part can be explained confidently in a viva. For the plain-language version, see [TEACHER_OVERVIEW.md](TEACHER_OVERVIEW.md). For the design decisions and the reasoning behind them, see [SPEC.md](SPEC.md).
+How ChainProof works under the hood, written so every part can be explained confidently in a viva. For the plain-language version, see [TEACHER_OVERVIEW.md](TEACHER_OVERVIEW.md).
 
 ---
 

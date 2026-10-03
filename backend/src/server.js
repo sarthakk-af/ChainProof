@@ -48,7 +48,7 @@ async function ensureAdminAccount() {
         "UPDATE admins SET password_hash = ?, token_version = token_version + 1 WHERE id = ?"
       ).run(await hashPassword(config.adminPassword), existing.id);
       logger.info("admin_password_synced", { username: config.adminUsername });
-      console.log(`[setup] Updated the "${config.adminUsername}" password to match backend/.env.`);
+      console.log(`[setup] Updated the "${config.adminUsername}" password to match .env.`);
     }
     return;
   }
@@ -56,7 +56,7 @@ async function ensureAdminAccount() {
   if (!config.adminPassword) {
     console.log(
       `
-[setup] No admin account yet. Set ADMIN_PASSWORD in backend/.env and restart
+[setup] No admin account yet. Set ADMIN_PASSWORD in .env (project root) and restart
 ` +
         `        to create the "${config.adminUsername}" login.
 `

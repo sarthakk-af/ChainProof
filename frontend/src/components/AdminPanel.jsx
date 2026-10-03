@@ -110,7 +110,7 @@ function LoginScreen({ onSignedIn }) {
           </div>
           <h2 style={{ margin: "0 0 4px", fontSize: "var(--text-xl)" }}>Admin sign in</h2>
           <p style={{ fontSize: "var(--text-sm)", margin: 0 }}>
-            Use <code>ADMIN_USERNAME</code> and <code>ADMIN_PASSWORD</code> from backend/.env.
+            Use <code>ADMIN_USERNAME</code> and <code>ADMIN_PASSWORD</code> from the project&apos;s .env.
             College and company accounts sign in on the <a href="/login">normal sign-in page</a>.
           </p>
         </div>
@@ -118,7 +118,7 @@ function LoginScreen({ onSignedIn }) {
         <form onSubmit={submit} className="flex flex-col gap-16">
           <div className="form-group">
             <label htmlFor="a-user">Username</label>
-            {/* Whatever ADMIN_USERNAME is in backend/.env, which may contain
+            {/* Whatever ADMIN_USERNAME is in .env, which may contain
                 . _ or -. Only spaces are dropped: restricting it further locked
                 out any admin whose username wasn't purely alphanumeric. */}
             <input

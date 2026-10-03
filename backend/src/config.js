@@ -1,8 +1,74 @@
-import "dotenv/config";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import dotenv from "dotenv";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const BACKEND_ROOT = path.resolve(__dirname, "..");
+
+/**
+ * One configuration file for the whole project: `.env` at the repository root.
+ *
+ * The contracts and the backend used to have a file each, and they drifted:
+ * the key that deployed the contracts (and so became their verifier) was not
+ * the key the backend signed admin actions with, so a deployment to a public
+ * network would have left the backend unable to approve the college at all.
+ * Values already set in the environment win, so tests and hosting platforms
+ * can still supply their own.
+ */
+dotenv.config({ path: path.resolve(BACKEND_ROOT, "../.env") });
+if (fs.existsSync(path.resolve(BACKEND_ROOT, ".env"))) {
+  console.warn(
+    "[config] backend/.env is no longer read — settings live in .env at the project root. " +
+      "Move anything you still need there and delete backend/.env."
+  );
+}
+
+/**
+ * Hardhat's account #0. `npm run deploy:local` deploys with it, which makes it
+ * the contracts' verifier on a local chain — so the backend uses it there
+ * without being told. Its key is printed in Hardhat's own documentation, which
+ * is exactly why it is only ever used against a local node (see the guard at
+ * the bottom of this file).
+ */
+const HARDHAT_ACCOUNT_0 = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+const NETWORK = (process.env.NETWORK || "localhost").trim().toLowerCase();
+
+/** The chain to talk to: an explicit RPC_URL, or the one NETWORK names. */
+function resolveRpcUrl() {
+  if (process.env.RPC_URL) return process.env.RPC_URL;
+  if (NETWORK === "localhost") return process.env.LOCAL_RPC_URL || "http://127.0.0.1:8545";
+  if (NETWORK === "amoy") {
+    if (!process.env.AMOY_RPC_URL) throw new Error("NETWORK is amoy but AMOY_RPC_URL is not set in .env.");
+    return process.env.AMOY_RPC_URL;
+  }
+  throw new Error(`NETWORK must be "localhost" or "amoy" (got "${NETWORK}").`);
+}
+
+function withHexPrefix(key) {
+  const trimmed = String(key).trim();
+  return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
+}
+
+/**
+ * The key the backend signs verifier actions with — always the key that
+ * deployed the contracts, since deploying is what makes an address the
+ * verifier. Locally that is Hardhat's account #0; on a public network it is
+ * DEPLOYER_PRIVATE_KEY. VERIFIER_PRIVATE_KEY overrides both, for the day the
+ * verifier role is handed to a different key.
+ */
+function resolveVerifierKey(rpcUrl) {
+  if (process.env.VERIFIER_PRIVATE_KEY) return withHexPrefix(process.env.VERIFIER_PRIVATE_KEY);
+  if (isLocalRpc(rpcUrl)) return HARDHAT_ACCOUNT_0;
+  if (process.env.DEPLOYER_PRIVATE_KEY) return withHexPrefix(process.env.DEPLOYER_PRIVATE_KEY);
+  throw new Error(
+    "No verifier key: set DEPLOYER_PRIVATE_KEY in .env to the key the contracts were deployed with."
+  );
+}
+
+const RPC_URL = resolveRpcUrl();
+const VERIFIER_KEY = resolveVerifierKey(RPC_URL);
 
 // The deploy script (scripts/deploy.js at repo root) writes contract addresses/ABIs
 // here on every deployment. Reusing it directly avoids keeping a second copy of
@@ -49,23 +115,29 @@ function requireEnv(name) {
 }
 
 export const config = {
-  rpcUrl: process.env.RPC_URL || "http://127.0.0.1:8545",
-  verifierPrivateKey: requireEnv("VERIFIER_PRIVATE_KEY"),
+  network: NETWORK,
+  rpcUrl: RPC_URL,
+  verifierPrivateKey: VERIFIER_KEY,
   // The platform owner's login, created at first start (see server.js).
   adminUsername: (process.env.ADMIN_USERNAME || "admin").trim().toLowerCase(),
   adminPassword: process.env.ADMIN_PASSWORD || "",
   port: Number(process.env.PORT || 4000),
-  dbPath: process.env.DB_PATH || "./data/chainproof.sqlite",
+  // Relative to backend/, wherever the process was started from — the setting
+  // now lives at the project root, and "./data" must not start meaning a
+  // different folder depending on which directory `npm start` ran in.
+  dbPath: path.resolve(BACKEND_ROOT, process.env.DB_PATH || "data/chainproof.sqlite"),
   jwtSecret: requireEnv("JWT_SECRET"),
   walletEncryptionKey: requireEnv("WALLET_ENCRYPTION_KEY"),
-  treasuryPrivateKey: process.env.TREASURY_PRIVATE_KEY || process.env.VERIFIER_PRIVATE_KEY,
+  // The wallet that funds every user's gas. Defaults to the verifier, so a
+  // deployment needs one funded key, not two.
+  treasuryPrivateKey: process.env.TREASURY_PRIVATE_KEY
+    ? withHexPrefix(process.env.TREASURY_PRIVATE_KEY)
+    : VERIFIER_KEY,
   // 1.0 is free on a local chain, where each test account holds 10,000. On a
   // real network it is a real balance per signup, so unless set explicitly the
   // drip there is small: ample for a student's handful of transactions on
   // Polygon, and topped up automatically if a wallet runs low (treasury.js).
-  walletGasDripEth:
-    process.env.WALLET_GAS_DRIP_ETH ||
-    (isLocalRpc(process.env.RPC_URL || "http://127.0.0.1:8545") ? "1.0" : "0.05"),
+  walletGasDripEth: process.env.WALLET_GAS_DRIP_ETH || (isLocalRpc(RPC_URL) ? "1.0" : "0.05"),
   frontendOrigin: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
   // Optional, not required — password reset just logs a clear error at

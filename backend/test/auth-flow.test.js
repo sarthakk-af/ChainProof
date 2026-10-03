@@ -106,7 +106,7 @@ test("POST /auth/forgot-password answers the same way for a known and an unknown
 test("forgot-password owns up when there is no email service", async () => {
   // It used to answer "check your inbox" on a server that could never send
   // one. Which branch runs depends on the machine — dotenv picks up a real
-  // backend/.env if one exists — so this asserts the right thing either way.
+  // the project .env if one exists — so this asserts the right thing either way.
   const { config } = await import("../src/config.js");
   const res = await request(app).post("/auth/forgot-password").send({ email: "flow@example.com" });
 

@@ -9,7 +9,7 @@ An internal placement platform for one college, where every placement figure is 
 
 Once written, none of those records can be edited — not even by the administrator.
 
-For a plain-language explanation, see [TEACHER_OVERVIEW.md](TEACHER_OVERVIEW.md). For how it works under the hood, see [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md). For the agreed design and the reasoning behind it, see [SPEC.md](SPEC.md).
+For a plain-language explanation, see [TEACHER_OVERVIEW.md](TEACHER_OVERVIEW.md). For how it works under the hood, see [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md).
 
 ## How it's put together
 
@@ -36,7 +36,7 @@ cd backend && npm install
 cd ../frontend && npm install
 ```
 
-Copy `backend/.env.example` to `backend/.env` and fill it in. At minimum, set `ADMIN_PASSWORD`: it becomes the password for the `admin` login.
+Copy `.env.example` to `.env` (both in the project root) and fill it in. It is the one settings file for the contracts and the backend. Locally you need only `JWT_SECRET`, `WALLET_ENCRYPTION_KEY` and `ADMIN_PASSWORD` (the password for the `admin` login); no private keys, because a local chain uses Hardhat's built-in accounts. Then copy `frontend/.env.example` to `frontend/.env`. The frontend's file is kept separate on purpose: everything in it is visible to every visitor.
 
 Then start everything, **in this order, each in its own terminal**:
 
@@ -75,7 +75,7 @@ If you'd rather have ready-made demo data: `cd backend && npm run seed:full`.
   taskkill /PID <number> /F
   ```
 - **Use `npm run seed:full`, not `npm run seed -- --full`.** PowerShell drops the `--`.
-- **Email codes:** without `BREVO_API_KEY` in `backend/.env`, no email is actually sent. Signing up still works, but the email address can't be confirmed, and a student needs a confirmed email to be verified.
+- **Email codes:** without `BREVO_API_KEY` in `.env`, no email is actually sent. Signing up still works, but the email address can't be confirmed, and a student needs a confirmed email to be verified.
 
 ### Looking at the database
 

@@ -36,7 +36,7 @@ placed count only moves when a student says yes.
 1. `npx hardhat node` (repo root)
 2. `npm run deploy:local` (repo root)
 3. `npm start` (backend) — see below
-4. `ADMIN_USERNAME` / `ADMIN_PASSWORD` set in `backend/.env`. The journey suite
+4. `ADMIN_USERNAME` / `ADMIN_PASSWORD` set in `.env` at the project root. The journey suite
    signs in as the platform owner to create the college, because that is now the
    only way a college comes into existence — there is no self-registration for
    one.
