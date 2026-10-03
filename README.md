@@ -9,7 +9,7 @@ An internal placement platform for one college, where every placement figure is 
 
 Once written, none of those records can be edited — not even by the administrator.
 
-For a plain-language explanation, see [TEACHER_OVERVIEW.md](TEACHER_OVERVIEW.md). For how it works under the hood, see [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md).
+For a plain-language explanation, see [TEACHER_OVERVIEW.md](TEACHER_OVERVIEW.md). For how it works under the hood, see [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md). To put it online, see [DEPLOY.md](DEPLOY.md).
 
 ## How it's put together
 
@@ -110,5 +110,5 @@ They cover a full placement season end to end, hostile input (forged tokens, inj
 - the public dashboard
 
 **Not done yet:**
-- **Public deployment.** Everything runs on a local blockchain. Deploying to Polygon Amoy (a public test network) is the next step.
+- **Public deployment.** Everything is ready to run on Polygon Amoy (a public test network) on an EC2 server; [DEPLOY.md](DEPLOY.md) has the steps.
 - **A limit of the design, stated plainly:** the backend holds every user's wallet key so that nobody needs a crypto wallet. The contracts guarantee that each record was signed by the right *wallet*, but whoever runs the server could, in principle, sign with any of them. See [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md#6-known-gaps-stated-plainly).

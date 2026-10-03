@@ -82,6 +82,12 @@ module.exports = {
         ? [withHexPrefix(process.env.DEPLOYER_PRIVATE_KEY)]
         : [],
       chainId: 80002,
+      // A fixed price rather than the node's suggestion. Amoy's suggested tip
+      // runs at 500+ gwei — set by a few senders overpaying — while blocks
+      // include transactions tipping 25 gwei, the network minimum. At the
+      // suggestion, deploying cost ~2.9 POL; at this, ~0.3. Raise
+      // MAX_PRIORITY_FEE_GWEI in .env if transactions sit unconfirmed.
+      gasPrice: Number(process.env.MAX_PRIORITY_FEE_GWEI || 50) * 1e9,
     },
   },
 

@@ -15,6 +15,43 @@ export const provider = new ethers.JsonRpcProvider(config.rpcUrl, network, {
   staticNetwork: network,
 });
 
+/**
+ * Caps the tip every transaction offers, on the one provider every signer here
+ * shares.
+ *
+ * On Polygon Amoy the node's suggested tip runs at 500+ gwei — set by a few
+ * senders overpaying — while blocks include transactions tipping 25 gwei, the
+ * network minimum. Taking the suggestion made a student's registration cost
+ * ~0.075 POL: more than the 0.05 each new wallet is given, so every action
+ * failed for want of funds. The fee ceiling is recomputed from the capped tip
+ * too, because a node checks a wallet can cover the ceiling before accepting a
+ * transaction, whatever it finally charges.
+ *
+ * @param {bigint|null} capWei The most to tip, or null for no cap.
+ */
+export function capPriorityFee(target, capWei) {
+  if (capWei === null) return target;
+  const suggested = target.getFeeData.bind(target);
+  target.getFeeData = async () => {
+    const fee = await suggested();
+    if (fee.maxPriorityFeePerGas === null) {
+      // A chain without EIP-1559 fees: cap the plain gas price instead.
+      const gasPrice = fee.gasPrice !== null && fee.gasPrice > capWei ? capWei : fee.gasPrice;
+      return new ethers.FeeData(gasPrice, null, null);
+    }
+    const tip = fee.maxPriorityFeePerGas > capWei ? capWei : fee.maxPriorityFeePerGas;
+    const block = await target.getBlock("latest");
+    const baseFee = block?.baseFeePerGas ?? 0n;
+    return new ethers.FeeData(fee.gasPrice, baseFee * 2n + tip, tip);
+  };
+  return target;
+}
+
+capPriorityFee(
+  provider,
+  config.maxPriorityFeeGwei === null ? null : ethers.parseUnits(String(config.maxPriorityFeeGwei), "gwei")
+);
+
 export const verifierSigner = new ethers.Wallet(config.verifierPrivateKey, provider);
 
 const { ActorRegistry, PlacementDrive, DriveOutcomes, PreparationLog } = deployment.contracts;

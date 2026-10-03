@@ -122,6 +122,16 @@ export const config = {
   adminUsername: (process.env.ADMIN_USERNAME || "admin").trim().toLowerCase(),
   adminPassword: process.env.ADMIN_PASSWORD || "",
   port: Number(process.env.PORT || 4000),
+  // Which network interface to listen on. Unset means all of them, which is
+  // what local development wants. Behind nginx on a server it should be
+  // 127.0.0.1, so the backend is reachable only through nginx and never
+  // directly from the internet on port 4000.
+  host: process.env.HOST || undefined,
+  // How many proxies (nginx, a load balancer) sit in front of the backend.
+  // Behind one, every request arrives from the proxy's own address, so without
+  // this the rate limits counted all visitors as one — ten sign-ups from the
+  // whole internet and everyone was locked out for fifteen minutes. 0 locally.
+  trustProxy: Number(process.env.TRUST_PROXY || 0),
   // Relative to backend/, wherever the process was started from — the setting
   // now lives at the project root, and "./data" must not start meaning a
   // different folder depending on which directory `npm start` ran in.
@@ -138,6 +148,14 @@ export const config = {
   // drip there is small: ample for a student's handful of transactions on
   // Polygon, and topped up automatically if a wallet runs low (treasury.js).
   walletGasDripEth: process.env.WALLET_GAS_DRIP_ETH || (isLocalRpc(RPC_URL) ? "1.0" : "0.05"),
+  // The most any transaction tips, in gwei (see chain.js's capPriorityFee).
+  // No cap on a local chain; 50 elsewhere — twice Polygon's 25-gwei minimum,
+  // and a tenth of what Amoy's node was suggesting.
+  maxPriorityFeeGwei: process.env.MAX_PRIORITY_FEE_GWEI
+    ? Number(process.env.MAX_PRIORITY_FEE_GWEI)
+    : isLocalRpc(RPC_URL)
+      ? null
+      : 50,
   frontendOrigin: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
   // Optional, not required — password reset just logs a clear error at

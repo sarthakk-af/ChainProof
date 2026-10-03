@@ -92,7 +92,7 @@ async function ensureAdminAccount() {
  */
 function listen(app) {
   return new Promise((resolve, reject) => {
-    const server = app.listen(config.port, () => resolve(server));
+    const server = app.listen(config.port, config.host, () => resolve(server));
     server.once("error", reject);
   });
 }
@@ -104,6 +104,7 @@ async function main() {
   let ready = false;
   const app = express();
   app.disable("x-powered-by");
+  app.set("trust proxy", config.trustProxy);
   // Before the gate, so its answers carry CORS headers too. Without them the
   // browser discards the response and the app can only say "failed to fetch".
   app.use(cors({ origin: config.frontendOrigin }));

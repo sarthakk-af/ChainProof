@@ -24,6 +24,9 @@ export function createApp() {
   // Express announces itself in every response; nothing is gained by telling a
   // stranger which framework (and so which known bugs) to try.
   app.disable("x-powered-by");
+  // Set here, not only on server.js's outer app: Express doesn't pass this
+  // setting down to a mounted app, and the rate limiters live in this one.
+  app.set("trust proxy", config.trustProxy);
   app.use(cors({ origin: config.frontendOrigin }));
   // The baseline headers for an API that only ever answers JSON: don't let a
   // browser guess a different content type, render a response in a frame, or
@@ -37,7 +40,10 @@ export function createApp() {
     });
     next();
   });
-  app.use(express.json());
+  // 1 MB, not Express's 100 KB default: the roster upload accepts up to 5,000
+  // students, which is roughly 350 KB of JSON, and was refused as "too large"
+  // well short of that. Anything bigger is still turned away with a 413.
+  app.use(express.json({ limit: "1mb" }));
 
   // General-purpose request visibility — every request, not just the ones we
   // thought in advance to instrument.
