@@ -293,12 +293,56 @@ function resetIfRedeployed() {
 /**
  * How many blocks one log query may span.
  *
- * Public RPC providers cap `eth_getLogs` — commonly a few thousand blocks or
- * ten thousand results per call — and refuse anything wider. A local node
- * doesn't, which is why one query over the whole range used to work here and
- * would have failed on the first start against Amoy.
+ * RPC providers cap `eth_getLogs` and refuse anything wider: on Polygon Amoy,
+ * PublicNode accepts 500 blocks and Alchemy's free plan only 10. A local node
+ * doesn't cap it, which is why one query over the whole range worked here and
+ * failed on the first start against Amoy. Set INDEXER_BLOCK_RANGE to match the
+ * provider in AMOY_RPC_URL.
  */
-export const BLOCK_RANGE = Math.max(1, Number(process.env.INDEXER_BLOCK_RANGE) || 2000);
+export const BLOCK_RANGE = Math.max(1, Number(process.env.INDEXER_BLOCK_RANGE) || 500);
+
+/**
+ * Which watcher a raw log belongs to, by contract address and event topic.
+ * Built once: the contracts and their events are fixed for the process's life.
+ */
+let watcherIndex = null;
+function watcherFor(log) {
+  if (!watcherIndex) {
+    watcherIndex = new Map();
+    for (const watcher of WATCHERS) {
+      const address = String(watcher.contract.target).toLowerCase();
+      const topic = watcher.contract.interface.getEvent(watcher.eventName).topicHash;
+      watcherIndex.set(`${address}:${topic}`, watcher);
+    }
+  }
+  return watcherIndex.get(`${String(log.address).toLowerCase()}:${log.topics[0]}`) ?? null;
+}
+
+/** The addresses of every watched contract. */
+function watchedAddresses() {
+  return [...new Set(WATCHERS.map((w) => String(w.contract.target)))];
+}
+
+/**
+ * Every event this indexer mirrors in [start, end], decoded and in chain order.
+ *
+ * One request for all four contracts at once. It used to be fourteen — one per
+ * kind of event — which public RPC providers count and cap: on a free plan the
+ * catch-up was refused, and the steady polling would have spent the monthly
+ * allowance. Logs from any other event on these contracts are skipped.
+ */
+async function logsInRange(start, end) {
+  const logs = await provider.getLogs({ address: watchedAddresses(), fromBlock: start, toBlock: end });
+  const entries = [];
+  for (const log of logs) {
+    const watcher = watcherFor(log);
+    if (!watcher) continue;
+    const parsed = watcher.contract.interface.parseLog(log);
+    if (parsed) entries.push({ watcher, args: parsed.args, log });
+  }
+  entries.sort((a, b) => a.log.blockNumber - b.log.blockNumber || a.log.index - b.log.index);
+  return entries;
+}
 
 /** Every block range [from, to] to read, in order, at most `size` blocks each. */
 export function blockRanges(fromBlock, toBlock, size = BLOCK_RANGE) {
@@ -340,17 +384,10 @@ async function runBackfill() {
   // A chunk at a time, with the cursor moved after each one, so a long catch-up
   // that fails halfway resumes where it stopped rather than from the start.
   for (const [start, end] of blockRanges(fromBlock, toBlock)) {
-    const logsPerWatcher = await Promise.all(
-      WATCHERS.map((w) => w.contract.queryFilter(w.contract.filters[w.eventName](), start, end))
-    );
+    const entries = await logsInRange(start, end);
 
-    const entries = logsPerWatcher.flatMap((logs, i) =>
-      logs.map((log) => ({ watcher: WATCHERS[i], log }))
-    );
-    entries.sort((a, b) => a.log.blockNumber - b.log.blockNumber || a.log.index - b.log.index);
-
-    for (const { watcher, log } of entries) {
-      await watcher.handle(log.args, log);
+    for (const { watcher, args, log } of entries) {
+      await watcher.handle(args, log);
     }
     processed += entries.length;
 
@@ -452,7 +489,10 @@ export function pendingSyncFailures() {
  * mirrored by their routes once final, and only something written to the
  * contracts from elsewhere waits for the next tick.
  */
-export function startLiveSync({ reconcileIntervalMs = 60000, finalityPollMs = 4000 } = {}) {
+export function startLiveSync({
+  reconcileIntervalMs = 60000,
+  finalityPollMs = Math.max(1, Number(process.env.INDEXER_POLL_SECONDS) || 4) * 1000,
+} = {}) {
   if (config.waitForFinality) {
     const timer = setInterval(() => {
       backfill().catch((err) => console.error("[indexer] catch-up failed:", err));
