@@ -148,6 +148,12 @@ export const config = {
   // drip there is small: ample for a student's handful of transactions on
   // Polygon, and topped up automatically if a wallet runs low (treasury.js).
   walletGasDripEth: process.env.WALLET_GAS_DRIP_ETH || (isLocalRpc(RPC_URL) ? "1.0" : "0.05"),
+  // Whether to wait for the network to finalise a block before treating what
+  // is in it as recorded (see chain.js's settle). On by default anywhere but a
+  // local chain, which has no competing blocks to wait out.
+  waitForFinality: process.env.WAIT_FOR_FINALITY
+    ? process.env.WAIT_FOR_FINALITY === "true"
+    : !isLocalRpc(RPC_URL),
   // The most any transaction tips, in gwei (see chain.js's capPriorityFee).
   // No cap on a local chain; 50 elsewhere — twice Polygon's 25-gwei minimum,
   // and a tenth of what Amoy's node was suggesting.

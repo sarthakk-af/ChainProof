@@ -45,6 +45,10 @@ const {
   setOfferResponse,
   getOfferResponse,
   getCurrentStages,
+  getDrive,
+  setDriveStatus,
+  setDriveApplicationCount,
+  setPlacement,
 } = await import("../src/db.js");
 const { syncStageRecorded } = await import("../src/indexer.js");
 const { createApp } = await import("../src/app.js");
@@ -277,4 +281,73 @@ test("an application the company has acted on can't be withdrawn", async () => {
 test("only a student can withdraw", async () => {
   const res = await request(app).delete("/drives/1/apply").set("Authorization", authHeader(company));
   assert.equal(res.status, 403);
+});
+
+// --- late copies of older events ------------------------------------------------
+// Every event reaches the mirror twice — from the route's own receipt and from
+// the live listener — and the two copies can finish in either order.
+
+function postedDrive(id, postBlock) {
+  upsertDrive({
+    id, companyAddress: company.wallet_address, collegeAddress: college.wallet_address,
+    roleTitle: "SDE", annualPackage: 650000, minCgpaScaled: 0, batchYear: 2026,
+    applicationDeadline: Math.floor(Date.now() / 1000) + 86400,
+    driveDate: Math.floor(Date.now() / 1000) + 172800,
+    ipfsHash: "QmTest", status: DRIVE_STATUS.Proposed, postedAt: 1, blockNumber: postBlock,
+  });
+}
+
+test("a late copy of the posting doesn't send an approved drive back to Proposed", () => {
+  // Found running the full stack: the listener's copy of DrivePosted finished
+  // after the approval, and the drive vanished from every student's list.
+  const id = nextDriveId++;
+  postedDrive(id, 100);
+  setDriveStatus(id, DRIVE_STATUS.Approved, 105);
+  postedDrive(id, 100); // the late copy
+  assert.equal(getDrive(id).status, DRIVE_STATUS.Approved);
+});
+
+test("an older status change arriving late doesn't undo a newer one", () => {
+  const id = nextDriveId++;
+  postedDrive(id, 200);
+  setDriveStatus(id, DRIVE_STATUS.Approved, 201);
+  setDriveStatus(id, DRIVE_STATUS.Closed, 210);
+  setDriveStatus(id, DRIVE_STATUS.Approved, 201); // the late copy
+  assert.equal(getDrive(id).status, DRIVE_STATUS.Closed);
+});
+
+test("an older applicant count arriving late doesn't replace the restated one", () => {
+  const id = nextDriveId++;
+  postedDrive(id, 300);
+  setDriveApplicationCount(id, 40, 301);
+  setDriveApplicationCount(id, 42, 309);
+  setDriveApplicationCount(id, 40, 301);
+  assert.equal(getDrive(id).application_count, 42);
+});
+
+test("a status change for a drive not mirrored yet fails, so it is retried rather than lost", () => {
+  assert.throws(() => setDriveStatus(99_999, DRIVE_STATUS.Approved, 5), /isn't mirrored yet/);
+});
+
+test("an older placement change arriving late doesn't flip the student back", () => {
+  const addr = ethers.Wallet.createRandom().address;
+  const base = { studentAddress: addr, collegeAddress: college.wallet_address, batchYear: 2026 };
+  setPlacement({ ...base, placed: true, blockNumber: 400 });
+  setPlacement({ ...base, placed: false, blockNumber: 410 });
+  setPlacement({ ...base, placed: true, blockNumber: 400 }); // the late copy
+  const row = db.prepare("SELECT placed FROM placements WHERE student_address = ?").get(addr.toLowerCase());
+  assert.equal(row.placed, 0);
+});
+
+test("a late copy of an answer to an offer since made again doesn't come back", () => {
+  const id = driveWithOffer(DRIVE_STATUS.Approved); // offered at block 10
+  setOfferResponse({ driveId: id, studentAddress: student.wallet_address, response: OFFER_RESPONSE.Declined, timestamp: 1, blockNumber: 11 });
+  addOutcome({ driveId: id, studentAddress: student.wallet_address, stage: STAGE.Interview, previousStage: STAGE.Offered, label: null, ipfsHash: null, timestamp: 2, blockNumber: 15 });
+  addOutcome({ driveId: id, studentAddress: student.wallet_address, stage: STAGE.Offered, previousStage: STAGE.Interview, label: null, ipfsHash: null, timestamp: 3, blockNumber: 20 });
+  syncStageRecorded(stageEvent(id, STAGE.Interview, STAGE.Offered), { blockNumber: 20 });
+  assert.equal(getOfferResponse(id, student.wallet_address), undefined);
+
+  // The listener's copy of the old answer arrives now.
+  setOfferResponse({ driveId: id, studentAddress: student.wallet_address, response: OFFER_RESPONSE.Declined, timestamp: 1, blockNumber: 11 });
+  assert.equal(getOfferResponse(id, student.wallet_address), undefined);
 });

@@ -15,6 +15,7 @@ import { api } from "../../utils/api.js";
 import { LoadingRows } from "../shared/Loading.jsx";
 import { useEscape } from "../../utils/useEscape.js";
 import { noEmojis } from "../../utils/validation.js";
+import SectionIntro from "../shared/SectionIntro.jsx";
 
 export default function ResumeEditor({ onError, onNotice }) {
   const [sections, setSections] = useState([]);
@@ -44,6 +45,7 @@ export default function ResumeEditor({ onError, onNotice }) {
     setRemoving(id);
     try {
       await api.del(`/me/resume/item/${id}`);
+      onNotice("Entry removed from your resume.");
       load();
     } catch (err) {
       onError(err.message);
@@ -56,12 +58,14 @@ export default function ResumeEditor({ onError, onNotice }) {
 
   return (
     <div className="stack">
-      <p className="form-hint" style={{ margin: 0 }}>
-        Companies see this with your roll number, course, batch and CGPA — not your name,
-        email or phone, which appear only to a company whose drive you applied to.
-      </p>
+      <SectionIntro>
+        Companies browsing your college see your resume with your roll number, course, batch
+        and CGPA, but not your name, email or phone. Those reach a company only when you apply
+        to one of its drives. Links you add to entries here are visible to companies before
+        you apply, so use links you're comfortable sharing.
+      </SectionIntro>
 
-      <SkillsPanel skills={skills} onSaved={(s) => { setSkills(s); onNotice("Skills saved."); }} onError={onError} />
+      <SkillsPanel skills={skills} onSaved={(s) => { setSkills(s); onNotice("Skills saved. Companies can now find you by them."); }} onError={onError} />
 
       <div className="split-even">
       {sections.map((section) => {
@@ -90,7 +94,7 @@ export default function ResumeEditor({ onError, onNotice }) {
               <ItemForm
                 section={section}
                 onCancel={() => setAdding(null)}
-                onSaved={() => { setAdding(null); load(); onNotice("Added."); }}
+                onSaved={() => { setAdding(null); load(); onNotice("Added to your resume."); }}
                 onError={onError}
               />
             )}
@@ -107,7 +111,7 @@ export default function ResumeEditor({ onError, onNotice }) {
                     section={section}
                     existing={item}
                     onCancel={() => setEditing(null)}
-                    onSaved={() => { setEditing(null); load(); onNotice("Saved."); }}
+                    onSaved={() => { setEditing(null); load(); onNotice("Changes saved."); }}
                     onError={onError}
                   />
                 ) : (
@@ -253,6 +257,10 @@ function ItemForm({ section, existing, onCancel, onSaved, onError }) {
           Link <span className="label-optional">(optional)</span>
         </label>
         <input id="ri-url" type="url" value={values.url} onChange={(e) => set("url", noEmojis)({ target: { value: e.target.value.replace(/\s/g, "") } })} maxLength={200} placeholder="https://…" />
+        <p className="form-hint">
+          Companies can see this link before you apply. If it shows your name or username,
+          that's visible too.
+        </p>
       </div>
 
       <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>

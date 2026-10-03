@@ -15,7 +15,6 @@ import {
   Megaphone,
   Plus,
   AlertCircle,
-  CheckCircle2,
   Send,
   Lock,
   ChevronRight
@@ -23,6 +22,8 @@ import {
 import TalentPool, { StudentDetail } from "./company/TalentPool.jsx";
 import Announcements from "./shared/Announcements.jsx";
 import DriveDescription from "./shared/DriveDescription.jsx";
+import SectionIntro from "./shared/SectionIntro.jsx";
+import { toast } from "../utils/toast.js";
 import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
@@ -56,8 +57,9 @@ export default function CompanyDashboard() {
   const [showPost, setShowPost] = useState(false);
   const [viewingStudent, setViewingStudent] = useState(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  useScrollToAlert(error || notice);
+  // Success is a toast; an error stays on the page, because it needs reading.
+  const setNotice = toast.success;
+  useScrollToAlert(error);
 
   const load = useCallback(() => {
     api.get("/drives/mine")
@@ -82,7 +84,7 @@ export default function CompanyDashboard() {
       <Tabs
         tabs={TABS}
         value={tab}
-        onChange={(id) => { setTab(id); setError(""); setNotice(""); }}
+        onChange={(id) => { setTab(id); setError(""); }}
         label="Recruiter sections"
       />
 
@@ -90,12 +92,6 @@ export default function CompanyDashboard() {
         <div className="alert alert-danger" role="alert" style={{ marginBottom: "var(--space-4)" }}>
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{error}</span>
-        </div>
-      )}
-      {notice && (
-        <div className="alert alert-info" role="status" style={{ marginBottom: "var(--space-4)" }}>
-          <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-          <span>{notice}</span>
         </div>
       )}
 
@@ -106,10 +102,24 @@ export default function CompanyDashboard() {
       ) : (
         <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
       {tab === "students" && <TalentPool />}
-      {tab === "notices" && <Announcements role="Company" drives={drives} />}
+      {tab === "notices" && (
+        <>
+          <SectionIntro>
+            Updates for the students in your drives, such as a venue, a timing or what to bring.
+            Each notice is about one of your drives, and you can edit or withdraw it later.
+          </SectionIntro>
+          <Announcements role="Company" drives={drives} />
+        </>
+      )}
 
       {tab === "drives" && (
       <>
+      <SectionIntro>
+        Post a drive with your own role, package, CGPA cutoff and dates. The college decides
+        whether it runs on its campus, but can't change your terms, and neither can you once
+        posted. When it's live, students apply. Open a drive to record each applicant's
+        progress. An offer only counts once the student accepts it.
+      </SectionIntro>
       <div className="section-head">
         <div className="section-eyebrow">Your drives ({drives.length})</div>
         <button className="btn btn-primary btn-sm" onClick={() => setShowPost((v) => !v)}>
@@ -119,7 +129,7 @@ export default function CompanyDashboard() {
 
       {showPost && (
         <PostDriveForm
-          onPosted={() => { setShowPost(false); setNotice("Posted. The college will decide whether to host it."); load(); }}
+          onPosted={() => { setShowPost(false); setNotice("Drive posted. It appears to students once the college agrees to host it."); load(); }}
           onError={setError}
         />
       )}
@@ -310,7 +320,11 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice, on
         label: "",
         idempotencyKey: getIdempotencyKey(idempotencyRef, `${drive.id}:${address}:${stage}`),
       });
-      onNotice(`Recorded: ${STAGE_LABEL[stage]}`);
+      onNotice(
+        stage === "Offered"
+          ? "Offer recorded. The student can now accept or decline it."
+          : `Recorded: ${STAGE_LABEL[stage]}. The student sees this under their applications.`
+      );
       loadApplicants();
       onChanged();
     } catch (e) {
@@ -352,7 +366,7 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice, on
     onError("");
     try {
       const r = await api.post(`/drives/${drive.id}/application-count`, {});
-      onNotice(`Published: ${r.applicationCount} applied.`);
+      onNotice(`Published on-chain: ${r.applicationCount} applied. This is the first figure of the public funnel.`);
       onChanged();
     } catch (e) {
       onError(e.message);

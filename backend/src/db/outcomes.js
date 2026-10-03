@@ -1,5 +1,8 @@
 import { db } from "./connection.js";
 
+/** DriveOutcomes.Stage.Offered. */
+const OFFERED = 4;
+
 /**
  * outcomes.js — the mirror of DriveOutcomes: stages, offer answers, placements.
  *
@@ -52,15 +55,28 @@ export function getCurrentStages(driveId) {
     .all(driveId);
 }
 
+/**
+ * Records a student's answer.
+ * @dev Ignored when it is older than what is stored, or older than the offer
+ *      currently standing. A late copy of an answer to an offer the company has
+ *      since made again would otherwise come back after the re-offer cleared it,
+ *      and the student would be shown as having answered an offer they haven't.
+ */
 export function setOfferResponse({ driveId, studentAddress, response, timestamp, blockNumber }) {
+  const student = studentAddress.toLowerCase();
   db.prepare(
     `INSERT INTO offer_responses (drive_id, student_address, response, timestamp, block_number)
-     VALUES (?, ?, ?, ?, ?)
+     SELECT ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM drive_outcomes
+         WHERE drive_id = ? AND student_address = ? AND stage = ? AND block_number > ?
+      )
      ON CONFLICT(drive_id, student_address) DO UPDATE SET
        response     = excluded.response,
        timestamp    = excluded.timestamp,
-       block_number = excluded.block_number`
-  ).run(driveId, studentAddress.toLowerCase(), response, timestamp, blockNumber);
+       block_number = excluded.block_number
+      WHERE excluded.block_number >= offer_responses.block_number`
+  ).run(driveId, student, response, timestamp, blockNumber, driveId, student, OFFERED, blockNumber);
 }
 
 /**
@@ -102,7 +118,10 @@ export function setPlacement({ studentAddress, collegeAddress, batchYear, placed
        college_address = excluded.college_address,
        batch_year      = excluded.batch_year,
        placed          = excluded.placed,
-       block_number    = excluded.block_number`
+       block_number    = excluded.block_number
+      -- A late copy of an older change must not undo a newer one: placed, then
+      -- un-placed, then the first event arriving again read as placed.
+      WHERE excluded.block_number >= placements.block_number`
   ).run(
     studentAddress.toLowerCase(),
     collegeAddress.toLowerCase(),

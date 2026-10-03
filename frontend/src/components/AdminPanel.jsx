@@ -21,19 +21,25 @@ import {
   LogIn,
   Landmark,
   AlertCircle,
-  CheckCircle2,
   Activity,
   KeyRound,
   Ban,
 } from "lucide-react";
 import PasswordInput from "./shared/PasswordInput.jsx";
+import SectionIntro from "./shared/SectionIntro.jsx";
 import { shortAddr } from "../utils/format.js";
 import { noEmojis, registrationIdChars } from "../utils/validation.js";
+import { noticeIfSlow } from "../utils/api.js";
+import { toast } from "../utils/toast.js";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 const TOKEN_KEY = "chainproof_admin_session";
 
-async function adminApi(path, { method = "GET", body, token } = {}) {
+function adminApi(path, options = {}) {
+  return noticeIfSlow(options.method || "GET", path, adminRequest(path, options));
+}
+
+async function adminRequest(path, { method = "GET", body, token } = {}) {
   const res = await fetch(BASE_URL + path, {
     method,
     headers: {
@@ -57,6 +63,7 @@ export default function AdminPanel() {
     if (token) adminApi("/admin/auth/logout", { method: "POST", token }).catch(() => {});
     sessionStorage.removeItem(TOKEN_KEY);
     setToken(null);
+    toast.info("You're signed out of administration.");
   };
   // An expired or revoked session is already over on the server.
   const forget = () => {
@@ -164,7 +171,7 @@ function LoginScreen({ onSignedIn }) {
 function Console({ token, username, onSignOut, onExpired }) {
   const [overview, setOverview] = useState(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const notify = toast.success;
 
   const load = useCallback(() => {
     adminApi("/admin/overview", { token })
@@ -202,12 +209,11 @@ function Console({ token, username, onSignOut, onExpired }) {
           <span>{error}</span>
         </div>
       )}
-      {notice && (
-        <div className="alert alert-info" role="status" style={{ marginBottom: "var(--space-4)" }}>
-          <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-          <span>{notice}</span>
-        </div>
-      )}
+      <SectionIntro>
+        You keep the platform running: create the college once, keep an eye on the
+        service wallet, and suspend an account if something goes wrong. You can't create
+        or change any placement record — that is by design.
+      </SectionIntro>
 
       <Health chain={overview?.chain} counts={overview?.counts} syncGaps={overview?.syncGaps} />
 
@@ -217,7 +223,7 @@ function Console({ token, username, onSignOut, onExpired }) {
         <div style={{ marginBottom: "var(--space-4)" }}>
           <CreateCollege
             token={token}
-            onCreated={() => { setNotice("College created. The placement cell can sign in now."); load(); }}
+            onCreated={() => { notify("College created. The placement cell can sign in now with the email and password you set."); load(); }}
             onError={setError}
           />
         </div>
@@ -229,7 +235,7 @@ function Console({ token, username, onSignOut, onExpired }) {
             <CollegeCard
               college={overview.college}
               token={token}
-              onNotice={setNotice}
+              onNotice={notify}
               onError={setError}
             />
           )}
@@ -239,7 +245,7 @@ function Console({ token, username, onSignOut, onExpired }) {
         <Accounts
           token={token}
           onChanged={() => { load(); setChanges((n) => n + 1); }}
-          onNotice={setNotice}
+          onNotice={notify}
           onError={setError}
         />
       </div>

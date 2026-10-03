@@ -15,6 +15,7 @@
 import React, { useState, useEffect } from "react";
 import { XCircle, Clock, RefreshCw, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
+import { toast } from "../utils/toast.js";
 import Registration from "./Registration.jsx";
 
 export default function PendingApproval() {
@@ -27,6 +28,19 @@ export default function PendingApproval() {
   useEffect(() => {
     if (!isRejected) setResubmitting(false);
   }, [isRejected]);
+
+  // Approval moves this account to its dashboard by itself. If nothing has
+  // changed yet, say so, so the button doesn't look like it did nothing.
+  const checkAgain = async () => {
+    try {
+      const me = await refreshActor();
+      if (me?.actor?.status === "Pending") {
+        toast.info("Still waiting for the placement cell. You can sign out and check back later.");
+      }
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
 
   if (isRejected && resubmitting) {
     return <Registration />;
@@ -67,7 +81,7 @@ export default function PendingApproval() {
             <RefreshCw size={16} /> Try again
           </button>
         ) : (
-          <button className="btn btn-secondary" onClick={() => refreshActor()}>
+          <button className="btn btn-secondary" onClick={checkAgain}>
             <RefreshCw size={16} /> Check again
           </button>
         )}

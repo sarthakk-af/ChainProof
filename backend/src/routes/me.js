@@ -23,7 +23,7 @@ import {
   listSkills,
 } from "../db.js";
 import { getUserSigner } from "../wallets.js";
-import { actorRegistryAsSigner, ROLE, STATUS } from "../chain.js";
+import { actorRegistryAsSigner, ROLE, STATUS, settle } from "../chain.js";
 import { syncActor, syncAfterWrite } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
 import { serializeActor } from "../serializers.js";
@@ -345,7 +345,7 @@ meRouter.post("/register", registerLimiter, async (req, res) => {
         "0x0000000000000000000000000000000000000000",
         { nonce }
       );
-      const receipt = await tx.wait();
+      const receipt = await settle(tx);
       confirmed = true;
       await syncAfterWrite("company registration", receipt.blockNumber, () =>
         syncActor(req.user.address, receipt.blockNumber)

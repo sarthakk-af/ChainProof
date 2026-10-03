@@ -36,6 +36,7 @@ import { navigate, usePath } from "./utils/navigation.jsx";
 import { ErrorBoundary }  from "./components/ErrorBoundary.jsx";
 import NotFound         from "./components/NotFound.jsx";
 import SiteFooter       from "./components/SiteFooter.jsx";
+import Toaster          from "./components/shared/Toaster.jsx";
 
 // ── Inner shell (has access to context) ──────────────────────────────────────
 // Pages with their own address that only make sense when signed out.
@@ -146,6 +147,7 @@ export default function App() {
     return (
       <ErrorBoundary>
         <AdminPanel />
+        <Toaster />
       </ErrorBoundary>
     );
   }
@@ -155,6 +157,7 @@ export default function App() {
       <AuthProvider>
         <AppShell />
       </AuthProvider>
+      <Toaster />
     </ErrorBoundary>
   );
 }

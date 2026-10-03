@@ -224,7 +224,9 @@ db.exec(`
     status INTEGER NOT NULL,
     application_count INTEGER,
     posted_at INTEGER NOT NULL,
-    block_number INTEGER NOT NULL
+    block_number INTEGER NOT NULL,
+    status_block INTEGER NOT NULL DEFAULT 0,
+    count_block INTEGER NOT NULL DEFAULT 0
   );
   CREATE INDEX IF NOT EXISTS idx_drives_college ON drives(college_address, status);
   CREATE INDEX IF NOT EXISTS idx_drives_company ON drives(company_address);
@@ -488,6 +490,18 @@ if (!rosterColumns.includes("email")) {
 // platform owner's suspensions too: the log had no record of who decided.
 if (!adminActionColumns.includes("decided_by")) {
   db.exec("ALTER TABLE admin_actions ADD COLUMN decided_by TEXT");
+}
+
+// The block each of a drive's two changeable values was last set from. The
+// same event reaches the mirror twice, and the copies can finish out of order;
+// with one shared block_number, a late copy of an older event overwrote a newer
+// value — an approved drive went back to "Proposed" and vanished from students.
+const driveColumns = db.prepare("PRAGMA table_info(drives)").all().map((c) => c.name);
+if (!driveColumns.includes("status_block")) {
+  db.exec("ALTER TABLE drives ADD COLUMN status_block INTEGER NOT NULL DEFAULT 0");
+}
+if (!driveColumns.includes("count_block")) {
+  db.exec("ALTER TABLE drives ADD COLUMN count_block INTEGER NOT NULL DEFAULT 0");
 }
 
 const indexerStateColumns = db.prepare("PRAGMA table_info(indexer_state)").all().map((c) => c.name);

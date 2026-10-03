@@ -5,11 +5,10 @@ import {
   placementDriveRead,
   driveOutcomesRead,
   preparationLogRead,
+  readableHead,
   STAGE,
 } from "./chain.js";
-
-const STAGE_OFFERED = STAGE.Offered;
-import { deployment } from "./config.js";
+import { deployment, config } from "./config.js";
 import { logger } from "./logger.js";
 import {
   getLastSyncedBlock,
@@ -31,6 +30,8 @@ import {
   upsertPreparationEvent,
   setPreparationCancelled,
 } from "./db.js";
+
+const STAGE_OFFERED = STAGE.Offered;
 
 /**
  * ActorRegistry events carry the actor's address as their first argument, so
@@ -308,10 +309,26 @@ export function blockRanges(fromBlock, toBlock, size = BLOCK_RANGE) {
   return ranges;
 }
 
-/** Catch up on every relevant event since the last time the indexer ran. */
-export async function backfill() {
+/**
+ * Catch up on every relevant event since the last time the indexer ran.
+ * Reads only up to the final block when finality is being waited for (see
+ * chain.js's settle), so nothing provisional ever reaches the mirror.
+ */
+let backfillRunning = null;
+export function backfill() {
+  // One at a time: a slow catch-up must not be overtaken by the next tick
+  // reading the same blocks and racing it for the cursor.
+  if (!backfillRunning) {
+    backfillRunning = runBackfill().finally(() => {
+      backfillRunning = null;
+    });
+  }
+  return backfillRunning;
+}
+
+async function runBackfill() {
   const fromBlock = getLastSyncedBlock() + 1;
-  const toBlock = await provider.getBlockNumber();
+  const toBlock = await readableHead();
   if (fromBlock > toBlock) {
     console.log(`[indexer] up to date at block ${toBlock}`);
     return;
@@ -425,8 +442,28 @@ export function pendingSyncFailures() {
   return [...unsyncedBlocks].sort((a, b) => a - b);
 }
 
-/** Keep the cache in sync with new events as they arrive while the process runs. */
-export function startLiveSync({ reconcileIntervalMs = 60000 } = {}) {
+/**
+ * Keeps the mirror up to date while the process runs.
+ *
+ * On a public network (finality on) there are no instant listeners: an event
+ * the moment it is mined may still be in a block the network later discards.
+ * Instead the cursor-based catch-up runs every few seconds and reads only
+ * final blocks. Nothing is slower for it — the platform's own writes are
+ * mirrored by their routes once final, and only something written to the
+ * contracts from elsewhere waits for the next tick.
+ */
+export function startLiveSync({ reconcileIntervalMs = 60000, finalityPollMs = 4000 } = {}) {
+  if (config.waitForFinality) {
+    const timer = setInterval(() => {
+      backfill().catch((err) => console.error("[indexer] catch-up failed:", err));
+    }, finalityPollMs);
+    if (typeof timer.unref === "function") timer.unref();
+    console.log(
+      `[indexer] following finalised blocks (checking every ${Math.round(finalityPollMs / 1000)}s)`
+    );
+    return timer;
+  }
+
   for (const watcher of WATCHERS) {
     watcher.contract.on(watcher.eventName, async (...args) => {
       const payload = args[args.length - 1];

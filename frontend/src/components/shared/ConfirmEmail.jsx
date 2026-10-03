@@ -13,6 +13,7 @@
 import React, { useEffect, useState } from "react";
 import { Mail, AlertCircle } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
+import { toast } from "../../utils/toast.js";
 
 const RESEND_COOLDOWN_SECONDS = 30;
 
@@ -40,6 +41,7 @@ export default function ConfirmEmail({ style }) {
       // Confirming may be the last thing verification was waiting on, so the
       // session is refreshed and the screen moves on by itself.
       await verifyEmailOtp(user.email, code);
+      toast.success("Email confirmed.");
     } catch (err) {
       setError(err.message || "That code didn't work.");
     } finally {

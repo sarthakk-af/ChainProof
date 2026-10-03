@@ -13,6 +13,7 @@ import React, { useState, useEffect } from "react";
 import { GraduationCap, Building2, AlertCircle, ArrowRight, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
+import { toast } from "../utils/toast.js";
 import { noEmojis, alphanumericOnly, rollNumberChars } from "../utils/validation.js";
 import ConfirmEmail from "./shared/ConfirmEmail.jsx";
 
@@ -138,6 +139,7 @@ function StudentForm({ onClaim }) {
     try {
       const result = await onClaim({ collegeAddress, rollNumber: rollNumber.trim(), ...values });
       if (result.queued) setQueued(true);
+      else toast.success("Roll number confirmed. Once your email is confirmed too, you can apply to drives.");
     } catch (err) {
       setError(err.message || "Could not submit your roll number.");
     } finally {
@@ -267,6 +269,7 @@ function CompanyForm({ onRegister }) {
         registrationNumber: registrationNumber.trim(),
         website: website.trim(),
       });
+      toast.success("Registration sent. The placement cell will review it, and your dashboard opens once they admit you.");
     } catch (err) {
       setError(err.message || "Registration failed.");
     } finally {

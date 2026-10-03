@@ -205,6 +205,7 @@ How it stays correct:
 - **The website probe only reaches the public internet** (`websiteCheck.js`). Checking a company's website used to fetch any URL from inside the server, including `localhost` and cloud metadata addresses. Every connection now checks the address it is about to reach, inside its own DNS lookup, so DNS rebinding can't get past the check. Redirects are re-checked at every hop.
 - **Accounts can be deleted** (`POST /auth/delete-account`, `db/erasure.js`). This erases the login, profile, resume, skills and applications. On-chain records stay, tied to an address nothing links back to the person. The college's roster row stays, because it is the college's record.
 - **Admin sessions can be ended.** Signing out, or changing `ADMIN_PASSWORD`, invalidates every admin token.
+- **Nothing is recorded until the network has made it final** (`chain.js`'s `settle`). On a public chain the newest blocks are provisional for a few seconds; now and then the network settles on a different block and a transaction moves or disappears. Each write therefore waits until Polygon reports its block as *finalized* (2–5 seconds on Amoy) before the platform mirrors it or reports success, and the indexer reads only finalized blocks. Locally there is nothing to wait for, so this is off there (`WAIT_FOR_FINALITY`).
 - **Responses carry baseline security headers.** `/health` no longer publishes the treasury's address or balance.
 - **The email-code endpoints give one answer either way**, so they no longer reveal which addresses have accounts.
 - **The chain is checked, not assumed (`chainHealth.js`).** Restarting a local Hardhat node wipes it: no contracts, no history, no balances. The backend used to keep serving against the empty chain, so every action failed with ethers' `could not coalesce error`, which named nothing useful. Now it verifies at start-up that the manifest's contracts have code, and re-checks every 15 seconds while running. A wiped chain makes it refuse to start, or stop serving with one sentence naming the fix: deploy again, then restart. `/health` reports the same message, and the check's answers carry CORS headers so the browser shows them instead of discarding them as "failed to fetch".
@@ -224,7 +225,7 @@ How it stays correct:
 | `/admin` | administrator | create the college, accounts, suspend/restore, action log |
 | `/public` | anyone | batches, drives and funnels, recruiters, preparation, public notices |
 
-### Backend tests — 250
+### Backend tests — 265
 
 These run against a temporary SQLite file with no blockchain. They cover validation, authorisation, the privacy boundaries (a company never sees names; one company's applicant doesn't unlock for another), notices, resumes, preparation counting, batch-revision counting, verification ordering, idempotency and the indexer's position handling.
 
@@ -274,13 +275,13 @@ Paths that actually send transactions are covered by the live suites below inste
 
 ## 6. Known gaps, stated plainly
 
+The platform is built for **one college**: its placement cell signs in and runs the season, and every route assumes that single college. The contracts would allow several, but supporting more than one is not a goal.
+
 - **Whoever runs the backend could sign as anyone.** This is the price of custodial wallets, and the most important limit of the design. The contracts check `msg.sender`, so they guarantee that each record was signed by the right *wallet* — a company's offer by the company's wallet, a student's acceptance by the student's. But the backend holds every wallet's private key (encrypted, with the key to decrypt them in its own configuration), so the person operating the server could in principle sign with any of them. What the design does guarantee: no *user* of the website can write another party's facts, and nothing written can be changed afterwards by anyone, the operator included. What it does not: protection from a dishonest operator writing new records in someone's name. The fix is to let users hold their own keys (a browser wallet, or keys derived on the user's device), at the cost of the "no crypto knowledge needed" experience.
 - **Not deployed publicly yet.** Everything runs on a local Hardhat chain. Polygon Amoy is the planned target; an earlier attempt was paused for lack of test gas.
-- **One confirmation is treated as final.** Routes and the indexer mirror a transaction as soon as it is mined. A public chain can occasionally reorganise its most recent blocks, which could leave the mirror holding an event that no longer exists. Waiting for several confirmations before mirroring, or re-reading recent blocks, is the fix before a public launch.
 - **Resume links are visible while browsing.** Profile links are hidden until a student applies, but a project link (often a GitHub repository) can still carry a username.
-- **One college per deployment.** The data model allows several, but routes such as the talent pool assume one.
 - **Resumes are unverified by design.** The platform vouches for the placement record, not for what students write about themselves.
-- **A student's CGPA is self-declared**, and it is what decides which drives they are eligible for — so a cutoff a company published on-chain is not actually enforced against a figure the student typed. Moving CGPA into the roster, where the college owns it as it owns names and courses, is the fix and is deliberately left for the next version.
+- **A student's CGPA is self-declared, by design.** It decides which drives they may apply to, so the on-chain cutoff is checked against a figure the student typed. That is a deliberate choice: the student is responsible for what they declare, and a wrong figure is the student's own misrepresentation to the company, which surfaces at the interview.
 - **The classmate lookup is a weak secret.** College emails are often guessable from roll numbers; the rate limit carries as much of the protection as the roll-number-plus-email pair does.
 
 ## 7. What has been verified
@@ -288,8 +289,8 @@ Paths that actually send transactions are covered by the live suites below inste
 | Check | Result |
 |---|---|
 | Contract tests | 229 / 229 |
-| Backend tests | 250 / 250 |
-| Live suites | all 3 pass against a running stack |
+| Backend tests | 265 / 265 |
+| Live suites | all 3 pass against a running stack, with finality waiting both off and on |
 | Frontend | builds, and lint passes |
 | Public dashboard | checked visually in dark and light themes, at desktop and phone widths |
 | Recovery path | tested repeatedly: chain restart → redeploy → backend restart → reseed, with every role still able to log in |

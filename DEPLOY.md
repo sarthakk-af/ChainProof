@@ -174,6 +174,8 @@ pm2 startup                          # then run the one command it prints
 1. `https://YOUR_DOMAIN/api/health` should show `"status":"ok"`.
 2. `https://YOUR_DOMAIN` should show the website.
 3. At `https://YOUR_DOMAIN/admin`, sign in with `ADMIN_USERNAME` / `ADMIN_PASSWORD` and **create the college**. This writes to the blockchain, so give it a few seconds.
+
+   Expect every action that writes to the blockchain to take a few seconds longer than it does locally. The app waits until the network has made each one final before calling it done.
 4. Sign up as a student with an email you can open, and check the 6-digit code arrives. If it doesn't, the sender address in `EMAIL_FROM_ADDRESS` isn't verified in Brevo yet.
 
 ---

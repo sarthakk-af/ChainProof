@@ -17,6 +17,7 @@ import {
   DRIVE_STATUS,
   STAGE,
   OFFER_RESPONSE,
+  settle,
 } from "../chain.js";
 import {
   syncStageRecorded,
@@ -127,7 +128,7 @@ outcomesRouter.post("/:driveId/stage", issueLimiter, async (req, res) => {
         const outcomes = driveOutcomesAsSigner(getUserSigner(req.user.id));
         const tx = await outcomes.recordStage(driveId, studentAddress, stageNumber, cleanLabel, cleanHash, { nonce });
         markBroadcast();
-        const receipt = await tx.wait();
+        const receipt = await settle(tx);
 
         const staged = findEventInReceipt(driveOutcomesRead, "StageRecorded", receipt);
         if (staged) {
@@ -207,7 +208,7 @@ outcomesRouter.post("/:driveId/answer", issueLimiter, async (req, res) => {
     const receipt = await withWalletLock(req.user.address, async (nonce) => {
       const outcomes = driveOutcomesAsSigner(getUserSigner(req.user.id));
       const tx = await outcomes.answerOffer(driveId, responseNumber, { nonce });
-      return tx.wait();
+      return settle(tx);
     });
 
     const answered = findEventInReceipt(driveOutcomesRead, "OfferAnswered", receipt);

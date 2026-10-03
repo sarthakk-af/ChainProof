@@ -31,6 +31,7 @@ import {
   ROLE,
   STATUS,
   DRIVE_STATUS,
+  settle,
 } from "../chain.js";
 import {
   syncActor,
@@ -421,7 +422,7 @@ collegeRouter.post("/events", recordLimiter, async (req, res) => {
           { nonce }
         );
         markBroadcast();
-        const receipt = await tx.wait();
+        const receipt = await settle(tx);
 
         const args = findEventInReceipt(preparationLogRead, "PreparationRecorded", receipt);
         if (args) {
@@ -491,7 +492,7 @@ collegeRouter.post("/events/:id/cancel", recordLimiter, async (req, res) => {
     const receipt = await withWalletLock(req.user.address, async (nonce) => {
       const log = preparationLogAsSigner(getUserSigner(req.user.id));
       const tx = await log.cancelEvent(id, reason, { nonce });
-      return tx.wait();
+      return settle(tx);
     });
 
     const args = findEventInReceipt(preparationLogRead, "PreparationCancelled", receipt);
@@ -553,7 +554,7 @@ collegeRouter.post("/batches", recordLimiter, async (req, res) => {
     const receipt = await withWalletLock(req.user.address, async (nonce) => {
       const registry = actorRegistryAsSigner(getUserSigner(req.user.id));
       const tx = await registry.recordBatchStrength(code, year, size, { nonce });
-      return tx.wait();
+      return settle(tx);
     });
 
     const args = findEventInReceipt(actorRegistryRead, "BatchStrengthRecorded", receipt);
@@ -624,7 +625,7 @@ async function decideCompany(req, res, { method, event, expectedStatus, reason }
       if (!current || current.status !== STATUS.Pending) throw ALREADY_DECIDED;
       const registry = actorRegistryAsSigner(getUserSigner(req.user.id));
       const tx = await registry[method](address, { nonce });
-      return tx.wait();
+      return settle(tx);
     });
 
     await syncAfterWrite("company decision", receipt.blockNumber, () =>
@@ -709,7 +710,7 @@ async function decideDrive(req, res, { method, event }) {
       if (!current || current.status !== DRIVE_STATUS.Proposed) throw ALREADY_DECIDED;
       const drives = placementDriveAsSigner(getUserSigner(req.user.id));
       const tx = await drives[method](driveId, { nonce });
-      return tx.wait();
+      return settle(tx);
     });
 
     const args = findEventInReceipt(placementDriveRead, "DriveStatusChanged", receipt);

@@ -25,6 +25,7 @@ import {
   verifierSigner,
   ROLE,
   STATUS,
+  settle,
 } from "../chain.js";
 import { syncActor, syncAfterWrite, pendingSyncFailures } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
@@ -279,7 +280,7 @@ adminRouter.post("/college", async (req, res) => {
           "0x0000000000000000000000000000000000000000",
           { nonce }
         );
-        await tx.wait();
+        await settle(tx);
       });
     }
 
@@ -289,7 +290,7 @@ adminRouter.post("/college", async (req, res) => {
     if (!resumeFrom || resumeFrom.status !== STATUS.Active) {
       const receipt = await withVerifierLock(async (nonce) => {
         const approveTx = await actorRegistryAsVerifier.approveActor(address, { nonce });
-        return approveTx.wait();
+        return settle(approveTx);
       });
       blockNumber = receipt.blockNumber;
     } else {
@@ -396,7 +397,7 @@ adminRouter.post("/accounts/:address/suspend", async (req, res) => {
   try {
     const receipt = await withVerifierLock(async (nonce) => {
       const tx = await actorRegistryAsVerifier.suspendActor(actor.address, reason, { nonce });
-      return tx.wait();
+      return settle(tx);
     });
     await syncAfterWrite("suspension", receipt.blockNumber, () =>
       syncActor(actor.address, receipt.blockNumber)
@@ -431,7 +432,7 @@ adminRouter.post("/accounts/:address/reinstate", async (req, res) => {
   try {
     const receipt = await withVerifierLock(async (nonce) => {
       const tx = await actorRegistryAsVerifier.reinstateActor(actor.address, { nonce });
-      return tx.wait();
+      return settle(tx);
     });
     await syncAfterWrite("reinstatement", receipt.blockNumber, () =>
       syncActor(actor.address, receipt.blockNumber)

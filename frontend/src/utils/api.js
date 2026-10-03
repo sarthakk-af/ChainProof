@@ -6,9 +6,56 @@
  * holds each user's custodial wallet and signs on their behalf (see AuthContext.jsx).
  */
 
+import { toast } from "./toast.js";
+
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
 let authToken = null;
+
+/**
+ * Requests that write to the blockchain. On the public network each one waits
+ * until its block is final — a few seconds — and a button that only spins for
+ * that long reads as broken.
+ */
+const CHAIN_WRITES = [
+  /^\/drives$/,
+  /^\/drives\/\d+\/(close|cancel|application-count)$/,
+  /^\/outcomes\/\d+\/(stage|answer)$/,
+  /^\/college\/(events|batches)$/,
+  /^\/college\/events\/\d+\/cancel$/,
+  /^\/college\/companies\/[^/]+\/(approve|reject)$/,
+  /^\/college\/drives\/\d+\/(approve|reject)$/,
+  /^\/college\/verifications\/\d+\/approve$/,
+  /^\/me\/(register|claim-roll-number)$/,
+  /^\/auth\/verify-email$/,
+  /^\/admin\/college$/,
+  /^\/admin\/accounts\/[^/]+\/(suspend|reinstate)$/,
+];
+
+const SLOW_AFTER_MS = 1500;
+
+/**
+ * Shows a "still working" toast if `promise` is still pending after a moment,
+ * and clears it the moment the request settles. Fast requests never see it.
+ */
+export function noticeIfSlow(method, path, promise) {
+  if (method === "GET") return promise;
+  const isChainWrite = CHAIN_WRITES.some((re) => re.test(path.split("?")[0]));
+  let toastId = null;
+  const timer = setTimeout(() => {
+    toastId = toast.loading(
+      isChainWrite
+        ? "Recording this on the blockchain. It takes a few seconds; please keep this page open."
+        : "Still working…"
+    );
+  }, SLOW_AFTER_MS);
+  const done = () => {
+    clearTimeout(timer);
+    if (toastId !== null) toast.dismiss(toastId);
+  };
+  promise.then(done, done);
+  return promise;
+}
 
 /** Called by AuthContext whenever the session token changes (login/logout). */
 export function setAuthToken(token) {
@@ -48,8 +95,8 @@ async function request(path, { method = "GET", body, headers = {} } = {}) {
 
 export const api = {
   get: (path) => request(path),
-  post: (path, body) => request(path, { method: "POST", body }),
-  patch: (path, body) => request(path, { method: "PATCH", body }),
-  put: (path, body) => request(path, { method: "PUT", body }),
-  del: (path) => request(path, { method: "DELETE" }),
+  post: (path, body) => noticeIfSlow("POST", path, request(path, { method: "POST", body })),
+  patch: (path, body) => noticeIfSlow("PATCH", path, request(path, { method: "PATCH", body })),
+  put: (path, body) => noticeIfSlow("PUT", path, request(path, { method: "PUT", body })),
+  del: (path) => noticeIfSlow("DELETE", path, request(path, { method: "DELETE" })),
 };

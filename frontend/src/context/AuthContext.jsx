@@ -10,6 +10,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { api, setAuthToken } from "../utils/api.js";
+import { toast } from "../utils/toast.js";
 
 const TOKEN_STORAGE_KEY = "chainproof_token";
 
@@ -39,6 +40,7 @@ export function AuthProvider({ children }) {
     setVerification(me.verification ?? null);
     setProfile(me.profile ?? null);
     setStatus("authenticated");
+    return me;
   }, []);
 
   // Resume a saved session if there is one.
@@ -112,7 +114,12 @@ export function AuthProvider({ children }) {
     return api.post("/auth/resend-otp", { email });
   }, []);
 
-  const logout = useCallback(async () => {
+  /**
+   * Signs out, and says so. `options.message` replaces the usual "signed out"
+   * line — deleting an account, say, has more to tell. Called straight from an
+   * onClick too, where the argument is the click event, hence the type check.
+   */
+  const logout = useCallback(async (options) => {
     // Best-effort — invalidates the token server-side (see backend's
     // token_version), but the local session clears either way.
     try {
@@ -124,7 +131,10 @@ export function AuthProvider({ children }) {
     setAuthToken(null);
     setUser(null);
     setActor(null);
+    setVerification(null);
+    setProfile(null);
     setStatus("unauthenticated");
+    toast.info(typeof options?.message === "string" ? options.message : "You're signed out.");
   }, []);
 
   const forgotPassword = useCallback(async (email) => {

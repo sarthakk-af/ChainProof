@@ -11,6 +11,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Megaphone, Pencil, Trash2, Globe, Users, AlertCircle, X } from "lucide-react";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { api } from "../../utils/api.js";
+import { toast } from "../../utils/toast.js";
 import { formatDate } from "../../utils/format.js";
 import { LoadingRows } from "./Loading.jsx";
 import { useEscape } from "../../utils/useEscape.js";
@@ -49,6 +50,7 @@ export default function Announcements({ role, drives = [] }) {
     setRemoving(id);
     try {
       await api.del(`/announcements/${id}`);
+      toast.success("Notice withdrawn. It no longer shows to anyone.");
       load();
     } catch (err) {
       setError(err.message);
@@ -203,6 +205,13 @@ function NoticeComposer({ role, drives, existing, onCancel, onSaved, onError }) 
       if (!existing && (role === "Company" || driveId !== "")) payload.driveId = Number(driveId);
       if (existing) await api.patch(`/announcements/${existing.id}`, payload);
       else await api.post("/announcements", payload);
+      toast.success(
+        existing
+          ? "Notice updated. It's marked as edited."
+          : audience === "public"
+            ? "Notice posted, including on the public results page."
+            : "Notice posted."
+      );
       onSaved();
     } catch (err) {
       onError(err.message);

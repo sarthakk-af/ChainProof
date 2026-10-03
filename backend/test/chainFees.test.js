@@ -17,7 +17,7 @@ process.env.JWT_SECRET = "test-jwt-secret";
 process.env.WALLET_ENCRYPTION_KEY = "236d277256c4ac74368580b5be214189ace6dff26eb4e5efe448dbf1c2a1158c";
 process.env.DB_PATH = path.join(__dirname, "test-chain-fees.sqlite");
 
-const { capPriorityFee } = await import("../src/chain.js");
+const { capPriorityFee, waitUntilFinal } = await import("../src/chain.js");
 const { ethers } = await import("ethers");
 
 const gwei = (n) => ethers.parseUnits(String(n), "gwei");
@@ -61,4 +61,51 @@ test("no cap leaves the provider untouched", async () => {
   const before = original.getFeeData;
   capPriorityFee(original, null);
   assert.equal(original.getFeeData, before);
+});
+
+// --- waiting for finality ----------------------------------------------------------
+
+/** A network whose finalised block advances one step per poll. */
+function fakeNetwork({ finalizedSteps, receiptBlocks }) {
+  let poll = -1;
+  return {
+    // Each check of the finalised block is one poll.
+    getBlock: async () => {
+      poll++;
+      return { number: finalizedSteps[Math.min(poll, finalizedSteps.length - 1)] };
+    },
+    getTransactionReceipt: async () => {
+      const block = receiptBlocks[Math.min(poll, receiptBlocks.length - 1)];
+      return block === null ? null : { hash: "0xabc", blockNumber: block };
+    },
+  };
+}
+
+test("waits until the transaction's block is final, then returns its final receipt", async () => {
+  const net = fakeNetwork({ finalizedSteps: [95, 98, 100, 101], receiptBlocks: [100] });
+  const final = await waitUntilFinal(net, { hash: "0xabc", blockNumber: 100 }, { pollMs: 1 });
+  assert.equal(final.blockNumber, 100);
+});
+
+test("a transaction moved to a later block is followed there", async () => {
+  // First seen in block 100, which the network discarded; it landed in 103.
+  const net = fakeNetwork({ finalizedSteps: [100, 102, 104], receiptBlocks: [103, 103, 103] });
+  const final = await waitUntilFinal(net, { hash: "0xabc", blockNumber: 100 }, { pollMs: 1 });
+  assert.equal(final.blockNumber, 103);
+});
+
+test("a transaction the network dropped is reported, not treated as recorded", async () => {
+  const net = fakeNetwork({ finalizedSteps: [100], receiptBlocks: [null] });
+  await assert.rejects(
+    waitUntilFinal(net, { hash: "0xabc", blockNumber: 100 }, { pollMs: 1 }),
+    /dropped this transaction/
+  );
+});
+
+test("a block that never becomes final times out with an honest message", async () => {
+  const net = fakeNetwork({ finalizedSteps: [50], receiptBlocks: [100] });
+  await assert.rejects(
+    waitUntilFinal(net, { hash: "0xabc", blockNumber: 100 }, { pollMs: 1, timeoutMs: 20 }),
+    /hasn't confirmed it as final yet/
+  );
 });

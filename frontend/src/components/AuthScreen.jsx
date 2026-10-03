@@ -14,6 +14,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { LogIn, UserPlus, Mail, Check, AlertCircle, Info, ArrowLeft, ShieldCheck, RotateCw } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
+import { toast } from "../utils/toast.js";
 import { Link } from "../utils/navigation.jsx";
 import { noEmojis } from "../utils/validation.js";
 import PasswordInput from "./shared/PasswordInput.jsx";
@@ -131,6 +132,7 @@ export default function AuthScreen({ initialMode = "login" }) {
         // off this page — so the emailed code is taken on the next screen (see
         // shared/ConfirmEmail.jsx), not here.
         await signup(email.trim(), password);
+        toast.success("Account created. We've emailed you a 6-digit code; you'll enter it on the next screen.");
       } else if (mode === "forgot") {
         const { message } = await forgotPassword(email.trim());
         setInfoMessage(message);

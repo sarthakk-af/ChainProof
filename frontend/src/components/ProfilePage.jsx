@@ -15,6 +15,7 @@ import React, { useState } from "react";
 import { KeyRound, LogOut, ShieldCheck, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
+import { toast } from "../utils/toast.js";
 import PasswordInput from "./shared/PasswordInput.jsx";
 
 const ROLE_BADGE_CLASS = { Student: "badge-student", College: "badge-college", Company: "badge-company" };
@@ -41,20 +42,18 @@ export default function ProfilePage() {
   const [newPassword, setNewPassword] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
 
   const changePassword = async (e) => {
     e.preventDefault();
     if (busy) return;
     setBusy("password");
     setError("");
-    setNotice("");
     try {
       const result = await api.post("/auth/change-password", { currentPassword, newPassword });
       // The server ends every session, including this one, and hands back a
       // fresh token so the person who just changed it stays where they are.
       if (result.token) setToken(result.token);
-      setNotice(result.message);
+      toast.success(result.message);
       setCurrentPassword("");
       setNewPassword("");
       setChanging(false);
@@ -71,7 +70,7 @@ export default function ProfilePage() {
     setError("");
     try {
       await api.post("/auth/sign-out-everywhere", {});
-      await logout();
+      await logout({ message: "Signed out on every device, including this one." });
     } catch (err) {
       setError(err.message);
       setBusy("");
@@ -89,11 +88,6 @@ export default function ProfilePage() {
       {error && (
         <div className="alert alert-danger" role="alert" style={{ marginBottom: "var(--space-4)" }}>
           <span>{error}</span>
-        </div>
-      )}
-      {notice && (
-        <div className="alert alert-info" role="status" style={{ marginBottom: "var(--space-4)" }}>
-          <span>{notice}</span>
         </div>
       )}
 
@@ -200,7 +194,14 @@ export default function ProfilePage() {
               result, an accepted offer. It carries a wallet address, never your name — and
               once your account is gone, nothing here links that address to you.
             </p>
-            <DeleteAccount onDeleted={logout} />
+            <DeleteAccount
+              onDeleted={() =>
+                logout({
+                  message:
+                    "Your account is deleted. Nothing about you is kept here any more; what was on the blockchain stays, unnamed.",
+                })
+              }
+            />
           </div>
         </div>
       </section>

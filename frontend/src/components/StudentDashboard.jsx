@@ -25,6 +25,8 @@ import ResumeEditor from "./student/ResumeEditor.jsx";
 import ClassmateLookup from "./student/ClassmateLookup.jsx";
 import Announcements from "./shared/Announcements.jsx";
 import ConfirmEmail from "./shared/ConfirmEmail.jsx";
+import SectionIntro from "./shared/SectionIntro.jsx";
+import { toast } from "../utils/toast.js";
 import DriveDescription from "./shared/DriveDescription.jsx";
 import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -50,8 +52,9 @@ export default function StudentDashboard() {
   const { verification, profile } = useAuth();
   const [tab, setTab] = useUrlTab(TABS.map((t) => t.id), "open");
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  useScrollToAlert(error || notice);
+  // Success is a toast; an error stays on the page, because it needs reading.
+  const setNotice = toast.success;
+  useScrollToAlert(error);
 
   const verified = !!verification?.verified;
   // The roster name, never the on-chain one: a student is registered on-chain
@@ -79,7 +82,7 @@ export default function StudentDashboard() {
       <Tabs
         tabs={TABS}
         value={tab}
-        onChange={(id) => { setTab(id); setError(""); setNotice(""); }}
+        onChange={(id) => { setTab(id); setError(""); }}
         label="Student sections"
       />
 
@@ -89,17 +92,37 @@ export default function StudentDashboard() {
           <span>{error}</span>
         </div>
       )}
-      {notice && (
-        <div className="alert alert-info" role="status" style={{ marginBottom: "var(--space-4)" }}>
-          <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-          <span>{notice}</span>
-        </div>
-      )}
 
       <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`}>
-      {tab === "open" && <OpenDrives onError={setError} onNotice={setNotice} />}
-      {tab === "mine" && <MyApplications onError={setError} onNotice={setNotice} />}
-      {tab === "notices" && <Announcements role="Student" />}
+      {tab === "open" && (
+        <>
+          <SectionIntro>
+            Drives your college has agreed to host. Each shows the company's own package and
+            CGPA cutoff, fixed when it was posted. Applying shares your name, email and phone
+            with that company, and nothing is shared before you apply.
+          </SectionIntro>
+          <OpenDrives onError={setError} onNotice={setNotice} />
+        </>
+      )}
+      {tab === "mine" && (
+        <>
+          <SectionIntro>
+            Where you stand in every drive you applied to, as the company records it. If you
+            get an offer, accept or decline it here. You only count as placed once you accept.
+            You can withdraw an application until the company has acted on it.
+          </SectionIntro>
+          <MyApplications onError={setError} onNotice={setNotice} />
+        </>
+      )}
+      {tab === "notices" && (
+        <>
+          <SectionIntro>
+            Announcements from your placement cell, and from companies about their own drives:
+            venues, timings, documents to bring.
+          </SectionIntro>
+          <Announcements role="Student" />
+        </>
+      )}
       {tab === "profile" && <ProfilePanel onError={setError} onNotice={setNotice} />}
       {tab === "resume" && <ResumeEditor onError={setError} onNotice={setNotice} />}
       {tab === "classmates" && <ClassmateLookup />}
@@ -207,7 +230,7 @@ function OpenDrives({ onError, onNotice }) {
     onError("");
     try {
       await api.post(`/drives/${id}/apply`, {});
-      onNotice("Applied.");
+      onNotice("Applied. The company can now see your contact details. Follow your progress under My applications.");
       load();
     } catch (e) {
       onError(e.message);
@@ -288,7 +311,11 @@ function MyApplications({ onError, onNotice }) {
     onError("");
     try {
       await api.post(`/outcomes/${driveId}/answer`, { response });
-      onNotice(response === "Accepted" ? "Offer accepted." : "Offer declined.");
+      onNotice(
+        response === "Accepted"
+          ? "Offer accepted. You now count as placed. Congratulations!"
+          : "Offer declined. Your answer is recorded."
+      );
       load();
     } catch (e) {
       onError(e.message);

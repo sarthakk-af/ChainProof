@@ -52,6 +52,63 @@ capPriorityFee(
   config.maxPriorityFeeGwei === null ? null : ethers.parseUnits(String(config.maxPriorityFeeGwei), "gwei")
 );
 
+/**
+ * Waits until a mined transaction is final — the network has committed to the
+ * block it is in, and it can no longer be replaced.
+ *
+ * On a public chain the newest blocks are provisional for a few seconds: now
+ * and then the network settles on a different block than the one first seen,
+ * and a transaction in the discarded block moves or disappears. A record
+ * mirrored before then could show something the chain no longer has — a
+ * student placed by an acceptance that never landed. Polygon reports finality
+ * itself (the "finalized" block, 2–5 seconds behind the newest on Amoy), so
+ * this waits for that rather than guessing a number of blocks.
+ *
+ * Returns the receipt as it stands in the final chain, which is the one to
+ * read events from: if the transaction was moved to a later block, the first
+ * receipt describes a block that no longer exists.
+ */
+export async function waitUntilFinal(target, receipt, { timeoutMs = 90_000, pollMs = 1000 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const finalized = await target.getBlock("finalized");
+    if (finalized && finalized.number >= receipt.blockNumber) {
+      const current = await target.getTransactionReceipt(receipt.hash);
+      if (!current) {
+        throw new Error(
+          "The network dropped this transaction before it became final, so nothing was recorded. Please try again."
+        );
+      }
+      if (current.blockNumber <= finalized.number) return current;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(
+        "This was sent to the blockchain, but the network hasn't confirmed it as final yet. " +
+          "Reload in a minute to check whether it went through before trying again."
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+}
+
+/**
+ * Waits for a sent transaction to be mined and — on a public network — final.
+ * Every write the platform records goes through this. Locally there is nothing
+ * to wait for: one machine, no competing blocks, so it is just `tx.wait()`.
+ */
+export async function settle(tx) {
+  const receipt = await tx.wait();
+  if (!config.waitForFinality) return receipt;
+  return waitUntilFinal(provider, receipt);
+}
+
+/** The newest block the mirror may read up to: the final one, or simply the newest. */
+export async function readableHead() {
+  if (!config.waitForFinality) return provider.getBlockNumber();
+  const finalized = await provider.getBlock("finalized");
+  return finalized ? finalized.number : provider.getBlockNumber();
+}
+
 export const verifierSigner = new ethers.Wallet(config.verifierPrivateKey, provider);
 
 const { ActorRegistry, PlacementDrive, DriveOutcomes, PreparationLog } = deployment.contracts;

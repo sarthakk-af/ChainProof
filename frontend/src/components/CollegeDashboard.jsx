@@ -25,6 +25,8 @@ import {
 } from "lucide-react";
 import PreparationPanel from "./college/PreparationPanel.jsx";
 import Announcements from "./shared/Announcements.jsx";
+import SectionIntro from "./shared/SectionIntro.jsx";
+import { toast } from "../utils/toast.js";
 import DriveDescription from "./shared/DriveDescription.jsx";
 import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -67,18 +69,32 @@ export default function CollegeDashboard() {
    * switched, which is when a decision has just been made.
    */
   const [waiting, setWaiting] = useState({ students: 0, companies: 0, drives: 0 });
+  // Which setup steps are done, for the getting-started checklist.
+  const [setup, setSetup] = useState(null);
   useEffect(() => {
     let cancelled = false;
     Promise.all([
       api.get("/college/verifications").catch(() => ({ pending: [] })),
       api.get("/college/companies").catch(() => ({ companies: [] })),
       api.get("/college/drives").catch(() => ({ drives: [] })),
-    ]).then(([v, c, d]) => {
+      api.get("/college/batches").catch(() => ({ batches: [] })),
+      api.get("/college/roster").catch(() => ({ roster: [] })),
+      api.get("/college/events").catch(() => ({ events: [] })),
+    ]).then(([v, c, d, b, r, e]) => {
       if (cancelled) return;
+      const drives = d.drives ?? [];
+      const companies = c.companies ?? [];
       setWaiting({
         students: (v.pending ?? []).length,
-        companies: (c.companies ?? []).filter((x) => x.status === "Pending").length,
-        drives: (d.drives ?? []).filter((x) => x.status === "Proposed").length,
+        companies: companies.filter((x) => x.status === "Pending").length,
+        drives: drives.filter((x) => x.status === "Proposed").length,
+      });
+      setSetup({
+        batches: (b.batches ?? []).length > 0,
+        roster: (r.roster ?? []).length > 0,
+        companies: companies.some((x) => x.status === "Active"),
+        drives: drives.some((x) => !["Proposed", "Rejected"].includes(x.status)),
+        preparation: (e.events ?? []).length > 0,
       });
     });
     return () => { cancelled = true; };
@@ -86,8 +102,9 @@ export default function CollegeDashboard() {
 
   const tabsWithCounts = TABS.map((t) => ({ ...t, count: waiting[t.id] ?? 0 }));
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  useScrollToAlert(error || notice);
+  // Success is a toast; an error stays on the page, because it needs reading.
+  const setNotice = toast.success;
+  useScrollToAlert(error);
 
   return (
     <div className="page-container animate-fade-in-up">
@@ -100,10 +117,12 @@ export default function CollegeDashboard() {
         </p>
       </header>
 
+      <SetupGuide setup={setup} onGo={(id) => { setTab(id); setError(""); }} />
+
       <Tabs
         tabs={tabsWithCounts}
         value={tab}
-        onChange={(id) => { setTab(id); setError(""); setNotice(""); }}
+        onChange={(id) => { setTab(id); setError(""); }}
         label="Placement cell sections"
       />
 
@@ -111,12 +130,6 @@ export default function CollegeDashboard() {
         <div className="alert alert-danger" role="alert" style={{ marginBottom: "var(--space-4)" }}>
           <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <span>{error}</span>
-        </div>
-      )}
-      {notice && (
-        <div className="alert alert-info" role="status" style={{ marginBottom: "var(--space-4)" }}>
-          <CheckCircle2 size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-          <span>{notice}</span>
         </div>
       )}
 
@@ -127,7 +140,16 @@ export default function CollegeDashboard() {
       {tab === "roster" && <RosterPanel onError={setError} onNotice={setNotice} />}
       {tab === "batches" && <BatchesPanel onError={setError} onNotice={setNotice} />}
       {tab === "preparation" && <PreparationPanel onError={setError} onNotice={setNotice} />}
-      {tab === "notices" && <Announcements role="College" />}
+      {tab === "notices" && (
+        <>
+          <SectionIntro>
+            Updates for your students and the companies recruiting here: a changed venue, a
+            deadline, a reminder. Choose "Everyone" to also show a notice on the public
+            results page. Notices can be edited or withdrawn, and an edited one is marked.
+          </SectionIntro>
+          <Announcements role="College" />
+        </>
+      )}
       </div>
     </div>
   );
@@ -169,6 +191,12 @@ function CompaniesPanel({ onError, onNotice }) {
   if (loading) return <LoadingRows rows={3} label="Fetching companies" />;
 
   return (
+    <>
+    <SectionIntro>
+      Companies that registered to recruit here. Admit only the ones you have invited: an
+      admitted company can post drives and browse your students, without their names or
+      contact details. If you're unsure, check the CIN on the MCA's public registry.
+    </SectionIntro>
     <div className="split-even">
       <section>
         <div className="section-head">
@@ -227,6 +255,7 @@ function CompaniesPanel({ onError, onNotice }) {
         <DecisionHistory />
       </section>
     </div>
+    </>
   );
 }
 
@@ -311,6 +340,12 @@ function DrivesPanel({ onError, onNotice }) {
   if (loading) return <LoadingRows rows={3} label="Fetching drives" />;
 
   return (
+    <>
+    <SectionIntro>
+      Admitted companies propose drives with their own role, package, cutoff and dates. You
+      only decide whether each one runs on your campus. Students see a drive once you host
+      it, and its terms can never be changed afterwards, by you or by the company.
+    </SectionIntro>
     <div className="split-even">
       <section>
         <div className="section-head">
@@ -365,6 +400,7 @@ function DrivesPanel({ onError, onNotice }) {
         </div>
       </section>
     </div>
+    </>
   );
 }
 
@@ -729,6 +765,11 @@ function VerificationsPanel({ onError, onNotice }) {
 
   if (pending.length === 0) {
     return (
+      <>
+      <SectionIntro>
+        Students are confirmed automatically when their roll number is on your roster with
+        the email they signed up with. Anyone else waits here for you to check by hand.
+      </SectionIntro>
       <div className="empty-state glass-card">
         <UserCheck className="empty-state-icon" />
         <h3>Nobody waiting</h3>
@@ -737,6 +778,7 @@ function VerificationsPanel({ onError, onNotice }) {
           automatically. Anyone the roster doesn't cover appears here.
         </p>
       </div>
+      </>
     );
   }
 
@@ -745,9 +787,12 @@ function VerificationsPanel({ onError, onNotice }) {
       <div className="section-head">
         <div className="section-eyebrow">Waiting for you ({pending.length})</div>
       </div>
-      <p className="form-hint" style={{ margin: "0 0 10px" }}>
-        These roll numbers aren't on your roster yet. Confirming a student adds them to it.
-      </p>
+      <SectionIntro>
+        These students gave a roll number your roster doesn't match automatically. Check
+        each one against your records and fill in their name, course and batch as you hold
+        them. Then confirm, which also adds them to your roster, or decline with a short
+        reason they will see.
+      </SectionIntro>
 
       <div className="row-list">
         {pending.map((p) => (
@@ -829,5 +874,81 @@ function VerificationsPanel({ onError, onNotice }) {
         ))}
       </div>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+const SETUP_HIDDEN_KEY = "chainproof_setup_guide_hidden";
+
+const SETUP_STEPS = [
+  { key: "batches", tab: "batches", title: "Declare your batch sizes", why: "Every placement percentage is divided by these." },
+  { key: "roster", tab: "roster", title: "Upload your student roster", why: "Students are confirmed automatically against it." },
+  { key: "companies", tab: "companies", title: "Admit the companies you've invited", why: "Only an admitted company can post a drive." },
+  { key: "drives", tab: "drives", title: "Host the drives companies propose", why: "Students only see the drives you agree to host." },
+  { key: "preparation", tab: "preparation", title: "Record your training sessions", why: "They appear on the public page as your preparation record." },
+];
+
+/**
+ * The order a placement season is set up in, ticked off as it happens.
+ *
+ * The placement cell has the most to do before anyone else can do anything,
+ * and seven tabs say nothing about which comes first. Shown until every step
+ * is done, or until the cell hides it.
+ */
+function SetupGuide({ setup, onGo }) {
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem(SETUP_HIDDEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  if (!setup || hidden) return null;
+  const doneCount = SETUP_STEPS.filter((s) => setup[s.key]).length;
+  if (doneCount === SETUP_STEPS.length) return null;
+
+  const hide = () => {
+    setHidden(true);
+    try {
+      localStorage.setItem(SETUP_HIDDEN_KEY, "1");
+    } catch {
+      // Not stored; it simply shows again next time.
+    }
+  };
+
+  return (
+    <section className="glass-card p-24" style={{ marginBottom: "var(--space-4)" }} aria-label="Getting started">
+      <div className="flex items-center justify-between" style={{ flexWrap: "wrap", gap: "var(--space-2)" }}>
+        <div>
+          <h3 className="card-title">Getting started · {doneCount} of {SETUP_STEPS.length} done</h3>
+          <p className="card-lead">Setting up a placement season, in order. Click a step to go there.</p>
+        </div>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={hide}>
+          Hide this
+        </button>
+      </div>
+      <ol className="setup-steps">
+        {SETUP_STEPS.map((step, i) => {
+          const done = !!setup[step.key];
+          return (
+            <li key={step.key}>
+              <button type="button" className={done ? "setup-step done" : "setup-step"} onClick={() => onGo(step.tab)}>
+                {done ? (
+                  <CheckCircle2 size={18} className="setup-mark" aria-label="Done" />
+                ) : (
+                  <span className="setup-mark" aria-hidden="true" style={{ width: 18, textAlign: "center" }}>{i + 1}</span>
+                )}
+                <span>
+                  <span className="setup-title">{step.title}</span>
+                  <span className="setup-why">{step.why}</span>
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }

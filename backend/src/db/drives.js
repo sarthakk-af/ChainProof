@@ -10,20 +10,25 @@ import { db } from "./connection.js";
  * with only their total attested by the company.
  */
 
+/**
+ * Records a posted drive.
+ * @dev A drive that is already here is left exactly as it is. The posting is
+ *      the drive's first event, so a second arrival is always a late copy of
+ *      it — and its "Proposed" status used to overwrite a newer approval.
+ *      Status changes belong to setDriveStatus alone.
+ */
 export function upsertDrive(drive) {
   db.prepare(
     `INSERT INTO drives (
        id, company_address, college_address, role_title, annual_package,
        min_cgpa_scaled, batch_year, application_deadline, drive_date,
-       ipfs_hash, status, posted_at, block_number
+       ipfs_hash, status, posted_at, block_number, status_block
      ) VALUES (
        @id, @companyAddress, @collegeAddress, @roleTitle, @annualPackage,
        @minCgpaScaled, @batchYear, @applicationDeadline, @driveDate,
-       @ipfsHash, @status, @postedAt, @blockNumber
+       @ipfsHash, @status, @postedAt, @blockNumber, @blockNumber
      )
-     ON CONFLICT(id) DO UPDATE SET
-       status       = excluded.status,
-       block_number = excluded.block_number`
+     ON CONFLICT(id) DO NOTHING`
   ).run({
     ...drive,
     companyAddress: drive.companyAddress.toLowerCase(),
@@ -31,12 +36,31 @@ export function upsertDrive(drive) {
   });
 }
 
+/**
+ * Applies `apply` (an UPDATE guarded by a block column) and tells a stale event
+ * apart from a missing drive.
+ *
+ * An older event than the one already applied is ignored. An event for a drive
+ * the mirror doesn't have yet is an error, so the caller marks the block
+ * unsynced and reconciliation applies it once the posting has landed —
+ * dropping it silently would lose it for good.
+ */
+function updateDriveIfNewer(id, run) {
+  if (run().changes > 0) return;
+  if (!getDrive(id)) {
+    throw new Error(`Drive ${id} isn't mirrored yet; its later event will be retried.`);
+  }
+}
+
 /** Records a status change alone — every field but status is immutable on-chain. */
 export function setDriveStatus(id, status, blockNumber) {
-  db.prepare("UPDATE drives SET status = ?, block_number = ? WHERE id = ?").run(
-    status,
-    blockNumber,
-    id
+  updateDriveIfNewer(id, () =>
+    db
+      .prepare(
+        `UPDATE drives SET status = ?, status_block = ?, block_number = MAX(block_number, ?)
+          WHERE id = ? AND status_block <= ?`
+      )
+      .run(status, blockNumber, blockNumber, id, blockNumber)
   );
 }
 
@@ -47,10 +71,13 @@ export function setDriveStatus(id, status, blockNumber) {
  *      rate it shapes. This one is signed by the company.
  */
 export function setDriveApplicationCount(id, count, blockNumber) {
-  db.prepare("UPDATE drives SET application_count = ?, block_number = ? WHERE id = ?").run(
-    count,
-    blockNumber,
-    id
+  updateDriveIfNewer(id, () =>
+    db
+      .prepare(
+        `UPDATE drives SET application_count = ?, count_block = ?, block_number = MAX(block_number, ?)
+          WHERE id = ? AND count_block <= ?`
+      )
+      .run(count, blockNumber, blockNumber, id, blockNumber)
   );
 }
 

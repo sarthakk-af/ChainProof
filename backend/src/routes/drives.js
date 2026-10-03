@@ -25,6 +25,7 @@ import {
   STATUS,
   DRIVE_STATUS,
   STAGE,
+  settle,
 } from "../chain.js";
 import {
   syncDrivePosted,
@@ -170,7 +171,7 @@ drivesRouter.post("/", announceLimiter, async (req, res) => {
           { nonce }
         );
         markBroadcast();
-        const receipt = await tx.wait();
+        const receipt = await settle(tx);
 
         const posted = findEventInReceipt(placementDriveRead, "DrivePosted", receipt);
         if (posted) {
@@ -249,7 +250,7 @@ drivesRouter.post("/:id/application-count", issueLimiter, async (req, res) => {
     const receipt = await withWalletLock(req.user.address, async (nonce) => {
       const drives = placementDriveAsSigner(getUserSigner(req.user.id));
       const tx = await drives.recordApplicationCount(driveId, count, { nonce });
-      return tx.wait();
+      return settle(tx);
     });
     const args = findEventInReceipt(placementDriveRead, "ApplicationCountRecorded", receipt);
     if (args) {
@@ -279,7 +280,7 @@ async function changeDriveStatus(req, res, method, event) {
     const receipt = await withWalletLock(req.user.address, async (nonce) => {
       const drives = placementDriveAsSigner(getUserSigner(req.user.id));
       const tx = await drives[method](driveId, { nonce });
-      return tx.wait();
+      return settle(tx);
     });
     const args = findEventInReceipt(placementDriveRead, "DriveStatusChanged", receipt);
     if (args) {

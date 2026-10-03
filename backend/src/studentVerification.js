@@ -11,7 +11,7 @@ import {
   VERIFICATION,
 } from "./db.js";
 import { getUserSigner } from "./wallets.js";
-import { actorRegistryAsSigner, ROLE, STATUS } from "./chain.js";
+import { actorRegistryAsSigner, ROLE, STATUS, settle } from "./chain.js";
 import { syncActor } from "./indexer.js";
 import { withWalletLock } from "./txQueue.js";
 import { parseField, parseFields, SELF_FIELDS } from "./studentProfile.js";
@@ -340,7 +340,7 @@ export async function tryComplete(userId) {
         request.college_address,
         { nonce }
       );
-      const receipt = await tx.wait();
+      const receipt = await settle(tx);
       await syncActor(user.wallet_address, receipt.blockNumber);
     });
 
