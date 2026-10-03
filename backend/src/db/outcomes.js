@@ -130,10 +130,3 @@ export function setPlacement({ studentAddress, collegeAddress, batchYear, placed
     blockNumber
   );
 }
-
-export function isPlaced(studentAddress) {
-  const row = db
-    .prepare("SELECT placed FROM placements WHERE LOWER(student_address) = LOWER(?)")
-    .get(studentAddress);
-  return !!row?.placed;
-}

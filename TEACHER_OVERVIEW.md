@@ -72,4 +72,4 @@ The second idea matters just as much: **each fact is written by whoever would be
 
 The whole placement season described above is built and working, and backed by about 400 automated tests plus live end-to-end checks.
 
-It currently runs on a private practice blockchain on a single computer. The next step is to publish it on a public test network (Polygon Amoy), so that anyone can check the records independently of ChainProof itself.
+It is live at **https://chainproof.duckdns.org**, with its records on Polygon Amoy, a public test network. Anyone can check those records independently of ChainProof itself, on amoy.polygonscan.com. A test network uses free test tokens, so no real money is involved.

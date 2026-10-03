@@ -225,7 +225,7 @@ How it stays correct:
 | `/admin` | administrator | create the college, accounts, suspend/restore, action log |
 | `/public` | anyone | batches, drives and funnels, recruiters, preparation, public notices |
 
-### Backend tests — 265
+### Backend tests — 263
 
 These run against a temporary SQLite file with no blockchain. They cover validation, authorisation, the privacy boundaries (a company never sees names; one company's applicant doesn't unlock for another), notices, resumes, preparation counting, batch-revision counting, verification ordering, idempotency and the indexer's position handling.
 
@@ -273,23 +273,35 @@ Paths that actually send transactions are covered by the live suites below inste
 
 ---
 
-## 6. Known gaps, stated plainly
+## 6. The live deployment
+
+ChainProof runs at **https://chainproof.duckdns.org**: an AWS EC2 server with nginx, HTTPS from Let's Encrypt, and the backend kept running by PM2 (see [DEPLOY.md](DEPLOY.md)). Its contracts are on **Polygon Amoy**, deployed on 3 October 2026 at block 49,232,429. Anyone can inspect them on Polygonscan:
+
+| Contract | Address |
+|---|---|
+| `ActorRegistry` | [`0x6e3CDabC5CB3E1BE57D18a8F7D6B6e89BeC3f7a7`](https://amoy.polygonscan.com/address/0x6e3CDabC5CB3E1BE57D18a8F7D6B6e89BeC3f7a7) |
+| `PlacementDrive` | [`0x8274938F947c4966dBafA7673C86E3386bF967FD`](https://amoy.polygonscan.com/address/0x8274938F947c4966dBafA7673C86E3386bF967FD) |
+| `DriveOutcomes` | [`0x19071D8D4c7e3E06F8EAE88Cc3018E91e0e01444`](https://amoy.polygonscan.com/address/0x19071D8D4c7e3E06F8EAE88Cc3018E91e0e01444) |
+| `PreparationLog` | [`0x1675Cf70b09b58469E5e96Cc303Bcd90fBe48F78`](https://amoy.polygonscan.com/address/0x1675Cf70b09b58469E5e96Cc303Bcd90fBe48F78) |
+
+Deploying cost 0.29 POL. Each new account is then given 0.05 POL for its own transactions, from the deploy wallet, which is also the platform verifier.
+
+## 7. Known gaps, stated plainly
 
 The platform is built for **one college**: its placement cell signs in and runs the season, and every route assumes that single college. The contracts would allow several, but supporting more than one is not a goal.
 
 - **Whoever runs the backend could sign as anyone.** This is the price of custodial wallets, and the most important limit of the design. The contracts check `msg.sender`, so they guarantee that each record was signed by the right *wallet* — a company's offer by the company's wallet, a student's acceptance by the student's. But the backend holds every wallet's private key (encrypted, with the key to decrypt them in its own configuration), so the person operating the server could in principle sign with any of them. What the design does guarantee: no *user* of the website can write another party's facts, and nothing written can be changed afterwards by anyone, the operator included. What it does not: protection from a dishonest operator writing new records in someone's name. The fix is to let users hold their own keys (a browser wallet, or keys derived on the user's device), at the cost of the "no crypto knowledge needed" experience.
-- **Not deployed publicly yet.** Everything runs on a local Hardhat chain. Polygon Amoy is the planned target; an earlier attempt was paused for lack of test gas.
 - **Resume links are visible while browsing.** Profile links are hidden until a student applies, but a project link (often a GitHub repository) can still carry a username.
 - **Resumes are unverified by design.** The platform vouches for the placement record, not for what students write about themselves.
 - **A student's CGPA is self-declared, by design.** It decides which drives they may apply to, so the on-chain cutoff is checked against a figure the student typed. That is a deliberate choice: the student is responsible for what they declare, and a wrong figure is the student's own misrepresentation to the company, which surfaces at the interview.
 - **The classmate lookup is a weak secret.** College emails are often guessable from roll numbers; the rate limit carries as much of the protection as the roll-number-plus-email pair does.
 
-## 7. What has been verified
+## 8. What has been verified
 
 | Check | Result |
 |---|---|
 | Contract tests | 229 / 229 |
-| Backend tests | 265 / 265 |
+| Backend tests | 263 / 263 |
 | Live suites | all 3 pass against a running stack, with finality waiting both off and on |
 | Frontend | builds, and lint passes |
 | Public dashboard | checked visually in dark and light themes, at desktop and phone widths |

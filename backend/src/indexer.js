@@ -370,15 +370,20 @@ export function backfill() {
   return backfillRunning;
 }
 
+/** A pass over more blocks than this is a catch-up, and is logged. */
+const QUIET_SPAN = 50;
+
 async function runBackfill() {
   const fromBlock = getLastSyncedBlock() + 1;
   const toBlock = await readableHead();
-  if (fromBlock > toBlock) {
-    console.log(`[indexer] up to date at block ${toBlock}`);
-    return;
-  }
+  if (fromBlock > toBlock) return;
 
-  console.log(`[indexer] backfilling blocks ${fromBlock}..${toBlock}`);
+  // On a public network this runs every few seconds over a handful of new
+  // blocks, and logging each pass filled the log with two lines every four
+  // seconds that said nothing. Only a real catch-up, or a pass that found
+  // something, is worth a line.
+  const longCatchUp = toBlock - fromBlock + 1 > QUIET_SPAN;
+  if (longCatchUp) console.log(`[indexer] catching up on blocks ${fromBlock}..${toBlock}`);
   let processed = 0;
 
   // A chunk at a time, with the cursor moved after each one, so a long catch-up
@@ -403,7 +408,9 @@ async function runBackfill() {
     setLastSyncedBlock(safeCursor(end));
   }
 
-  console.log(`[indexer] processed ${processed} event(s), now synced to block ${getLastSyncedBlock()}`);
+  if (longCatchUp || processed > 0) {
+    console.log(`[indexer] mirrored ${processed} event(s), now synced to block ${getLastSyncedBlock()}`);
+  }
 }
 
 /**

@@ -97,13 +97,6 @@ export function claimRosterEntry(collegeAddress, rollNumber, address) {
   return result.changes === 1;
 }
 
-/** Releases whatever roll number this address holds — used when registration fails. */
-export function releaseRosterClaim(address) {
-  db.prepare(
-    "UPDATE roster_entries SET claimed_by = NULL, claimed_at = NULL WHERE LOWER(claimed_by) = LOWER(?)"
-  ).run(address);
-}
-
 /**
  * Frees one roll number the college says was claimed by the wrong account, and
  * returns the address it was taken from.
@@ -128,12 +121,6 @@ export function releaseRosterClaimByRoll(collegeAddress, rollNumber) {
       WHERE college_address = ? AND roll_number = ?`
   ).run(collegeAddress.toLowerCase(), rollNumber);
   return row.claimed_by;
-}
-
-export function getRosterEntryForAddress(address) {
-  return db
-    .prepare("SELECT * FROM roster_entries WHERE LOWER(claimed_by) = LOWER(?)")
-    .get(address);
 }
 
 export function listRoster(collegeAddress, { batchYear } = {}) {

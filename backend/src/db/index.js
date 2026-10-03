@@ -47,9 +47,7 @@ export {
   upsertRosterEntries,
   getRosterEntry,
   claimRosterEntry,
-  releaseRosterClaim,
   releaseRosterClaimByRoll,
-  getRosterEntryForAddress,
   listRoster,
   rosterCounts,
 } from "./roster.js";

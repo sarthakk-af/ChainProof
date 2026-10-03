@@ -11,7 +11,7 @@
  */
 
 import React, { useState, useEffect, useRef } from "react";
-import { LogIn, UserPlus, Mail, Check, AlertCircle, Info, ArrowLeft, ShieldCheck, RotateCw } from "lucide-react";
+import { LogIn, UserPlus, Mail, Check, AlertCircle, Info, ArrowLeft } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import { toast } from "../utils/toast.js";
@@ -40,12 +40,11 @@ function passwordStrength(pw) {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function AuthScreen({ initialMode = "login" }) {
-  const { signup, login, verifyEmailOtp, resendOtp, forgotPassword } = useAuth();
+  const { signup, login, forgotPassword } = useAuth();
 
-  const [mode, setMode] = useState(initialMode); // "login" | "signup" | "forgot" | "verify"
-  const [otp, setOtp] = useState("");
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const [resendMessage, setResendMessage] = useState("");
+  // The emailed sign-up code is entered after signing in, on the next screen
+  // (shared/ConfirmEmail.jsx), so this form has no step for it.
+  const [mode, setMode] = useState(initialMode); // "login" | "signup" | "forgot"
   const [email, setEmail] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
   const [emailAvailability, setEmailAvailability] = useState(null); // null | "checking" | "taken" | "available"
@@ -89,12 +88,6 @@ export default function AuthScreen({ initialMode = "login" }) {
     return () => clearTimeout(checkTimer.current);
   }, [email, mode]);
 
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const t = setTimeout(() => setResendCooldown((s) => s - 1), 1000);
-    return () => clearTimeout(t);
-  }, [resendCooldown]);
-
   // Coming back to a field clears its complaint; leaving it judges it again.
   // Without this the message sat there while the person was mid-fix, which
   // reads as nagging rather than helping.
@@ -105,9 +98,6 @@ export default function AuthScreen({ initialMode = "login" }) {
     setPasswordTouched(false);
     setConfirmTouched(false);
     setConfirmPassword("");
-    setOtp("");
-    setResendMessage("");
-    setResendCooldown(0);
   };
 
   const handleSubmit = async (e) => {
@@ -136,44 +126,19 @@ export default function AuthScreen({ initialMode = "login" }) {
       } else if (mode === "forgot") {
         const { message } = await forgotPassword(email.trim());
         setInfoMessage(message);
-      } else if (mode === "verify") {
-        await verifyEmailOtp(email.trim(), otp.trim());
-        // Success flips AuthContext's status to "authenticated" — App.jsx
-        // takes it from here, same as a normal login.
       } else {
         await login(email.trim(), password);
       }
     } catch (err) {
-      if (err.requiresVerification) {
-        setMode("verify");
-        setEmail(err.email || email);
-        setError("");
-        setInfoMessage("Enter the code we emailed you, or send a new one below.");
-      } else {
-        setError(err.message || "Something went wrong. Please try again.");
-      }
+      setError(err.message || "Something went wrong. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleResend = async () => {
-    if (resendCooldown > 0) return;
-    setError("");
-    setResendMessage("");
-    try {
-      await resendOtp(email.trim());
-      setResendMessage("A new code is on its way.");
-      setResendCooldown(30);
-    } catch (err) {
-      setError(err.message || "Could not send a new code.");
-    }
-  };
-
   const submitDisabled =
     loading ||
-    (mode === "signup" && (!passwordMeetsRule(password) || confirmPassword !== password || !EMAIL_RE.test(email))) ||
-    (mode === "verify" && otp.trim().length !== 6);
+    (mode === "signup" && (!passwordMeetsRule(password) || confirmPassword !== password || !EMAIL_RE.test(email)));
 
   return (
     <div className="page-container auth-page">
@@ -193,18 +158,9 @@ export default function AuthScreen({ initialMode = "login" }) {
             ? "Create your account"
             : mode === "forgot"
             ? "Reset your password"
-            : mode === "verify"
-            ? "Verify your email"
             : "Sign in"}
         </h2>
 
-        {mode === "verify" && (
-          <p style={{ fontSize: "var(--text-sm)", margin: "0 0 4px" }}>
-            We sent a 6-digit code to <strong>{email}</strong>. Enter it below to activate your account.
-          </p>
-        )}
-
-        {mode !== "verify" && (
         <div className="form-group">
           <label htmlFor="auth-email">Email</label>
           <input
@@ -253,27 +209,8 @@ export default function AuthScreen({ initialMode = "login" }) {
             ) : null}
           </span>
         </div>
-        )}
 
-        {mode === "verify" && (
-          <div className="form-group">
-            <label htmlFor="auth-otp">Verification code</label>
-            <input
-              id="auth-otp"
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              placeholder="000000"
-              maxLength={6}
-              value={otp}
-              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-              style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-lg)", letterSpacing: "0.4em", textAlign: "center" }}
-              required
-            />
-          </div>
-        )}
-
-        {mode !== "forgot" && mode !== "verify" && (
+        {mode !== "forgot" && (
           <div className="form-group">
             <label htmlFor="auth-password">Password</label>
             {mode === "signup" && (
@@ -377,13 +314,6 @@ export default function AuthScreen({ initialMode = "login" }) {
           </div>
         )}
 
-        {resendMessage && mode === "verify" && (
-          <div className="alert alert-info" role="status">
-            <Info size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-            <span>{resendMessage}</span>
-          </div>
-        )}
-
         <button id="auth-submit-btn" type="submit" className="btn btn-primary btn-lg" disabled={submitDisabled}>
           {loading ? (
             <span className="spinner" />
@@ -391,26 +321,12 @@ export default function AuthScreen({ initialMode = "login" }) {
             <><UserPlus size={16} /> Create account</>
           ) : mode === "forgot" ? (
             <><Mail size={16} /> Send reset link</>
-          ) : mode === "verify" ? (
-            <><ShieldCheck size={16} /> Verify and continue</>
           ) : (
             <><LogIn size={16} /> Sign in</>
           )}
         </button>
 
-        {mode === "verify" && (
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={handleResend}
-            disabled={resendCooldown > 0}
-            style={{ alignSelf: "center" }}
-          >
-            <RotateCw size={14} /> {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : "Resend code"}
-          </button>
-        )}
-
-        {(mode === "forgot" || mode === "verify") && (
+        {mode === "forgot" && (
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => switchMode("login")}>
             <ArrowLeft size={14} /> Back to sign in
           </button>

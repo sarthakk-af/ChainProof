@@ -26,18 +26,6 @@ function useSlowEnough(delay = 180) {
   return show;
 }
 
-/** A line of text for small areas — a panel header, an inline section. */
-export function LoadingLine({ label = "Loading" }) {
-  const show = useSlowEnough();
-  if (!show) return null;
-
-  return (
-    <p className="form-hint" role="status" aria-busy="true">
-      {label}…
-    </p>
-  );
-}
-
 /**
  * Placeholder rows shaped like the list they stand in for.
  * @param {{rows?: number, label: string}} props

@@ -71,8 +71,7 @@ module.exports = {
       chainId: 31337,
     },
 
-    // Polygon Amoy Testnet — the intended target. Nothing is deployed there yet;
-    // everything runs on the local node above.
+    // Polygon Amoy Testnet — where the live deployment runs (see DEPLOY.md).
     // The deploying key becomes the contracts' verifier, and the backend signs
     // with the same DEPLOYER_PRIVATE_KEY from the same .env — one key, so the
     // two can never disagree about who the verifier is.

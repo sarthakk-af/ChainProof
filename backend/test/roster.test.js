@@ -41,8 +41,6 @@ const {
   upsertRosterEntries,
   getRosterEntry,
   claimRosterEntry,
-  releaseRosterClaim,
-  getRosterEntryForAddress,
   listRoster,
   rosterCounts,
 } = await import("../src/db.js");
@@ -98,26 +96,6 @@ test("claiming a row succeeds once and only once", () => {
   assert.equal(claimRosterEntry(college, "21CE1042", second), false);
 
   assert.equal(getRosterEntry(college, "21CE1042").claimed_by.toLowerCase(), first.toLowerCase());
-});
-
-test("a claim is found by the address that holds it, whatever the casing", () => {
-  const address = ethers.Wallet.createRandom().address; // checksummed, mixed case
-  claimRosterEntry(college, "21ME2001", address);
-
-  assert.equal(getRosterEntryForAddress(address)?.roll_number, "21ME2001");
-  assert.equal(getRosterEntryForAddress(address.toLowerCase())?.roll_number, "21ME2001");
-});
-
-test("releasing a claim frees the row for someone else", () => {
-  const address = ethers.Wallet.createRandom().address;
-  upsertRosterEntries(college, [entry("21CE1050", "Temp Student")]);
-  assert.equal(claimRosterEntry(college, "21CE1050", address), true);
-
-  // A registration that fails partway must not lock a roll number away from the
-  // person it actually belongs to.
-  releaseRosterClaim(address.toLowerCase());
-  assert.equal(getRosterEntry(college, "21CE1050").claimed_by, null);
-  assert.equal(claimRosterEntry(college, "21CE1050", ethers.Wallet.createRandom().address), true);
 });
 
 test("re-uploading updates an unclaimed row", () => {

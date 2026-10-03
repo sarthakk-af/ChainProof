@@ -109,7 +109,7 @@ export default function Navbar() {
         <span
           className="badge badge-warning nav-testnet"
           style={{ fontSize: "var(--text-xs)" }}
-          title="Running on a private practice blockchain for development/demo purposes — not a public or production network"
+          title="Records are on Polygon Amoy, a public test network: anyone can check them, and no real money is involved"
         >
           <span aria-hidden="true">●</span> <span className="nav-label">Test Network</span>
         </span>

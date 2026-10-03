@@ -25,5 +25,3 @@ export const courseCodeChars = (str) => str.replace(/[^a-zA-Z0-9-]/g, '').toUppe
 // Institution registration IDs: letters, digits, spaces and / - .
 export const registrationIdChars = (str) => str.replace(/[^a-zA-Z0-9/. -]/g, '').toUpperCase();
 
-// Retains only alphanumeric characters, spaces, and basic punctuation
-export const cleanText = (str) => noEmojis(str).replace(/[<>{}|[\]\\]/g, '');

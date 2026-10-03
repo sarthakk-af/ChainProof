@@ -9,7 +9,16 @@ An internal placement platform for one college, where every placement figure is 
 
 Once written, none of those records can be edited — not even by the administrator.
 
-For a plain-language explanation, see [TEACHER_OVERVIEW.md](TEACHER_OVERVIEW.md). For how it works under the hood, see [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md). To put it online, see [DEPLOY.md](DEPLOY.md).
+**Live at https://chainproof.duckdns.org**, with its records on Polygon Amoy, a public test network. The contracts, which anyone can inspect:
+
+| Contract | Address |
+|---|---|
+| `ActorRegistry` | [`0x6e3CDabC5CB3E1BE57D18a8F7D6B6e89BeC3f7a7`](https://amoy.polygonscan.com/address/0x6e3CDabC5CB3E1BE57D18a8F7D6B6e89BeC3f7a7) |
+| `PlacementDrive` | [`0x8274938F947c4966dBafA7673C86E3386bF967FD`](https://amoy.polygonscan.com/address/0x8274938F947c4966dBafA7673C86E3386bF967FD) |
+| `DriveOutcomes` | [`0x19071D8D4c7e3E06F8EAE88Cc3018E91e0e01444`](https://amoy.polygonscan.com/address/0x19071D8D4c7e3E06F8EAE88Cc3018E91e0e01444) |
+| `PreparationLog` | [`0x1675Cf70b09b58469E5e96Cc303Bcd90fBe48F78`](https://amoy.polygonscan.com/address/0x1675Cf70b09b58469E5e96Cc303Bcd90fBe48F78) |
+
+For a plain-language explanation, see [TEACHER_OVERVIEW.md](TEACHER_OVERVIEW.md). For how it works under the hood, see [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md). To put it online, see [DEPLOY.md](DEPLOY.md). For how the live deployment was done, the problems hit and how they were fixed, see [DEPLOYMENT_REPORT.md](DEPLOYMENT_REPORT.md).
 
 ## How it's put together
 
@@ -85,7 +94,7 @@ Everything the backend stores is one file: `backend/data/chainproof.sqlite`. Ope
 
 ```bash
 npx hardhat test                  # 229 contract tests
-cd backend && npm test            # 265 backend tests (no blockchain needed)
+cd backend && npm test            # 263 backend tests (no blockchain needed)
 cd frontend && npm run lint       # frontend lint
 ```
 
@@ -108,7 +117,7 @@ They cover a full placement season end to end, hostile input (forged tokens, inj
 - placement notices
 - the administrator's account controls
 - the public dashboard
+- account deletion, and withdrawing an application
+- public deployment: live on Polygon Amoy at https://chainproof.duckdns.org ([DEPLOY.md](DEPLOY.md) has the steps to reproduce it)
 
-**Not done yet:**
-- **Public deployment.** Everything is ready to run on Polygon Amoy (a public test network) on an EC2 server; [DEPLOY.md](DEPLOY.md) has the steps.
-- **A limit of the design, stated plainly:** the backend holds every user's wallet key so that nobody needs a crypto wallet. The contracts guarantee that each record was signed by the right *wallet*, but whoever runs the server could, in principle, sign with any of them. See [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md#6-known-gaps-stated-plainly).
+**A limit of the design, stated plainly:** the backend holds every user's wallet key so that nobody needs a crypto wallet. The contracts guarantee that each record was signed by the right *wallet*, but whoever runs the server could, in principle, sign with any of them. This and the other known limits are in [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md#7-known-gaps-stated-plainly).

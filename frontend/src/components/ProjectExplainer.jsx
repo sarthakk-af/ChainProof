@@ -312,9 +312,10 @@ export default function ProjectExplainer() {
           <h3 className="card-title">Who built this</h3>
           <p style={{ fontSize: "var(--text-sm)", marginTop: "var(--space-2)" }}>
             ChainProof was built by Sarthak Bhalchandra Gupta as a college project, and is
-            maintained by him. It currently runs on a private test blockchain — no real money
-            is involved anywhere, and nothing is deployed publicly yet. Questions about your
-            own data go to your placement cell, who can reach the maintainer.
+            maintained by him. Its records are on Polygon Amoy, a public test network, so anyone
+            can check them on amoy.polygonscan.com; it uses test tokens, and no real money is
+            involved anywhere. Questions about your own data go to your placement cell, who can
+            reach the maintainer.
           </p>
         </div>
       </section>
