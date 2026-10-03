@@ -22,10 +22,10 @@ import {
 } from "lucide-react";
 import TalentPool, { StudentDetail } from "./company/TalentPool.jsx";
 import Announcements from "./shared/Announcements.jsx";
+import DriveDescription from "./shared/DriveDescription.jsx";
 import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
-import { uploadToIPFS } from "../utils/ipfsService.js";
 import { getIdempotencyKey } from "../utils/idempotency.js";
 import { formatDate } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
@@ -158,6 +158,20 @@ export default function CompanyDashboard() {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * The last second of a picked date, in the poster's own time zone, as a Unix
+ * timestamp.
+ *
+ * A date input's "2026-10-05" parses as UTC midnight, and adding a day's
+ * seconds to that lands on 05:29 the next morning in India — so every drive
+ * was shown to students a day later than the company chose, and applications
+ * stayed open into that next morning. Both dates are written on-chain and can
+ * never be corrected, which is why this has to be right before it is sent.
+ */
+function endOfLocalDay(yyyyMmDd) {
+  return Math.floor(new Date(`${yyyyMmDd}T23:59:59`).getTime() / 1000);
+}
+
 function PostDriveForm({ onPosted, onError }) {
   const idempotencyRef = React.useRef(null);
   const [colleges, setColleges] = useState([]);
@@ -188,25 +202,18 @@ function PostDriveForm({ onPosted, onError }) {
     setBusy(true);
     onError("");
     try {
-      // The full description goes to IPFS; only its hash is written on-chain,
-      // which keeps the permanent record small and tamper-evident at once.
-      const ipfsHash = await uploadToIPFS({
-        schema: "chainproof-drive-v1",
-        roleTitle: form.roleTitle,
-        description: form.description,
-        annualPackage: Number(form.annualPackage),
-        postedAt: new Date().toISOString(),
-      });
-
+      // The backend stores the description and writes its hash on-chain with
+      // the terms, so the text shown to students can be checked against the
+      // record. Nothing is uploaded from the browser, so no key ships with it.
       await api.post("/drives", {
         collegeAddress: form.collegeAddress,
         roleTitle: form.roleTitle.trim(),
         annualPackage: Number(form.annualPackage),
         minCgpa: form.minCgpa === "" ? 0 : Number(form.minCgpa),
         batchYear: Number(form.batchYear),
-        applicationDeadline: Math.floor(new Date(form.applicationDeadline).getTime() / 1000) + 86399,
-        driveDate: Math.floor(new Date(form.driveDate).getTime() / 1000) + 86399,
-        ipfsHash,
+        applicationDeadline: endOfLocalDay(form.applicationDeadline),
+        driveDate: endOfLocalDay(form.driveDate),
+        description: form.description,
         idempotencyKey: getIdempotencyKey(idempotencyRef, JSON.stringify(form)),
       });
       onPosted();
@@ -256,8 +263,12 @@ function PostDriveForm({ onPosted, onError }) {
           <input id="d-date" type="date" value={form.driveDate} onChange={set("driveDate")} required />
         </div>
         <div className="form-group span-all">
-          <label htmlFor="d-desc">Description <span className="label-optional">(optional)</span></label>
-          <textarea id="d-desc" rows={3} value={form.description} onChange={set("description", noEmojis)} maxLength={2000} />
+          <label htmlFor="d-desc">Job description <span className="label-optional">(optional)</span></label>
+          <textarea id="d-desc" rows={5} value={form.description} onChange={set("description", noEmojis)} maxLength={4000} />
+          <p className="form-hint">
+            Shown to students and on the public page. Its fingerprint is recorded on-chain
+            with the terms, so it can't be quietly changed later either.
+          </p>
         </div>
       </div>
 
@@ -392,6 +403,7 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice, on
 
       {expanded && (
         <div style={{ marginTop: "var(--space-4)" }}>
+          <DriveDescription text={drive.description} />
           <div className="flex items-center justify-between" style={{ marginBottom: "var(--space-3)", flexWrap: "wrap", gap: "var(--space-2)" }}>
             <span style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
               {drive.applicationsReceived} applied

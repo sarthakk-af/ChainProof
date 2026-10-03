@@ -272,3 +272,36 @@ test("recruiters are summarised with what they actually offered", async () => {
   assert.ok(acme.driveCount >= 1);
   assert.equal(acme.highestPackage, 800000);
 });
+
+test("a withdrawn acceptance no longer counts as accepted", async () => {
+  // Accepted, then the company withdrew the offer. The funnel still shows the
+  // offer was made — it was — but not that it stands accepted, or "accepted"
+  // could exceed the placed figure on the same page.
+  const student = ethers.Wallet.createRandom().address;
+  upsertDrive({
+    id: 7, companyAddress: company, collegeAddress: college, roleTitle: "Analyst",
+    annualPackage: 500000, minCgpaScaled: 0, batchYear: 2026,
+    applicationDeadline: 1900000000, driveDate: 1900100000, ipfsHash: "QmTest7",
+    status: DRIVE_STATUS.Approved, postedAt: 70, blockNumber: 70,
+  });
+  addOutcome({ driveId: 7, studentAddress: student, stage: STAGE.Offered, previousStage: STAGE.None, label: null, ipfsHash: null, timestamp: 1, blockNumber: 71 });
+  setOfferResponse({ driveId: 7, studentAddress: student, response: OFFER_RESPONSE.Accepted, timestamp: 2, blockNumber: 72 });
+
+  let f = (await request(app).get("/public/drives/7")).body.drive.funnel;
+  assert.equal(f.accepted, 1);
+
+  addOutcome({ driveId: 7, studentAddress: student, stage: STAGE.NotSelected, previousStage: STAGE.Offered, label: "Withdrawn", ipfsHash: null, timestamp: 3, blockNumber: 73 });
+  f = (await request(app).get("/public/drives/7")).body.drive.funnel;
+  assert.equal(f.offered, 1);
+  assert.equal(f.accepted, 0);
+});
+
+test("the overview counts only drives the public pages show", async () => {
+  const res = await request(app).get("/public/overview");
+  const visible = db
+    .prepare("SELECT COUNT(*) AS c FROM drives WHERE status IN (?, ?, ?)")
+    .get(DRIVE_STATUS.Approved, DRIVE_STATUS.Closed, DRIVE_STATUS.Cancelled).c;
+  const all = db.prepare("SELECT COUNT(*) AS c FROM drives").get().c;
+  assert.ok(all > visible, "the fixture should include a drive the public doesn't see");
+  assert.equal(res.body.drives, visible);
+});

@@ -220,14 +220,14 @@ function ItemForm({ section, existing, onCancel, onSaved, onError }) {
 
       <div className="form-group">
         <label htmlFor="ri-title">{section.titleLabel}</label>
-        <input id="ri-title" value={values.title} onChange={set("title", noEmojis)} maxLength={100} required />
+        <input id="ri-title" value={values.title} onChange={set("title", noEmojis)} maxLength={120} required />
       </div>
 
       <div className="form-group">
         <label htmlFor="ri-subtitle">
           {section.subtitleLabel} <span className="label-optional">(optional)</span>
         </label>
-        <input id="ri-subtitle" value={values.subtitle} onChange={set("subtitle", noEmojis)} maxLength={100} />
+        <input id="ri-subtitle" value={values.subtitle} onChange={set("subtitle", noEmojis)} maxLength={120} />
       </div>
 
       <div className="flex gap-12" style={{ flexWrap: "wrap" }}>
@@ -245,14 +245,14 @@ function ItemForm({ section, existing, onCancel, onSaved, onError }) {
         <label htmlFor="ri-desc">
           Description <span className="label-optional">(optional)</span>
         </label>
-        <textarea id="ri-desc" rows={3} value={values.description} onChange={set("description", noEmojis)} maxLength={2000} />
+        <textarea id="ri-desc" rows={3} value={values.description} onChange={set("description", noEmojis)} maxLength={1000} />
       </div>
 
       <div className="form-group">
         <label htmlFor="ri-url">
           Link <span className="label-optional">(optional)</span>
         </label>
-        <input id="ri-url" type="url" value={values.url} onChange={(e) => set("url", noEmojis)({ target: { value: e.target.value.replace(/\s/g, "") } })} maxLength={255} placeholder="https://…" />
+        <input id="ri-url" type="url" value={values.url} onChange={(e) => set("url", noEmojis)({ target: { value: e.target.value.replace(/\s/g, "") } })} maxLength={200} placeholder="https://…" />
       </div>
 
       <button type="submit" className="btn btn-primary btn-sm" disabled={busy}>
@@ -278,7 +278,10 @@ function SkillsPanel({ skills, onSaved, onError }) {
   const add = () => {
     const value = draft.trim();
     if (!value) return;
-    if (!items.some((s) => s.toLowerCase() === value.toLowerCase())) {
+    // Matched the way the backend matches skills, so "React.js" and "react js"
+    // count as one here too rather than one being dropped silently on save.
+    const key = (s) => s.toLowerCase().replace(/[^a-z0-9+#]/g, "");
+    if (!items.some((s) => key(s) === key(value))) {
       setItems([...items, value]);
       setDirty(true);
     }
@@ -341,7 +344,7 @@ function SkillsPanel({ skills, onSaved, onError }) {
             }
           }}
           placeholder="e.g. PostgreSQL"
-          maxLength={50}
+          maxLength={40}
           style={{ flex: "1 1 180px" }}
         />
         <button type="button" className="btn btn-ghost btn-sm" onClick={add}>

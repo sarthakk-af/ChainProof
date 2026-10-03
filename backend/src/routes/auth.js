@@ -15,6 +15,7 @@ import {
   getEmailOtp,
   incrementOtpAttempts,
   deleteEmailOtp,
+  eraseAccount,
 } from "../db.js";
 import {
   hashPassword,
@@ -228,17 +229,18 @@ authRouter.post("/verify-email", verifyEmailLimiter, async (req, res) => {
     return res.status(400).json({ error: "email and otp are required" });
   }
 
+  // One answer for "no such account", "already confirmed" and "no live code",
+  // like /forgot-password: these endpoints take an email with no sign-in, so
+  // distinct answers told anyone which addresses have accounts here.
+  const NO_CODE = "That code is incorrect or has expired. Request a new one.";
   const user = getUserByEmail(email);
-  if (!user) {
-    return res.status(400).json({ error: "No account found for that email." });
-  }
-  if (user.email_verified) {
-    return res.status(409).json({ error: "This account is already verified." });
+  if (!user || user.email_verified) {
+    return res.status(400).json({ error: NO_CODE });
   }
 
   const record = getEmailOtp(user.id);
   if (!record || record.expires_at < Date.now()) {
-    return res.status(400).json({ error: "That code has expired. Request a new one." });
+    return res.status(400).json({ error: NO_CODE });
   }
   if (record.attempts >= OTP_MAX_ATTEMPTS) {
     return res.status(429).json({ error: "Too many incorrect attempts. Request a new code." });
@@ -272,17 +274,17 @@ authRouter.post("/resend-otp", resendOtpLimiter, async (req, res) => {
     return res.status(400).json({ error: "email is required" });
   }
 
+  // The same answer whether or not there is an account waiting on a code — see
+  // /verify-email above.
+  const sent = { message: "If that account is waiting on a code, a new one is on its way." };
   const user = getUserByEmail(email);
-  if (!user) {
-    return res.status(400).json({ error: "No account found for that email." });
-  }
-  if (user.email_verified) {
-    return res.status(409).json({ error: "This account is already verified." });
+  if (!user || user.email_verified) {
+    return res.json(sent);
   }
 
   try {
     await issueAndSendOtp(user);
-    res.json({ message: "A new code has been sent." });
+    res.json(sent);
   } catch (err) {
     logger.error("resend_otp_failed", { email, message: err.message });
     res.status(502).json({ error: "Could not send the code. Please try again shortly." });
@@ -381,6 +383,43 @@ authRouter.post("/sign-out-everywhere", userAuth, (req, res) => {
   bumpTokenVersion(req.user.id);
   logger.info("all_sessions_ended", { address: req.user.address });
   res.json({ message: "Signed out on every device, including this one." });
+});
+
+/**
+ * Deletes this account and everything personal held about it.
+ *
+ * Asks for the password again: a session left open on a lab computer should not
+ * be enough to erase someone. What is on-chain stays — nothing can remove it —
+ * but it is left tied to a wallet address that nothing here links to a person
+ * any more. See db/erasure.js for exactly what goes and what stays.
+ *
+ * The placement cell's login is refused: the college's identity, roster and
+ * every company's admission hang off it. The administrator resets its password
+ * instead.
+ */
+authRouter.post("/delete-account", userAuth, loginLimiter, async (req, res) => {
+  const { password } = req.body || {};
+  const user = getUserById(req.user.id);
+  if (!user || !password || !(await verifyPassword(password, user.password_hash))) {
+    logger.warn("delete_account_wrong_password", { address: req.user.address });
+    return res.status(403).json({ error: "That isn't your password." });
+  }
+  if (user.is_college_login) {
+    return res.status(409).json({
+      error:
+        "The placement cell's login can't be deleted — the college's record depends on it. " +
+        "Ask the platform administrator if this account needs to change hands.",
+    });
+  }
+
+  eraseAccount(user);
+  logger.info("account_deleted", { address: user.wallet_address });
+  res.json({
+    deleted: true,
+    message:
+      "Your account and the personal details held here are deleted. Anything already on the " +
+      "blockchain stays, tied only to an anonymous wallet address.",
+  });
 });
 
 authRouter.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {

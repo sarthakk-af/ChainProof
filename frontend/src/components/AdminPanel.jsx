@@ -51,7 +51,15 @@ export default function AdminPanel() {
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY));
   const [username, setUsername] = useState("");
 
+  // Ends the session on the server too, so the token stops working everywhere
+  // rather than only being forgotten by this tab.
   const signOut = () => {
+    if (token) adminApi("/admin/auth/logout", { method: "POST", token }).catch(() => {});
+    sessionStorage.removeItem(TOKEN_KEY);
+    setToken(null);
+  };
+  // An expired or revoked session is already over on the server.
+  const forget = () => {
     sessionStorage.removeItem(TOKEN_KEY);
     setToken(null);
   };
@@ -68,7 +76,7 @@ export default function AdminPanel() {
     );
   }
 
-  return <Console token={token} username={username} onSignOut={signOut} onExpired={signOut} />;
+  return <Console token={token} username={username} onSignOut={signOut} onExpired={forget} />;
 }
 
 // ---------------------------------------------------------------------------

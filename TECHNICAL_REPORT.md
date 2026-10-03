@@ -60,11 +60,13 @@ The contracts decide purely from `msg.sender` — the wallet that signed the tra
 - **Students are Active on registration.** A contract can't check a roll number, so the backend only submits a student's registration after matching them against the college's roster. Students are registered under the placeholder name `"Student"`, so a real name never reaches the public chain.
 - **Rejection isn't permanent.** A rejected address can register again. `rejectionCount` is carried over, so the earlier rejection is never hidden.
 - **Suspension** (`suspendActor` / `reinstateActor`) is the administrator's only power over another account. It flips `Active ↔ Suspended` and records the reason in an event. It changes nothing the account already signed. And a suspended address cannot register again to escape it.
+  - The verifier may suspend anyone. A College may suspend only a Company it admitted itself (`admittedBy`).
+  - A suspension is lifted only by whoever imposed it, or by the verifier (`suspendedBy`). Before this, any Active College could reinstate a company the administrator had suspended.
 - **Batch sizes** (`recordBatchStrength`) are stored per college, course and year. Each change emits `BatchStrengthRecorded` with **both the old and the new value**, so shrinking the denominator is always visible.
 
 ### `PlacementDrive.sol` — what a company came to offer
 
-- `postDrive` (company only): role, annual package, minimum CGPA (stored ×100 so comparisons are exact), batch year, deadline, drive date, and an IPFS hash of the full job description. The drive starts `Proposed`.
+- `postDrive` (company only): role, annual package, minimum CGPA (stored ×100 so comparisons are exact), batch year, deadline, drive date, and the content hash (a CIDv1) of the full job description. The drive starts `Proposed`. The backend writes the description, stores it, and computes that hash itself (`driveDocument.js`), so the text shown to students can always be checked against the chain.
 - The college calls `approveDrive` or `rejectDrive`. Either side may `cancelDrive`. The company may `closeDrive`.
 - **No function edits a drive's terms.** A test fails if the contract ever gains a function named like an editor (`edit…`, `update…`, `set…`, `amend…`, `revise…`). The cutoff is published before applications open, so it can't be tightened afterwards to justify a rejection.
 - `recordApplicationCount` lets the company publish how many applied. Individual applications stay off-chain (personal data, hundreds per drive); only the total is public. The company signs it because the college's conversion rate depends on it.
@@ -73,7 +75,8 @@ The contracts decide purely from `msg.sender` — the wallet that signed the tra
 ### `DriveOutcomes.sol` — what happened, and who is placed
 
 - `recordStage` (only the company that owns the drive) appends one of Shortlisted / Assessment / Interview / Offered / NotSelected, plus the company's own label (e.g. "Tech Round 2"). History is append-only, and the same stage can't be recorded twice in a row.
-- `answerOffer` (only the student, and only while an offer stands): Accepted or Declined, answered once.
+- `recordStage` accepts only students registered under the drive's own college. Otherwise a student of one college, accepting an offer on another college's drive, would raise the wrong college's placed count.
+- `answerOffer` (only the student, only while the student is Active, and only while an offer stands on an open drive): Accepted or Declined, answered once per offer.
 
 **How the placed count stays correct.** This is the mechanism to be able to explain.
 
@@ -95,13 +98,13 @@ The contracts decide purely from `msg.sender` — the wallet that signed the tra
 
 Solidity 0.8.20 with the optimiser on at 200 runs — the usual middle ground for contracts deployed once but called often.
 
-### Contract tests — 222
+### Contract tests — 229
 
 | File | Tests | Covers |
 |---|---|---|
-| `ActorRegistry.test.js` | 72 | roles, split admission, resubmission, suspension, batch sizes, byte limits |
+| `ActorRegistry.test.js` | 77 | roles, split admission, resubmission, suspension and who may lift it, batch sizes, byte limits |
 | `PlacementDrive.test.js` | 54 | who may post, approve, cancel; terms can't be edited; applicant count |
-| `DriveOutcomes.test.js` | 51 | company-only stages, student-only answers, placement up and down, two-offer case, re-offers, cancelled drives |
+| `DriveOutcomes.test.js` | 53 | company-only stages, student-only answers, placement up and down, two-offer case, re-offers, cancelled drives, own-college students only |
 | `PreparationLog.test.js` | 28 | college-only authorship, bounds, no edits, cancellation, counting |
 | `v2-integration.test.js` | 17 | a full season across all contracts |
 
@@ -151,7 +154,8 @@ Writing on-chain *last* means a sign-up that never comes back costs no gas and n
 - **Skills** are stored normalised ("React.js" and "react js" match) but displayed as typed.
 - **Talent pool** (`routes/talent.js`, company only): filter by course, batch, CGPA, skills (all must match) and placed status.
   - The database query never selects name, email or phone, so a serializer can't leak them by mistake.
-  - Contact details unlock for one student and one company when that student applies to that company's drive.
+  - Contact details — and profile links such as LinkedIn, which name their owner — unlock for one student and one company when that student applies to that company's drive. A student can withdraw an application until the company records a stage for them, which locks them again.
+  - Only verified, Active students holding a roster row are listed. Students still in the queue, rejected, suspended, or whose roll number was taken back are not.
 - **Classmate lookup** (`routes/directory.js`, verified students only) needs both roll number and email. It's limited to 20 lookups per 15 minutes, and a miss gives the same answer whether the roll number or the email was wrong.
 
 ### Placement notices (`routes/announcements.js`)
@@ -174,6 +178,7 @@ A background process copies every relevant chain event into SQLite:
 
 How it stays correct:
 - **Catch-up and live sync.** On start it catches up from its last position, then listens live. Every 60 seconds it re-checks, in case a listener silently stopped.
+- **Catch-up works on a public network.** It reads in chunks of `INDEXER_BLOCK_RANGE` blocks (2,000 by default), because public RPC providers refuse one query over a wide range. After a new deployment it starts at the block the contracts were deployed in (`deployBlock`, recorded by `scripts/deploy.js`), not at block 0.
 - **A failed event holds the position back.** The saved position never moves past it, so it's retried instead of lost.
 - **Every write can be repeated safely.** Each event arrives twice in normal use — once when a route processes its own receipt, once from the listener. The batch table only counts a *newer* event with a *different* size as a revision; this fixed a bug where the public page showed batches as "revised" when they never were.
 - **Redeploying resets the copy.** A fresh chain is detected by its deploy timestamp. The copied chain data is cleared, and so are the rows that only made sense on the old chain (student verifications, roster claims, notices). Logins are kept.
@@ -196,6 +201,12 @@ How it stays correct:
 - **Clean errors:** malformed JSON gets a 400, not a crash or a 500.
 - **Startup takes the port first.** If port 4000 is taken, the backend exits with a clear message *before* touching the database. Previously, a second copy reset the shared database and then kept running in the background.
 - **Production guard:** the backend refuses to run against a non-local chain with the known Hardhat development keys.
+- **Job descriptions are written by the backend** (`driveDocument.js`). It stores the description and writes its content hash (a standard CIDv1) on-chain with the drive's terms. Anyone can hash the text they were shown and compare it with the chain. Uploading from the browser used to ship the Pinata key to every visitor. Without the key, the description was discarded and a random hash-shaped string went on-chain instead.
+- **The website probe only reaches the public internet** (`websiteCheck.js`). Checking a company's website used to fetch any URL from inside the server, including `localhost` and cloud metadata addresses. Every connection now checks the address it is about to reach, inside its own DNS lookup, so DNS rebinding can't get past the check. Redirects are re-checked at every hop.
+- **Accounts can be deleted** (`POST /auth/delete-account`, `db/erasure.js`). This erases the login, profile, resume, skills and applications. On-chain records stay, tied to an address nothing links back to the person. The college's roster row stays, because it is the college's record.
+- **Admin sessions can be ended.** Signing out, or changing `ADMIN_PASSWORD`, invalidates every admin token.
+- **Responses carry baseline security headers.** `/health` no longer publishes the treasury's address or balance.
+- **The email-code endpoints give one answer either way**, so they no longer reveal which addresses have accounts.
 - **The chain is checked, not assumed (`chainHealth.js`).** Restarting a local Hardhat node wipes it: no contracts, no history, no balances. The backend used to keep serving against the empty chain, so every action failed with ethers' `could not coalesce error`, which named nothing useful. Now it verifies at start-up that the manifest's contracts have code, and re-checks every 15 seconds while running. A wiped chain makes it refuse to start, or stop serving with one sentence naming the fix: deploy again, then restart. `/health` reports the same message, and the check's answers carry CORS headers so the browser shows them instead of discarding them as "failed to fetch".
 
 ### Routes
@@ -213,7 +224,7 @@ How it stays correct:
 | `/admin` | administrator | create the college, accounts, suspend/restore, action log |
 | `/public` | anyone | batches, drives and funnels, recruiters, preparation, public notices |
 
-### Backend tests — 206
+### Backend tests — 250
 
 These run against a temporary SQLite file with no blockchain. They cover validation, authorisation, the privacy boundaries (a company never sees names; one company's applicant doesn't unlock for another), notices, resumes, preparation counting, batch-revision counting, verification ordering, idempotency and the indexer's position handling.
 
@@ -263,8 +274,10 @@ Paths that actually send transactions are covered by the live suites below inste
 
 ## 6. Known gaps, stated plainly
 
+- **Whoever runs the backend could sign as anyone.** This is the price of custodial wallets, and the most important limit of the design. The contracts check `msg.sender`, so they guarantee that each record was signed by the right *wallet* — a company's offer by the company's wallet, a student's acceptance by the student's. But the backend holds every wallet's private key (encrypted, with the key to decrypt them in its own configuration), so the person operating the server could in principle sign with any of them. What the design does guarantee: no *user* of the website can write another party's facts, and nothing written can be changed afterwards by anyone, the operator included. What it does not: protection from a dishonest operator writing new records in someone's name. The fix is to let users hold their own keys (a browser wallet, or keys derived on the user's device), at the cost of the "no crypto knowledge needed" experience.
 - **Not deployed publicly yet.** Everything runs on a local Hardhat chain. Polygon Amoy is the planned target; an earlier attempt was paused for lack of test gas.
-- **The Pinata key is in the browser bundle.** Job-description documents are pinned to IPFS from the frontend, so `VITE_PINATA_JWT` is shipped to every visitor. Pinning has to move to the backend, and the key has to be replaced, before any public deployment.
+- **One confirmation is treated as final.** Routes and the indexer mirror a transaction as soon as it is mined. A public chain can occasionally reorganise its most recent blocks, which could leave the mirror holding an event that no longer exists. Waiting for several confirmations before mirroring, or re-reading recent blocks, is the fix before a public launch.
+- **Resume links are visible while browsing.** Profile links are hidden until a student applies, but a project link (often a GitHub repository) can still carry a username.
 - **One college per deployment.** The data model allows several, but routes such as the talent pool assume one.
 - **Resumes are unverified by design.** The platform vouches for the placement record, not for what students write about themselves.
 - **A student's CGPA is self-declared**, and it is what decides which drives they are eligible for — so a cutoff a company published on-chain is not actually enforced against a figure the student typed. Moving CGPA into the roster, where the college owns it as it owns names and courses, is the fix and is deliberately left for the next version.
@@ -274,8 +287,8 @@ Paths that actually send transactions are covered by the live suites below inste
 
 | Check | Result |
 |---|---|
-| Contract tests | 222 / 222 |
-| Backend tests | 206 / 206 |
+| Contract tests | 229 / 229 |
+| Backend tests | 250 / 250 |
 | Live suites | all 3 pass against a running stack |
 | Frontend | builds, and lint passes |
 | Public dashboard | checked visually in dark and light themes, at desktop and phone widths |

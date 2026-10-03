@@ -59,7 +59,13 @@ export const config = {
   jwtSecret: requireEnv("JWT_SECRET"),
   walletEncryptionKey: requireEnv("WALLET_ENCRYPTION_KEY"),
   treasuryPrivateKey: process.env.TREASURY_PRIVATE_KEY || process.env.VERIFIER_PRIVATE_KEY,
-  walletGasDripEth: process.env.WALLET_GAS_DRIP_ETH || "1.0",
+  // 1.0 is free on a local chain, where each test account holds 10,000. On a
+  // real network it is a real balance per signup, so unless set explicitly the
+  // drip there is small: ample for a student's handful of transactions on
+  // Polygon, and topped up automatically if a wallet runs low (treasury.js).
+  walletGasDripEth:
+    process.env.WALLET_GAS_DRIP_ETH ||
+    (isLocalRpc(process.env.RPC_URL || "http://127.0.0.1:8545") ? "1.0" : "0.05"),
   frontendOrigin: process.env.FRONTEND_ORIGIN || "http://localhost:5173",
   frontendUrl: process.env.FRONTEND_URL || "http://localhost:5173",
   // Optional, not required — password reset just logs a clear error at

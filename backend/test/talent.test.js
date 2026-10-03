@@ -486,3 +486,11 @@ test("an account whose roll number was taken back is not listed", async () => {
   const list = await request(app).get("/talent").set("Authorization", authHeader(acme));
   assert.ok(!list.body.students.some((s) => s.headline === "Not really from here"));
 });
+
+test("profile links stay hidden until the student applies", async () => {
+  // A LinkedIn page names its owner. Rival never had Asha apply to it.
+  const res = await request(app).get("/talent/21CE1041").set("Authorization", authHeader(rival));
+  assert.equal(res.body.student.contactUnlocked, false);
+  assert.deepEqual(res.body.student.links, { github: null, linkedin: null, portfolio: null });
+  assert.ok(!JSON.stringify(res.body).includes("github.com/asha"));
+});

@@ -12,7 +12,7 @@
  */
 
 import React, { useState } from "react";
-import { KeyRound, LogOut, ShieldCheck } from "lucide-react";
+import { KeyRound, LogOut, ShieldCheck, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import PasswordInput from "./shared/PasswordInput.jsx";
@@ -195,13 +195,81 @@ export default function ProfilePage() {
                 expect it to mean here, and finding that out later would feel
                 like a trick. */}
             <p className="form-hint" style={{ marginTop: "var(--space-3)" }}>
-              Your login, your profile and your resume can be removed — ask your placement
-              cell. What was signed on the blockchain stays: a drive, a result, an accepted
-              offer. It carries a wallet address, never your name.
+              Deleting your account removes your login, profile, resume, skills and
+              applications from this app. What was signed on the blockchain stays: a drive, a
+              result, an accepted offer. It carries a wallet address, never your name — and
+              once your account is gone, nothing here links that address to you.
             </p>
+            <DeleteAccount onDeleted={logout} />
           </div>
         </div>
       </section>
     </div>
+  );
+}
+
+/**
+ * Deletes the account, after asking for the password again.
+ *
+ * The page used to say "ask your placement cell", and the placement cell had
+ * no way to do it either. Folded behind a button because it cannot be undone.
+ */
+function DeleteAccount({ onDeleted }) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (busy || !password) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.post("/auth/delete-account", { password });
+      await onDeleted();
+    } catch (err) {
+      setError(err.message);
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: "var(--space-3)" }} onClick={() => setOpen(true)}>
+        <Trash2 size={14} /> Delete my account
+      </button>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-10" style={{ marginTop: "var(--space-3)" }}>
+      <div className="alert alert-warning" role="status" style={{ display: "block" }}>
+        This can't be undone. Your login and everything personal held here are erased.
+      </div>
+      <div className="form-group">
+        <label htmlFor="ac-delete-password">Your password, to confirm</label>
+        <PasswordInput
+          id="ac-delete-password"
+          autoComplete="current-password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          required
+        />
+      </div>
+      {error && (
+        <div className="alert alert-danger" role="alert">
+          <span>{error}</span>
+        </div>
+      )}
+      <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
+        <button type="submit" className="btn btn-danger btn-sm" disabled={busy || !password}>
+          {busy ? <span className="spinner" /> : "Delete my account"}
+        </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setOpen(false); setPassword(""); setError(""); }}>
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }

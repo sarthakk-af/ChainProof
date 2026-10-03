@@ -21,7 +21,22 @@ import { userAuth } from "./middleware/userAuth.js";
  */
 export function createApp() {
   const app = express();
+  // Express announces itself in every response; nothing is gained by telling a
+  // stranger which framework (and so which known bugs) to try.
+  app.disable("x-powered-by");
   app.use(cors({ origin: config.frontendOrigin }));
+  // The baseline headers for an API that only ever answers JSON: don't let a
+  // browser guess a different content type, render a response in a frame, or
+  // send this origin's URLs to other sites in the Referer header.
+  app.use((_req, res, next) => {
+    res.set({
+      "X-Content-Type-Options": "nosniff",
+      "X-Frame-Options": "DENY",
+      "Referrer-Policy": "no-referrer",
+      "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    });
+    next();
+  });
   app.use(express.json());
 
   // General-purpose request visibility — every request, not just the ones we
@@ -44,10 +59,12 @@ export function createApp() {
   });
 
   /**
-   * Chain connectivity and treasury state. Deliberately unauthenticated — it
-   * reveals nothing beyond "the chain is up and the service wallet can still
-   * fund signups", and both are things you want to see before they stop
-   * working rather than after.
+   * Chain connectivity, and whether the service wallet is running low.
+   * Deliberately unauthenticated, so a script can wait for the stack to come
+   * up — and deliberately thin for the same reason. It used to publish the
+   * treasury's address and exact balance to anyone, which is a map for
+   * whoever wants to know how close the service is to running dry; the admin
+   * overview shows both to the one person who needs them.
    */
   app.get("/health", async (_req, res) => {
     const { chainProblem } = await import("./chainHealth.js");
@@ -56,26 +73,20 @@ export function createApp() {
     }
     try {
       const { provider } = await import("./chain.js");
-      const { getTreasuryBalance, treasuryAddress } = await import("./treasury.js");
+      const { getTreasuryBalance } = await import("./treasury.js");
       const [blockNumber, treasuryBalanceEth] = await Promise.all([
         provider.getBlockNumber(),
         getTreasuryBalance(),
       ]);
       const drip = Number(config.walletGasDripEth);
-      const balance = Number(treasuryBalanceEth);
-      const remainingSignups = drip > 0 ? Math.floor(balance / drip) : null;
+      const remainingSignups = drip > 0 ? Math.floor(Number(treasuryBalanceEth) / drip) : null;
       res.json({
         status: "ok",
         blockNumber,
-        treasury: {
-          address: treasuryAddress,
-          balanceEth: treasuryBalanceEth,
-          approxSignupsRemaining: remainingSignups,
-          low: remainingSignups !== null && remainingSignups < 10,
-        },
+        treasury: { low: remainingSignups !== null && remainingSignups < 10 },
       });
-    } catch (err) {
-      res.status(503).json({ status: "error", error: err.message });
+    } catch {
+      res.status(503).json({ status: "error", error: "The blockchain isn't reachable." });
     }
   });
 

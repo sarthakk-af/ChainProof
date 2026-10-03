@@ -50,8 +50,8 @@ export function verifyToken(token) {
  * TTL than a user session since approve/reject is the most consequential
  * action in the whole app.
  */
-export function signAdminToken({ adminId, username }) {
-  return jwt.sign({ sub: adminId, username, type: "admin" }, config.jwtSecret, {
+export function signAdminToken({ adminId, username, tokenVersion = 0 }) {
+  return jwt.sign({ sub: adminId, username, type: "admin", tokenVersion }, config.jwtSecret, {
     expiresIn: ADMIN_TOKEN_TTL,
   });
 }

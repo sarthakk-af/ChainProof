@@ -99,6 +99,15 @@ export function addApplication(driveId, studentAddress) {
   }
 }
 
+/** Takes an application back. @returns {boolean} false if there was none. */
+export function removeApplication(driveId, studentAddress) {
+  return (
+    db
+      .prepare("DELETE FROM applications WHERE drive_id = ? AND LOWER(student_address) = LOWER(?)")
+      .run(driveId, studentAddress).changes > 0
+  );
+}
+
 export function hasApplied(driveId, studentAddress) {
   return !!db
     .prepare("SELECT 1 FROM applications WHERE drive_id = ? AND LOWER(student_address) = LOWER(?)")

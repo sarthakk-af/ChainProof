@@ -40,7 +40,6 @@
  *   single spaces. A paragraph field must not: collapsing it would run every
  *   line of an "about" section into one. Newlines survive; runs of blank lines
  *   are squeezed to one, and other control characters are dropped.
- *   are squeezed to one, and other control characters are dropped.
  * @property {string} [help]      Shown to the user when the value is rejected.
  */
 import { noEmojis } from "./validation.js";

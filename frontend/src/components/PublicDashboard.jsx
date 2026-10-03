@@ -23,6 +23,7 @@ import { AlertCircle, ChevronRight } from "lucide-react";
 import { api } from "../utils/api.js";
 import { formatDate, formatLPA } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
+import DriveDescription from "./shared/DriveDescription.jsx";
 
 const TABS = [
   { id: "companies", label: "Companies" },
@@ -530,6 +531,7 @@ function DriveDetail({ drive }) {
           )}
         </dl>
       </div>
+      <DriveDescription text={drive.description} />
     </div>
   );
 }

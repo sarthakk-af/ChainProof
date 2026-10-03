@@ -34,7 +34,7 @@ process.env.WALLET_ENCRYPTION_KEY =
   "236d277256c4ac74368580b5be214189ace6dff26eb4e5efe448dbf1c2a1158c";
 process.env.DB_PATH = TEST_DB_PATH;
 
-const { safeCursor, recordSyncFailure, clearSyncFailure } = await import("../src/indexer.js");
+const { safeCursor, recordSyncFailure, clearSyncFailure, blockRanges } = await import("../src/indexer.js");
 const { listSyncFailures } = await import("../src/db.js");
 const { db } = await import("../src/db.js");
 
@@ -117,4 +117,24 @@ test("a recorded gap is still known after a restart", () => {
 
   clearSyncFailure(4242, new Set());
   assert.deepEqual(listSyncFailures(), []);
+});
+
+// --- catching up in chunks ----------------------------------------------------
+
+test("a catch-up is split into ranges a public RPC will accept", () => {
+  // Public providers refuse one eth_getLogs call over a wide range; a local
+  // node never did, which hid the problem.
+  assert.deepEqual(blockRanges(1, 4500, 2000), [[1, 2000], [2001, 4000], [4001, 4500]]);
+});
+
+test("the ranges cover every block exactly once, with no gap", () => {
+  const ranges = blockRanges(17, 10_016, 1000);
+  assert.equal(ranges[0][0], 17);
+  assert.equal(ranges.at(-1)[1], 10_016);
+  for (let i = 1; i < ranges.length; i++) assert.equal(ranges[i][0], ranges[i - 1][1] + 1);
+});
+
+test("a range smaller than one chunk is a single query, and an empty one is none", () => {
+  assert.deepEqual(blockRanges(5, 9, 2000), [[5, 9]]);
+  assert.deepEqual(blockRanges(10, 9, 2000), []);
 });

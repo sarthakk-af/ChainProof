@@ -162,10 +162,13 @@ talentRouter.get("/:rollNumber", (req, res) => {
     ...serializeTalentCard(row, listSkills(row.address).map((s) => s.display)),
     about: row.about || null,
     hobbies: row.hobbies || null,
+    // Unlocked with the contact details, not before. A LinkedIn page names its
+    // owner, so showing it to a company the student never applied to undid the
+    // anonymity everything else on this card keeps.
     links: {
-      github: row.github_url || null,
-      linkedin: row.linkedin_url || null,
-      portfolio: row.portfolio_url || null,
+      github: applied ? row.github_url || null : null,
+      linkedin: applied ? row.linkedin_url || null : null,
+      portfolio: applied ? row.portfolio_url || null : null,
     },
     resume: serializeResume(listResumeItems(row.address)),
     contactUnlocked: applied,

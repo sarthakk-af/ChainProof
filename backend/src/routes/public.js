@@ -14,6 +14,7 @@ import {
   preparationSummary,
   AUDIENCE,
   listAnnouncements,
+  driveDescription,
 } from "../db.js";
 import { ROLE, STATUS, DRIVE_STATUS, STAGE, OFFER_RESPONSE } from "../chain.js";
 import {
@@ -49,6 +50,7 @@ publicRouter.get("/overview", (_req, res) => {
     roleCompany: ROLE.Company,
     roleStudent: ROLE.Student,
     statusActive: STATUS.Active,
+    visibleDriveStatuses: [DRIVE_STATUS.Approved, DRIVE_STATUS.Closed, DRIVE_STATUS.Cancelled],
   });
   res.json(counts);
 });
@@ -136,6 +138,7 @@ publicRouter.get("/colleges/:address/drives", (req, res) => {
       });
       return serializeDrive(d, {
         companyName: getActor(d.company_address)?.name ?? null,
+        description: driveDescription(d),
         funnel,
       });
     }),
@@ -221,6 +224,7 @@ publicRouter.get("/drives/:id", (req, res) => {
     drive: serializeDrive(drive, {
       companyName: getActor(drive.company_address)?.name ?? null,
       collegeName: getActor(drive.college_address)?.name ?? null,
+      description: driveDescription(drive),
       funnel,
     }),
   });

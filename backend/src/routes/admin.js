@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit";
 import {
   db,
   createUser,
+  deleteUser,
   getUserByEmail,
   setEmailVerified,
   setPasswordHash,
@@ -34,7 +35,8 @@ import { config } from "../config.js";
 import { logger } from "../logger.js";
 import { publicChainError } from "../chainErrors.js";
 import { noEmojis, cleanText } from "../validation.js";
-import { byteLength, MAX_NAME_BYTES } from "../limits.js";
+import { byteLength, MAX_NAME_BYTES, MAX_METADATA_BYTES } from "../limits.js";
+import { validateWebsiteFormat } from "../websiteCheck.js";
 
 /**
  * admin.js — the platform owner.
@@ -103,10 +105,20 @@ adminRouter.post("/auth/login", adminLoginLimiter, async (req, res) => {
   }
 
   logger.info("admin_logged_in", { username: admin.username });
-  res.json({ token: signAdminToken({ adminId: admin.id, username: admin.username }), username: admin.username });
+  res.json({
+    token: signAdminToken({ adminId: admin.id, username: admin.username, tokenVersion: admin.token_version }),
+    username: admin.username,
+  });
 });
 
 adminRouter.use(adminSessionAuth);
+
+/** Ends every admin session, this one included. */
+adminRouter.post("/auth/logout", (req, res) => {
+  db.prepare("UPDATE admins SET token_version = token_version + 1 WHERE id = ?").run(req.admin.id);
+  logger.info("admin_logged_out", { username: req.admin.username });
+  res.json({ ok: true });
+});
 
 /** Chain health, treasury balance, and whether the college exists yet. */
 adminRouter.get("/overview", async (_req, res) => {
@@ -173,6 +185,14 @@ adminRouter.post("/college", async (req, res) => {
   const regCheck = validateRegistrationNumber("College", registrationNumber);
   if (regCheck.error) return res.status(400).json({ error: regCheck.error });
 
+  // Checked like a company's website: it goes on-chain permanently, and an
+  // over-long one used to fail as an unreadable contract revert.
+  const websiteCheck = validateWebsiteFormat(website);
+  if (websiteCheck.error) return res.status(400).json({ error: websiteCheck.error });
+  if (byteLength(websiteCheck.value) > MAX_METADATA_BYTES) {
+    return res.status(400).json({ error: `Website URL must be ${MAX_METADATA_BYTES} bytes or fewer.` });
+  }
+
   const loginEmail = noEmojis(email).trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginEmail)) {
     return res.status(400).json({ error: "Enter a valid email for the placement cell login." });
@@ -224,9 +244,11 @@ adminRouter.post("/college", async (req, res) => {
       await fundWallet(address);
       logger.info("college_login_reused", { email: loginEmail, address });
     } else {
+      // The account row first, gas second — the same order signup uses. The
+      // other way round, a failed insert left a funded wallet that no account
+      // pointed at.
       const wallet = generateWallet();
       address = wallet.address;
-      await fundWallet(address);
       user = createUser({
         email: loginEmail,
         passwordHash: await hashPassword(password),
@@ -234,6 +256,12 @@ adminRouter.post("/college", async (req, res) => {
         encryptedPrivateKey: wallet.encryptedPrivateKey,
       });
       db.prepare("UPDATE users SET is_college_login = 1 WHERE id = ?").run(user.id);
+      try {
+        await fundWallet(address);
+      } catch (err) {
+        deleteUser(user.id);
+        throw err;
+      }
     }
     // The admin vouched for this account by creating it; there is nobody else
     // to confirm it with.
@@ -247,7 +275,7 @@ adminRouter.post("/college", async (req, res) => {
         const tx = await registry.register(
           ROLE.College,
           collegeName,
-          String(website ?? "").trim(),
+          websiteCheck.value,
           "0x0000000000000000000000000000000000000000",
           { nonce }
         );

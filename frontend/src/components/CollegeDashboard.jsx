@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import PreparationPanel from "./college/PreparationPanel.jsx";
 import Announcements from "./shared/Announcements.jsx";
+import DriveDescription from "./shared/DriveDescription.jsx";
 import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
@@ -334,6 +335,7 @@ function DrivesPanel({ onError, onNotice }) {
                   {d.minCgpa ? ` · CGPA ${d.minCgpa.toFixed(2)}+` : " · no CGPA cutoff"}
                   {" · "}drive {formatDate(d.driveDate)}
                 </div>
+                <DriveDescription text={d.description} />
               </div>
               <div className="flex gap-8">
                 <button className="btn btn-primary btn-sm" disabled={isBusy(busy, d.id)} onClick={() => decide(d.id, "approve")}>

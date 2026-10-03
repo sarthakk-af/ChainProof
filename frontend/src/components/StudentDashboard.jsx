@@ -25,6 +25,7 @@ import ResumeEditor from "./student/ResumeEditor.jsx";
 import ClassmateLookup from "./student/ClassmateLookup.jsx";
 import Announcements from "./shared/Announcements.jsx";
 import ConfirmEmail from "./shared/ConfirmEmail.jsx";
+import DriveDescription from "./shared/DriveDescription.jsx";
 import Tabs, { useUrlTab } from "./shared/Tabs.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
@@ -242,6 +243,7 @@ function OpenDrives({ onError, onNotice }) {
               {" · drive "}{formatDate(d.driveDate)}
               {" · apply by "}{formatDate(d.applicationDeadline)}
             </div>
+            <DriveDescription text={d.description} />
             {!d.applied && !d.eligible && (
               /* The specific cutoff, not "not eligible" — the criteria were
                  published before applications opened, so a student turned away
@@ -295,6 +297,22 @@ function MyApplications({ onError, onNotice }) {
     }
   };
 
+  // Applying shares your contact details with the company, so it can be taken
+  // back — until the company has acted on it.
+  const withdraw = async (driveId) => {
+    setBusy(`${driveId}:withdraw`);
+    onError("");
+    try {
+      await api.del(`/drives/${driveId}/apply`);
+      onNotice("Application withdrawn. The company no longer sees your contact details.");
+      load();
+    } catch (e) {
+      onError(e.message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (loading) return <LoadingRows rows={2} label="Checking your applications" />;
 
   if (applications.length === 0) {
@@ -317,7 +335,18 @@ function MyApplications({ onError, onNotice }) {
               {formatLPA(a.annualPackage)} · drive {formatDate(a.driveDate)}
             </div>
           </div>
-          <span className="badge badge-student">{a.stageLabel || a.stage}</span>
+          <span className="flex items-center gap-8">
+            <span className="badge badge-student">{a.stageLabel || a.stage}</span>
+            {a.stage === "Applied" && (
+              <button
+                className="btn btn-ghost btn-sm"
+                disabled={isBusy(busy, a.driveId)}
+                onClick={() => withdraw(a.driveId)}
+              >
+                {busy === `${a.driveId}:withdraw` ? <span className="spinner" /> : "Withdraw"}
+              </button>
+            )}
+          </span>
 
           {a.stage === "Offered" && a.driveStatus === "Cancelled" && (
             <div className="row-meta" style={{ flexBasis: "100%", color: "var(--accent-warning)" }}>
@@ -446,14 +475,14 @@ function ProfilePanel({ onError, onNotice }) {
                   rows={3}
                   value={values[f.key] ?? ""}
                   onChange={(e) => setValues((v) => ({ ...v, [f.key]: f.type === "text" ? noEmojis(e.target.value) : e.target.value }))}
-                  maxLength={2000}
+                  maxLength={f.maxBytes ?? 1500}
                 />
               ) : (
                 <input
                   id={`p-${f.key}`}
                   value={values[f.key] ?? ""}
                   onChange={(e) => setValues((v) => ({ ...v, [f.key]: f.type === "text" ? noEmojis(e.target.value) : e.target.value }))}
-                  maxLength={f.type === "text" ? 100 : undefined}
+                  maxLength={f.type === "text" ? f.maxBytes ?? 100 : undefined}
                 />
               )}
               {f.help && <p className="form-hint">{f.help}</p>}

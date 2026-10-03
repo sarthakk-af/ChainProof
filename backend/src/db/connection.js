@@ -395,6 +395,16 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_preparation_college
     ON preparation_events(college_address, held_on);
+
+  -- The job description behind each drive, keyed by the content hash written
+  -- on-chain with it (see src/driveDocument.js). Not a mirror of the chain —
+  -- the chain only holds the hash — so a redeploy leaves it alone: a document
+  -- is identified by its content, and no new drive can collide with an old one.
+  CREATE TABLE IF NOT EXISTS drive_documents (
+    cid TEXT PRIMARY KEY,
+    content TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
 `);
 
 // Lightweight migration for a database file created before token_version
@@ -450,6 +460,14 @@ for (const definition of columnDefinitions()) {
   if (!profileColumns.includes(columnName)) {
     db.exec(`ALTER TABLE student_profiles ADD COLUMN ${definition}`);
   }
+}
+
+// Admin sessions carry a version, as user sessions do, so signing out and
+// changing ADMIN_PASSWORD can end them. Before this an admin token stayed
+// valid for its full twelve hours whatever happened.
+const adminColumns = db.prepare("PRAGMA table_info(admins)").all().map((c) => c.name);
+if (!adminColumns.includes("token_version")) {
+  db.exec("ALTER TABLE admins ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0");
 }
 
 const adminActionColumns = db.prepare("PRAGMA table_info(admin_actions)").all().map((c) => c.name);

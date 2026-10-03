@@ -278,6 +278,34 @@ function resetIfRedeployed() {
     );
   }
   resetMirrorForNewDeployment(currentFingerprint);
+
+  // Start reading where the contracts were deployed, not at block 0. Nothing
+  // earlier can hold one of their events, and on a public network block 0 is
+  // tens of millions of blocks back. Older manifests carry no deployBlock and
+  // start from 0, which costs nothing on a local chain.
+  const deployBlock = Number(deployment.deployBlock);
+  if (Number.isInteger(deployBlock) && deployBlock > 0) {
+    setLastSyncedBlock(deployBlock - 1);
+  }
+}
+
+/**
+ * How many blocks one log query may span.
+ *
+ * Public RPC providers cap `eth_getLogs` — commonly a few thousand blocks or
+ * ten thousand results per call — and refuse anything wider. A local node
+ * doesn't, which is why one query over the whole range used to work here and
+ * would have failed on the first start against Amoy.
+ */
+export const BLOCK_RANGE = Math.max(1, Number(process.env.INDEXER_BLOCK_RANGE) || 2000);
+
+/** Every block range [from, to] to read, in order, at most `size` blocks each. */
+export function blockRanges(fromBlock, toBlock, size = BLOCK_RANGE) {
+  const ranges = [];
+  for (let start = fromBlock; start <= toBlock; start += size) {
+    ranges.push([start, Math.min(start + size - 1, toBlock)]);
+  }
+  return ranges;
 }
 
 /** Catch up on every relevant event since the last time the indexer ran. */
@@ -290,33 +318,38 @@ export async function backfill() {
   }
 
   console.log(`[indexer] backfilling blocks ${fromBlock}..${toBlock}`);
+  let processed = 0;
 
-  const logsPerWatcher = await Promise.all(
-    WATCHERS.map((w) =>
-      w.contract.queryFilter(w.contract.filters[w.eventName](), fromBlock, toBlock)
-    )
-  );
+  // A chunk at a time, with the cursor moved after each one, so a long catch-up
+  // that fails halfway resumes where it stopped rather than from the start.
+  for (const [start, end] of blockRanges(fromBlock, toBlock)) {
+    const logsPerWatcher = await Promise.all(
+      WATCHERS.map((w) => w.contract.queryFilter(w.contract.filters[w.eventName](), start, end))
+    );
 
-  const entries = logsPerWatcher.flatMap((logs, i) =>
-    logs.map((log) => ({ watcher: WATCHERS[i], log }))
-  );
-  entries.sort((a, b) => a.log.blockNumber - b.log.blockNumber || a.log.index - b.log.index);
+    const entries = logsPerWatcher.flatMap((logs, i) =>
+      logs.map((log) => ({ watcher: WATCHERS[i], log }))
+    );
+    entries.sort((a, b) => a.log.blockNumber - b.log.blockNumber || a.log.index - b.log.index);
 
-  for (const { watcher, log } of entries) {
-    await watcher.handle(log.args, log);
+    for (const { watcher, log } of entries) {
+      await watcher.handle(log.args, log);
+    }
+    processed += entries.length;
+
+    // Reaching here means every event in the chunk was mirrored, so any block
+    // in it that was previously held back is resolved. Done before moving the
+    // cursor, so a gap can never be forgotten while the watermark moves past it.
+    const repaired = pendingSyncFailures().filter((b) => b <= end);
+    for (const block of repaired) clearSyncFailure(block);
+    if (repaired.length > 0) {
+      console.log(`[indexer] recovered ${repaired.length} previously failed block(s): ${repaired.join(", ")}`);
+    }
+
+    setLastSyncedBlock(safeCursor(end));
   }
 
-  // Reaching here means every event in the range was mirrored, so any block in
-  // it that was previously held back is resolved. Done before moving the
-  // cursor, so a gap can never be forgotten while the watermark moves past it.
-  const repaired = pendingSyncFailures().filter((b) => b <= toBlock);
-  for (const block of repaired) clearSyncFailure(block);
-  if (repaired.length > 0) {
-    console.log(`[indexer] recovered ${repaired.length} previously failed block(s): ${repaired.join(", ")}`);
-  }
-
-  setLastSyncedBlock(safeCursor(toBlock));
-  console.log(`[indexer] processed ${entries.length} event(s), now synced to block ${getLastSyncedBlock()}`);
+  console.log(`[indexer] processed ${processed} event(s), now synced to block ${getLastSyncedBlock()}`);
 }
 
 /**

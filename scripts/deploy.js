@@ -34,18 +34,22 @@ async function main() {
   // Step 1: Deploy ActorRegistry (deployer is the initial platform verifier —
   // the address that approves/rejects College and Company registrations)
   // -------------------------------------------------------------------------
-  console.log("\n[1/3] Deploying ActorRegistry...");
+  console.log("\n[1/4] Deploying ActorRegistry...");
   const ActorRegistry = await hre.ethers.getContractFactory("ActorRegistry");
   const actorRegistry = await ActorRegistry.deploy(deployer.address);
   await actorRegistry.waitForDeployment();
   const registryAddress = await actorRegistry.getAddress();
+  // The block the first contract landed in. Nothing before it can hold one of
+  // our events, so the backend starts reading the chain here — on a public
+  // network that is tens of millions of blocks it never has to scan.
+  const deployBlock = (await actorRegistry.deploymentTransaction().wait()).blockNumber;
   console.log(`      ✓ ActorRegistry deployed at: ${registryAddress}`);
   console.log(`      ✓ Initial verifier: ${deployer.address}`);
 
   // -------------------------------------------------------------------------
   // Step 2: Deploy PlacementDrive (passing registry address to constructor)
   // -------------------------------------------------------------------------
-  console.log("\n[2/3] Deploying PlacementDrive...");
+  console.log("\n[2/4] Deploying PlacementDrive...");
   const PlacementDrive = await hre.ethers.getContractFactory("PlacementDrive");
   const placementDrive = await PlacementDrive.deploy(registryAddress);
   await placementDrive.waitForDeployment();
@@ -57,7 +61,7 @@ async function main() {
   //         contract to establish which company owns a drive before accepting
   //         an outcome recorded against it.
   // -------------------------------------------------------------------------
-  console.log("\n[3/3] Deploying DriveOutcomes...");
+  console.log("\n[3/4] Deploying DriveOutcomes...");
   const DriveOutcomes = await hre.ethers.getContractFactory("DriveOutcomes");
   const driveOutcomes = await DriveOutcomes.deploy(registryAddress, driveAddress);
   await driveOutcomes.waitForDeployment();
@@ -100,6 +104,7 @@ async function main() {
     network: network,
     chainId: hre.network.config.chainId || 31337,
     deployedAt: new Date().toISOString(),
+    deployBlock,
     deployer: deployer.address,
     contracts: {
       ActorRegistry: {
@@ -140,7 +145,7 @@ export const DEPLOYMENT = ${JSON.stringify(deploymentManifest, null, 2)};
   console.log(`     ${manifestPath}`);
 
   // -------------------------------------------------------------------------
-  // Step 6: Summary
+  // Step 7: Summary
   // -------------------------------------------------------------------------
   console.log("\n" + "=".repeat(60));
   console.log("  Deployment Complete!");

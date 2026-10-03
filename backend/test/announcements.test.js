@@ -323,3 +323,23 @@ test("a company can list just its own notices", async () => {
   assert.ok(res.body.announcements.length > 0);
   assert.ok(res.body.announcements.every((a) => a.authorName === "Acme Ltd"));
 });
+
+test("a company cannot publish to the public page, even by asking for it", async () => {
+  // The public page is the college's record. The company form never offered
+  // "public", but the API used to accept it from anyone.
+  const posted = await request(app)
+    .post("/announcements")
+    .set("Authorization", authHeader(acme))
+    .send({ driveId: 1, title: "We are the best employer", body: "Apply now.", audience: "public" });
+  assert.equal(posted.status, 201);
+  assert.equal(posted.body.announcement.audience, "students");
+
+  const edited = await request(app)
+    .patch(`/announcements/${posted.body.announcement.id}`)
+    .set("Authorization", authHeader(acme))
+    .send({ title: "We are the best employer", body: "Apply now.", audience: "public" });
+  assert.equal(edited.body.announcement.audience, "students");
+
+  const publicFeed = await request(app).get(`/public/colleges/${college.wallet_address}/announcements`);
+  assert.ok(!publicFeed.body.announcements.some((a) => a.title === "We are the best employer"));
+});

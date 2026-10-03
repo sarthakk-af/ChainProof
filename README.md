@@ -84,8 +84,8 @@ Everything the backend stores is one file: `backend/data/chainproof.sqlite`. Ope
 ## Tests
 
 ```bash
-npx hardhat test                  # 222 contract tests
-cd backend && npm test            # 206 backend tests (no blockchain needed)
+npx hardhat test                  # 229 contract tests
+cd backend && npm test            # 250 backend tests (no blockchain needed)
 cd frontend && npm run lint       # frontend lint
 ```
 
@@ -111,4 +111,4 @@ They cover a full placement season end to end, hostile input (forged tokens, inj
 
 **Not done yet:**
 - **Public deployment.** Everything runs on a local blockchain. Deploying to Polygon Amoy (a public test network) is the next step.
-- **Before deploying:** job-description documents are currently uploaded to IPFS (via Pinata) from the browser, which means the Pinata key is included in the website's code. Uploads need to move to the backend, and the key needs replacing, before the site is public.
+- **A limit of the design, stated plainly:** the backend holds every user's wallet key so that nobody needs a crypto wallet. The contracts guarantee that each record was signed by the right *wallet*, but whoever runs the server could, in principle, sign with any of them. See [TECHNICAL_REPORT.md](TECHNICAL_REPORT.md#6-known-gaps-stated-plainly).

@@ -245,3 +245,36 @@ test("a drive the college declined takes no stages at all", async () => {
   assert.equal(res.status, 409);
   assert.match(res.body.error, /isn't accepting outcomes/);
 });
+
+// --- withdrawing an application ---------------------------------------------------
+
+test("a student can withdraw an application the company hasn't acted on", async () => {
+  const id = nextDriveId++;
+  upsertDrive({
+    id, companyAddress: company.wallet_address, collegeAddress: college.wallet_address,
+    roleTitle: "Analyst", annualPackage: 500000, minCgpaScaled: 0, batchYear: 2026,
+    applicationDeadline: Math.floor(Date.now() / 1000) + 86400,
+    driveDate: Math.floor(Date.now() / 1000) + 172800,
+    ipfsHash: "QmTest", status: DRIVE_STATUS.Approved, postedAt: 1, blockNumber: 1,
+  });
+  addApplication(id, student.wallet_address);
+
+  const res = await request(app).delete(`/drives/${id}/apply`).set("Authorization", authHeader(student));
+  assert.equal(res.status, 200);
+  const mine = await request(app).get("/drives/my-applications").set("Authorization", authHeader(student));
+  assert.ok(!mine.body.applications.some((a) => a.driveId === id));
+
+  const again = await request(app).delete(`/drives/${id}/apply`).set("Authorization", authHeader(student));
+  assert.equal(again.status, 404);
+});
+
+test("an application the company has acted on can't be withdrawn", async () => {
+  const id = driveWithOffer(DRIVE_STATUS.Approved);
+  const res = await request(app).delete(`/drives/${id}/apply`).set("Authorization", authHeader(student));
+  assert.equal(res.status, 409);
+});
+
+test("only a student can withdraw", async () => {
+  const res = await request(app).delete("/drives/1/apply").set("Authorization", authHeader(company));
+  assert.equal(res.status, 403);
+});

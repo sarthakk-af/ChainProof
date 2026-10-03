@@ -57,6 +57,11 @@ export default function PrivacyPage() {
           You can edit your resume whenever you like. Placement notices are off-chain too, which
           is why they can be edited or withdrawn — an edited notice is always marked as edited.
         </p>
+        <p style={{ margin: "var(--space-2) 0 0" }}>
+          You can delete your account from the Account page. That erases your login, profile,
+          resume, skills and applications here. Your college's own roster entry stays — it is the
+          college's record of its students, not something you wrote.
+        </p>
       </div>
 
       <div className="glass-card p-24" style={{ marginBottom: "var(--space-4)" }}>
@@ -98,7 +103,9 @@ export default function PrivacyPage() {
           </li>
           <li>
             <strong>Your wallet key</strong> is encrypted (AES-256-GCM) and decrypted only for
-            the instant a transaction is signed.
+            the instant a transaction is signed. This server keeps it for you so you never need
+            a crypto wallet — which also means whoever runs the server could, in principle, sign
+            with it. The blockchain proves which account signed a record, not which person.
           </li>
           <li>
             <strong>Your session</strong> can be ended everywhere from the Account page, and

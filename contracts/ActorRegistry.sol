@@ -200,6 +200,24 @@ contract ActorRegistry {
     }
     mapping(address => mapping(bytes32 => Batch)) private batches;
 
+    /**
+     * @notice Who admitted each Company: the College (or the verifier) that
+     *         approved it.
+     * @dev    Decides which college may later suspend it. Approval is open to any
+     *         Active College, because a company does not belong to one campus;
+     *         withdrawing its access is narrower — only the college that vouched
+     *         for it, or the verifier.
+     */
+    mapping(address => address) public admittedBy;
+
+    /**
+     * @notice Who imposed each current suspension. Zero when not suspended.
+     * @dev    Only that party, or the verifier, may lift it. Without this, any
+     *         Active College could reinstate a company the verifier had
+     *         suspended — undoing the platform owner's one power over accounts.
+     */
+    mapping(address => address) public suspendedBy;
+
     // =========================================================================
     // EVENTS
     // =========================================================================
@@ -391,6 +409,9 @@ contract ActorRegistry {
             revert ActorNotPending(_actor);
         }
         actors[_actor].status = Status.Active;
+        if (actors[_actor].role == Role.Company) {
+            admittedBy[_actor] = msg.sender;
+        }
         emit ActorApproved(_actor, msg.sender);
     }
 
@@ -423,14 +444,19 @@ contract ActorRegistry {
      *         this address already signed stay exactly as they were. What changes is
      *         that `isActive` now returns false, so nothing new can be signed.
      *
-     *         Authority follows the same split as approval — the verifier suspends a
-     *         College or Student, and a College may suspend a Company recruiting on
-     *         its own campus.
+     *         The verifier may suspend anyone. A College may suspend only a
+     *         Company it admitted itself — see `admittedBy`.
      * @param _actor  The Active actor to suspend.
      * @param _reason Short, public statement of why.
      */
     function suspendActor(address _actor, string calldata _reason) external {
-        _checkMayDecide(_actor);
+        if (msg.sender != verifier) {
+            bool isOwnCompany =
+                actors[_actor].role == Role.Company &&
+                admittedBy[_actor] == msg.sender &&
+                _isActiveCollege(msg.sender);
+            if (!isOwnCompany) revert NotAuthorizedToDecide(msg.sender, _actor);
+        }
         if (bytes(_reason).length > MAX_REASON_LENGTH) {
             revert ReasonTooLong(bytes(_reason).length);
         }
@@ -439,31 +465,36 @@ contract ActorRegistry {
             revert ActorNotActive(_actor);
         }
         a.status = Status.Suspended;
+        suspendedBy[_actor] = msg.sender;
         emit ActorSuspended(_actor, msg.sender, _reason);
     }
 
     /**
      * @notice Restores a Suspended actor to Active.
      * @dev    A suspension that could not be lifted would be a ban by another name,
-     *         and this admin is explicitly not a judge. Same authority as suspending.
+     *         and this admin is explicitly not a judge. Lifted by whoever imposed
+     *         it, or by the verifier — never by a third party, so a College cannot
+     *         undo a suspension the verifier imposed.
      * @param _actor The Suspended actor to reinstate.
      */
     function reinstateActor(address _actor) external {
-        _checkMayDecide(_actor);
         Actor storage a = actors[_actor];
         if (a.status != Status.Suspended) {
             revert ActorNotSuspended(_actor);
         }
+        if (msg.sender != verifier) {
+            bool imposedIt = suspendedBy[_actor] == msg.sender && _isActiveCollege(msg.sender);
+            if (!imposedIt) revert NotAuthorizedToDecide(msg.sender, _actor);
+        }
         a.status = Status.Active;
+        delete suspendedBy[_actor];
         emit ActorReinstated(_actor, msg.sender);
     }
 
-    /**
-     * @notice Rotates the platform verifier address.
-     * @dev    Verifier-only. Intended to allow migrating from a single admin key to a
-     *         multisig as the platform matures.
-     * @param _newVerifier The new verifier address.
-     */
+    function _isActiveCollege(address _who) internal view returns (bool) {
+        return actors[_who].role == Role.College && actors[_who].status == Status.Active;
+    }
+
     /**
      * @notice Reverts unless the caller may decide `_actor`'s registration.
      * @dev    Two different gates, because two different questions are being
@@ -550,6 +581,12 @@ contract ActorRegistry {
         return batches[_college][batchKey(_courseCode, _batchYear)];
     }
 
+    /**
+     * @notice Rotates the platform verifier address.
+     * @dev    Verifier-only. Intended to allow migrating from a single admin key to a
+     *         multisig as the platform matures.
+     * @param _newVerifier The new verifier address.
+     */
     function setVerifier(address _newVerifier) external onlyVerifier {
         if (_newVerifier == address(0)) {
             revert ZeroAddress();

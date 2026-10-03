@@ -71,7 +71,7 @@ async function preflight() {
       console.error(
         `\nNo contract found at the ${name} address in the deployment manifest.\n` +
           `The chain has been restarted since the last deploy. Run:\n\n` +
-          `  npm run deploy:local        (from D:\\Blockchain)\n`
+          `  npm run deploy:local        (from the project root)\n`
       );
       process.exit(1);
     }
@@ -406,7 +406,10 @@ if (FULL) {
       batchYear: 2026,
       applicationDeadline: now + 7 * 86400,
       driveDate: now + 14 * 86400,
-      ipfsHash: "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG",
+      description:
+        "Backend engineering on our payments platform. You will build and run APIs in Node.js " +
+        "and PostgreSQL, alongside a mentor, from your first week.\n\n" +
+        "Two technical rounds and one HR round, all on campus.",
     },
   });
   await call("POST", `/college/drives/${posted.driveId}/approve`, { token: college.token });

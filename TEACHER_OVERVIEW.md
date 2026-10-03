@@ -57,7 +57,7 @@ The second idea matters just as much: **each fact is written by whoever would be
 ## 6. What makes it trustworthy
 
 - **Nothing is edited or deleted.** A withdrawn offer, a changed batch size and a cancelled training session are each added as a new entry, and the original stays visible.
-- **Nobody can write another party's facts.** This is enforced by the blockchain itself, not just by the website.
+- **Nobody can write another party's facts.** This is enforced by the blockchain itself, not just by the website. One honest caveat: so that nobody needs a crypto wallet, the website keeps each user's blockchain key for them. The blockchain proves which account signed each record, but whoever runs the website's server could in principle sign with any account. Letting users keep their own keys removes that, at the cost of needing a wallet.
 - **Even the administrator can't change results.** The administrator can only suspend or restore accounts, and every such action is recorded.
 - **The percentage is honest about its denominator.** It is shown against the whole declared batch, with the number of students who signed up shown beside it. If the college changed the batch size, the public page says so.
 - **Personal details stay private.** Names, roll numbers and resumes are never written to the blockchain, because anything written there can never be removed. The blockchain only records events, tied to anonymous account codes.

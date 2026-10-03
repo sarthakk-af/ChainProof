@@ -7,12 +7,15 @@ import {
   getProfile,
   checkEligibility,
   addApplication,
+  removeApplication,
   hasApplied,
   countApplications,
   listApplicants,
   listApplicationsForStudent,
   getCurrentStages,
   getOfferResponse,
+  saveDriveDocument,
+  driveDescription,
 } from "../db.js";
 import { getUserSigner } from "../wallets.js";
 import {
@@ -32,7 +35,7 @@ import {
 } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
 import { serializeDrive, STAGE_NAMES, DRIVE_STATUS_NAMES } from "../serializers.js";
-import { validateIpfsHash } from "../ipfsHash.js";
+import { buildDriveDocument, parseDescription } from "../driveDocument.js";
 import { byteLength } from "../limits.js";
 import {
   withIdempotency,
@@ -82,9 +85,12 @@ drivesRouter.post("/", announceLimiter, async (req, res) => {
     batchYear,
     applicationDeadline,
     driveDate,
-    ipfsHash,
+    description,
     idempotencyKey,
   } = req.body || {};
+  // An `ipfsHash` sent by an older client is ignored: the backend writes the
+  // document and computes its hash itself, so the on-chain pointer always
+  // resolves to text this platform holds.
 
   const college = getActor(collegeAddress);
   if (!college || college.role !== ROLE.College || college.status !== STATUS.Active) {
@@ -96,8 +102,8 @@ drivesRouter.post("/", announceLimiter, async (req, res) => {
     return res.status(400).json({ error: `Role title must be 1-${MAX_ROLE_TITLE_BYTES} bytes.` });
   }
 
-  const hashCheck = validateIpfsHash(ipfsHash);
-  if (hashCheck.error) return res.status(400).json({ error: hashCheck.error });
+  const descriptionCheck = parseDescription(description);
+  if (descriptionCheck.error) return res.status(400).json({ error: descriptionCheck.error });
 
   const pkg = Number(annualPackage);
   if (!Number.isInteger(pkg) || pkg < 1 || pkg > 1e12) {
@@ -130,8 +136,22 @@ drivesRouter.post("/", announceLimiter, async (req, res) => {
     return res.status(400).json({ error: "That application deadline has already passed." });
   }
 
+  // Saved before the transaction, so the document exists by the time anything
+  // on-chain points at it. A failed post leaves an unreferenced row behind,
+  // which is harmless: it is keyed by its own content.
+  const document = buildDriveDocument({
+    roleTitle: title,
+    annualPackage: pkg,
+    minCgpaScaled: cgpaScaled,
+    batchYear: year,
+    applicationDeadline: deadline,
+    driveDate: date,
+    description: descriptionCheck.value,
+  });
+  saveDriveDocument(document.cid, document.content);
+
   try {
-    const fingerprint = fingerprintPayload(["drive", collegeAddress, title, pkg, cgpaScaled, year, deadline, date, hashCheck.value]);
+    const fingerprint = fingerprintPayload(["drive", collegeAddress, title, pkg, cgpaScaled, year, deadline, date, document.cid]);
     // Everything that must happen exactly once lives inside here, and what
     // comes back is the response itself — so a retry of a request whose answer
     // was lost is replayed from the record rather than re-sent to the chain.
@@ -146,7 +166,7 @@ drivesRouter.post("/", announceLimiter, async (req, res) => {
           year,
           deadline,
           date,
-          hashCheck.value,
+          document.cid,
           { nonce }
         );
         markBroadcast();
@@ -192,6 +212,7 @@ drivesRouter.get("/mine", (req, res) => {
     drives: rows.map((d) =>
       serializeDrive(d, {
         collegeName: getActor(d.college_address)?.name ?? null,
+        description: driveDescription(d),
         // What the platform has recorded, next to what the company has attested.
         // A gap between them is the company's cue to publish the figure.
         applicationsReceived: countApplications(d.id),
@@ -342,6 +363,7 @@ drivesRouter.get("/open", (req, res) => {
       drives: rows.map((d) =>
         serializeDrive(d, {
           companyName: getActor(d.company_address)?.name ?? null,
+          description: driveDescription(d),
           eligible: false,
           ineligibleReason: "Verify your roll number before you can apply.",
           applied: false,
@@ -359,6 +381,7 @@ drivesRouter.get("/open", (req, res) => {
       const eligibility = checkEligibility(profile, d);
       return serializeDrive(d, {
         companyName: getActor(d.company_address)?.name ?? null,
+        description: driveDescription(d),
         eligible: eligibility.eligible,
         ineligibleReason: eligibility.reason,
         applied: hasApplied(d.id, req.user.address),
@@ -401,6 +424,38 @@ drivesRouter.post("/:id/apply", (req, res) => {
 
   logger.info("application_submitted", { driveId, student: req.user.address });
   res.status(201).json({ applied: true });
+});
+
+/**
+ * Withdraws an application.
+ *
+ * Applying is how a student says "you may contact me", so it has to be
+ * revocable — before this, one click shared their name, email and phone with a
+ * company for good. Allowed only until the company records a stage for them:
+ * from then on the company has judged the application, and that judgement is
+ * on-chain whatever happens to the application row.
+ */
+drivesRouter.delete("/:id/apply", (req, res) => {
+  const actor = getActor(req.user.address);
+  if (!actor || actor.role !== ROLE.Student || actor.status !== STATUS.Active) {
+    return res.status(403).json({ error: "Only a registered student can withdraw an application." });
+  }
+  const driveId = Number(req.params.id);
+  if (!hasApplied(driveId, req.user.address)) {
+    return res.status(404).json({ error: "You haven't applied to that drive." });
+  }
+  const judged = getCurrentStages(driveId).some(
+    (s) => s.student_address.toLowerCase() === req.user.address.toLowerCase()
+  );
+  if (judged) {
+    return res.status(409).json({
+      error: "The company has already moved your application forward, so it can't be withdrawn now.",
+    });
+  }
+
+  removeApplication(driveId, req.user.address);
+  logger.info("application_withdrawn", { driveId, student: req.user.address });
+  res.json({ withdrawn: true });
 });
 
 /** A student's own applications, with where each currently stands. */

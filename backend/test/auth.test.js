@@ -205,3 +205,40 @@ test("userAuth middleware rejects a token whose version no longer matches the us
   const res = await request(app).get("/protected").set("Authorization", `Bearer ${token}`);
   assert.equal(res.status, 401);
 });
+
+// --- admin sessions -------------------------------------------------------------
+
+test("an admin can sign out, and the token stops working everywhere", async () => {
+  const { createApp } = await import("../src/app.js");
+  const app = createApp();
+  db.prepare("INSERT INTO admins (username, password_hash, created_at) VALUES (?, ?, ?)").run(
+    "ops.admin",
+    await hashPassword("AdminPass123"),
+    Date.now()
+  );
+
+  // A username with a dot: the login form used to strip it.
+  const login = await request(app)
+    .post("/admin/auth/login")
+    .send({ username: "ops.admin", password: "AdminPass123" });
+  assert.equal(login.status, 200);
+  const token = login.body.token;
+
+  const before = await request(app).get("/admin/actions").set("Authorization", `Bearer ${token}`);
+  assert.equal(before.status, 200);
+
+  const out = await request(app).post("/admin/auth/logout").set("Authorization", `Bearer ${token}`);
+  assert.equal(out.status, 200);
+
+  const after_ = await request(app).get("/admin/actions").set("Authorization", `Bearer ${token}`);
+  assert.equal(after_.status, 401);
+});
+
+test("every response carries the baseline security headers, and no framework banner", async () => {
+  const { createApp } = await import("../src/app.js");
+  const res = await request(createApp()).get("/");
+  assert.equal(res.headers["x-content-type-options"], "nosniff");
+  assert.equal(res.headers["x-frame-options"], "DENY");
+  assert.equal(res.headers["referrer-policy"], "no-referrer");
+  assert.equal(res.headers["x-powered-by"], undefined);
+});

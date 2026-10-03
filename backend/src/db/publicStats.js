@@ -38,9 +38,20 @@ export function getDriveFunnelStats(driveId, { stageShortlisted, stageAssessment
     assessed: reached(stageAssessment),
     interviewed: reached(stageInterview),
     offered: reached(stageOffered),
+    // Accepted offers that still stand. This counted every acceptance ever
+    // given, including ones the company later withdrew — so a drive could show
+    // more "accepted" than were placed, on the same page as the placed figure.
     accepted: db
-      .prepare("SELECT COUNT(*) AS c FROM offer_responses WHERE drive_id = ? AND response = ?")
-      .get(driveId, acceptedResponse).c,
+      .prepare(
+        `SELECT COUNT(*) AS c
+           FROM offer_responses r
+          WHERE r.drive_id = ? AND r.response = ?
+            AND (SELECT o.stage FROM drive_outcomes o
+                  WHERE o.drive_id = r.drive_id AND o.student_address = r.student_address
+                  ORDER BY o.block_number DESC, o.id DESC
+                  LIMIT 1) = ?`
+      )
+      .get(driveId, acceptedResponse, stageOffered).c,
   };
 }
 
@@ -85,7 +96,7 @@ export function getPlacementByBatch(collegeAddress) {
 }
 
 /** Headline counts for the landing page. */
-export function getOverviewCounts({ roleCollege, roleCompany, roleStudent, statusActive }) {
+export function getOverviewCounts({ roleCollege, roleCompany, roleStudent, statusActive, visibleDriveStatuses }) {
   const actors = (role, status) =>
     status === undefined
       ? db.prepare("SELECT COUNT(*) AS c FROM actors WHERE role = ?").get(role).c
@@ -95,7 +106,13 @@ export function getOverviewCounts({ roleCollege, roleCompany, roleStudent, statu
     colleges: actors(roleCollege, statusActive),
     companies: actors(roleCompany, statusActive),
     students: actors(roleStudent),
-    drives: db.prepare("SELECT COUNT(*) AS c FROM drives").get().c,
+    // Only drives the public pages show. Counting every drive put declined and
+    // never-approved ones into a public figure the drive list itself withholds.
+    drives: db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM drives WHERE status IN (${visibleDriveStatuses.map(() => "?").join(", ")})`
+      )
+      .get(...visibleDriveStatuses).c,
     placed: db.prepare("SELECT COUNT(*) AS c FROM placements WHERE placed = 1").get().c,
   };
 }

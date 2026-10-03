@@ -163,6 +163,16 @@ describe("DriveOutcomes", function () {
       ).to.be.revertedWithCustomError(driveOutcomes, "NotDriveCompany");
     });
 
+    it("should refuse a student of another college", async function () {
+      // Their acceptance would raise this drive's college's figure, not their own.
+      await actorRegistry.connect(stranger).register(Role.Student, "Student", "", college2.address);
+      await expect(
+        driveOutcomes.connect(company1).recordStage(driveId, stranger.address, Stage.Offered, "", "")
+      )
+        .to.be.revertedWithCustomError(driveOutcomes, "StudentOfAnotherCollege")
+        .withArgs(stranger.address, college1.address);
+    });
+
     it("should refuse a subject who is not a registered Student", async function () {
       await expect(
         driveOutcomes.connect(company1).recordStage(driveId, company2.address, Stage.Offered, "", "")
@@ -361,6 +371,14 @@ describe("DriveOutcomes", function () {
       await expect(driveOutcomes.connect(student1).answerOffer(driveId, Answer.Declined))
         .to.be.revertedWithCustomError(driveOutcomes, "OfferAlreadyAnswered")
         .withArgs(driveId, student1.address, Answer.Accepted);
+    });
+
+    it("should refuse an answer from a suspended student", async function () {
+      await actorRegistry.connect(verifier).suspendActor(student1.address, "shared login");
+      await expect(driveOutcomes.connect(student1).answerOffer(driveId, Answer.Accepted))
+        .to.be.revertedWithCustomError(driveOutcomes, "NotActiveStudent")
+        .withArgs(student1.address);
+      expect(await driveOutcomes.isPlaced(student1.address)).to.be.false;
     });
 
     it("should refuse OfferResponse.None", async function () {

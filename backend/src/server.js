@@ -1,4 +1,4 @@
-import express from "express";
+import express from "express";
 import cors from "cors";
 import { config } from "./config.js";
 import { createApp } from "./app.js";
@@ -43,10 +43,10 @@ async function ensureAdminAccount() {
       validatePassword(config.adminPassword) &&
       !(await verifyPassword(config.adminPassword, existing.password_hash))
     ) {
-      db.prepare("UPDATE admins SET password_hash = ? WHERE id = ?").run(
-        await hashPassword(config.adminPassword),
-        existing.id
-      );
+      // A new password ends every session signed in under the old one.
+      db.prepare(
+        "UPDATE admins SET password_hash = ?, token_version = token_version + 1 WHERE id = ?"
+      ).run(await hashPassword(config.adminPassword), existing.id);
       logger.info("admin_password_synced", { username: config.adminUsername });
       console.log(`[setup] Updated the "${config.adminUsername}" password to match backend/.env.`);
     }
@@ -103,6 +103,7 @@ async function main() {
   // script waiting for the stack can see the process is alive.
   let ready = false;
   const app = express();
+  app.disable("x-powered-by");
   // Before the gate, so its answers carry CORS headers too. Without them the
   // browser discards the response and the app can only say "failed to fetch".
   app.use(cors({ origin: config.frontendOrigin }));

@@ -627,6 +627,62 @@ describe("ActorRegistry", function () {
       expect(await actorRegistry.isActive(company1.address)).to.be.true;
     });
 
+    it("should record which College admitted a Company", async function () {
+      await registerActiveCollege(college1, "IIT Bombay");
+      await actorRegistry.connect(company1).register(Role.Company, "Infosys", "", ZERO_ADDRESS);
+      await actorRegistry.connect(college1).approveActor(company1.address);
+      expect(await actorRegistry.admittedBy(company1.address)).to.equal(college1.address);
+    });
+
+    it("should not let a College suspend a Company it did not admit", async function () {
+      await registerActiveCollege(college1, "IIT Bombay");
+      await registerActiveCollege(college2, "Rival Institute");
+      await actorRegistry.connect(company1).register(Role.Company, "Infosys", "", ZERO_ADDRESS);
+      await actorRegistry.connect(college1).approveActor(company1.address);
+
+      await expect(
+        actorRegistry.connect(college2).suspendActor(company1.address, "competitor's recruiter")
+      )
+        .to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide")
+        .withArgs(college2.address, company1.address);
+    });
+
+    it("should not let a College undo a suspension the verifier imposed", async function () {
+      // The platform owner's one power over accounts can't be overridden by a
+      // college — not even the one that admitted the company.
+      await registerActiveCollege(college1, "IIT Bombay");
+      await actorRegistry.connect(company1).register(Role.Company, "Shell Corp", "", ZERO_ADDRESS);
+      await actorRegistry.connect(college1).approveActor(company1.address);
+      await actorRegistry.connect(verifier).suspendActor(company1.address, "fake company");
+
+      await expect(actorRegistry.connect(college1).reinstateActor(company1.address))
+        .to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide");
+      expect(await actorRegistry.isActive(company1.address)).to.be.false;
+      expect(await actorRegistry.suspendedBy(company1.address)).to.equal(verifier.address);
+    });
+
+    it("should let the verifier lift a suspension a College imposed", async function () {
+      await registerActiveCollege(college1, "IIT Bombay");
+      await actorRegistry.connect(company1).register(Role.Company, "Infosys", "", ZERO_ADDRESS);
+      await actorRegistry.connect(college1).approveActor(company1.address);
+      await actorRegistry.connect(college1).suspendActor(company1.address, "dispute");
+
+      await actorRegistry.connect(verifier).reinstateActor(company1.address);
+      expect(await actorRegistry.isActive(company1.address)).to.be.true;
+      expect(await actorRegistry.suspendedBy(company1.address)).to.equal(ZERO_ADDRESS);
+    });
+
+    it("should not let a College that was itself suspended lift its own suspension of a Company", async function () {
+      await registerActiveCollege(college1, "IIT Bombay");
+      await actorRegistry.connect(company1).register(Role.Company, "Infosys", "", ZERO_ADDRESS);
+      await actorRegistry.connect(college1).approveActor(company1.address);
+      await actorRegistry.connect(college1).suspendActor(company1.address, "dispute");
+      await actorRegistry.connect(verifier).suspendActor(college1.address, "under review");
+
+      await expect(actorRegistry.connect(college1).reinstateActor(company1.address))
+        .to.be.revertedWithCustomError(actorRegistry, "NotAuthorizedToDecide");
+    });
+
     it("should not let a College suspend another College", async function () {
       await registerActiveCollege(college1, "IIT Bombay");
       await registerActiveCollege(college2, "Rival Institute");

@@ -200,7 +200,7 @@ function NoticeComposer({ role, drives, existing, onCancel, onSaved, onError }) 
     onError("");
     try {
       const payload = { title, body, audience };
-      if (role === "Company" || driveId !== "") payload.driveId = Number(driveId);
+      if (!existing && (role === "Company" || driveId !== "")) payload.driveId = Number(driveId);
       if (existing) await api.patch(`/announcements/${existing.id}`, payload);
       else await api.post("/announcements", payload);
       onSaved();
@@ -229,6 +229,7 @@ function NoticeComposer({ role, drives, existing, onCancel, onSaved, onError }) 
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. Interview moved to Hall B"
+          maxLength={140}
           required
         />
       </div>
@@ -241,11 +242,21 @@ function NoticeComposer({ role, drives, existing, onCancel, onSaved, onError }) 
           value={body}
           onChange={(e) => setBody(e.target.value)}
           placeholder="What people need to know, and by when."
+          maxLength={4000}
           required
         />
       </div>
 
-      {role === "Company" && (
+      {/* Which drive a notice is about is fixed once posted — the backend never
+          changed it on an edit, so offering the picker here only discarded the
+          choice silently. */}
+      {role === "Company" && existing && (
+        <p className="form-hint" style={{ margin: 0 }}>
+          About: {existing.driveRoleTitle ?? "your drive"} (drive #{existing.driveId}). To post
+          about a different drive, withdraw this notice and post a new one.
+        </p>
+      )}
+      {role === "Company" && !existing && (
         <div className="form-group">
           <label htmlFor="an-drive">About which of your drives</label>
           <select id="an-drive" value={driveId} onChange={(e) => setDriveId(e.target.value)} required>

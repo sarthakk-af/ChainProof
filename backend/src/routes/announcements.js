@@ -64,6 +64,18 @@ function parseAnnouncementBody(input) {
 }
 
 /**
+ * Who a notice may be addressed to, given who wrote it.
+ *
+ * Only the college publishes to the public page — it is the college's record,
+ * read by parents. A company's notice is for the students it is recruiting;
+ * the form never offered it more, but the API used to accept "public" from
+ * anyone who sent it.
+ */
+function audienceFor(actor, requested) {
+  return actor?.role === ROLE.College ? requested : AUDIENCE.Students;
+}
+
+/**
  * The feed a signed-in account sees.
  *
  * Students see everything posted at their college. A company sees the same
@@ -134,6 +146,7 @@ announcementsRouter.post("/", (req, res) => {
     collegeAddress,
     driveId,
     ...parsed.values,
+    audience: audienceFor(actor, parsed.values.audience),
   });
 
   logger.info("announcement_posted", { id: row.id, by: actor.address, driveId });
@@ -155,8 +168,10 @@ announcementsRouter.patch("/:id", (req, res) => {
 
   const parsed = parseAnnouncementBody(req.body || {});
   if (parsed.error) return res.status(400).json({ error: parsed.error });
+  const actor = getActor(req.user.address);
+  const values = { ...parsed.values, audience: audienceFor(actor, parsed.values.audience) };
 
-  if (!updateAnnouncement(id, req.user.address, parsed.values)) {
+  if (!updateAnnouncement(id, req.user.address, values)) {
     return res.status(404).json({ error: "No such notice of yours." });
   }
   res.json({ announcement: serializeAnnouncement(getAnnouncementWithContext(id)) });

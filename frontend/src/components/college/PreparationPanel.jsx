@@ -206,6 +206,7 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
             value={values.title}
             onChange={set("title")}
             placeholder="e.g. Aptitude Test Series - Round 3"
+            maxLength={120}
             required
           />
         </div>
@@ -230,6 +231,7 @@ function EventForm({ kinds, onCancel, onSaved, onError }) {
             value={values.conductedBy}
             onChange={set("conductedBy")}
             placeholder="e.g. Placement Cell"
+            maxLength={100}
             required
           />
         </div>
@@ -301,6 +303,7 @@ function CancelForm({ eventId, onCancel, onSaved, onError }) {
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           placeholder="e.g. Trainer unavailable"
+          maxLength={200}
         />
         <p className="form-hint">
           The entry stays on the record with this note attached — it is never removed.

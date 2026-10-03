@@ -92,6 +92,12 @@ contract DriveOutcomes {
     /// @notice Thrown when the subject of an outcome is not a registered Student.
     error NotAStudent(address subject);
 
+    /// @notice Thrown when the subject is a Student registered under a different college.
+    error StudentOfAnotherCollege(address student, address driveCollege);
+
+    /// @notice Thrown when a suspended (or otherwise inactive) account answers an offer.
+    error NotActiveStudent(address caller);
+
     /// @notice Thrown when `Stage.None` is passed as a real stage.
     error InvalidStage();
 
@@ -245,6 +251,13 @@ contract DriveOutcomes {
         if (actorRegistry.getActorRole(_student) != ActorRegistry.Role.Student) {
             revert NotAStudent(_student);
         }
+        // The placement this could lead to is counted under the drive's college,
+        // so the student has to be one of its own. Otherwise a student from one
+        // college, accepting an offer on another's drive, raises the wrong
+        // college's figure.
+        if (actorRegistry.getStudentCollege(_student) != college) {
+            revert StudentOfAnotherCollege(_student, college);
+        }
 
         uint256 labelLength = bytes(_label).length;
         if (labelLength > MAX_LABEL_LENGTH) revert LabelTooLong(labelLength);
@@ -312,6 +325,10 @@ contract DriveOutcomes {
         (, address college, bool open) = placementDrive.driveAuthority(_driveId);
         if (!open) revert DriveNotOpen(_driveId);
 
+        // A suspended account can't act — accepting would move the placement
+        // figure on behalf of an account whose access was withdrawn.
+        if (!actorRegistry.isActive(msg.sender)) revert NotActiveStudent(msg.sender);
+
         if (currentStage[_driveId][msg.sender] != Stage.Offered) {
             revert NoStandingOffer(_driveId, msg.sender);
         }
@@ -353,8 +370,14 @@ contract DriveOutcomes {
      * @dev    The denominator is read straight from ActorRegistry, where the college
      *         recorded it — deliberately not stored here, so there is exactly one
      *         on-chain source for it and no chance of two drifting apart.
-     * @return placed   Students placed in this college and year.
-     * @return declared The cohort size the college declared for this course and year.
+     *
+     *         The two halves are not the same scope: placements are counted per
+     *         college and year (a drive names a year, not a course), while a
+     *         declared size is per course. Dividing one by the other is only a
+     *         rate for a college with a single course; otherwise sum the declared
+     *         sizes of every course in that year, as the platform's dashboard does.
+     * @return placed   Students placed in this college and year, across all courses.
+     * @return declared The cohort size the college declared for this one course and year.
      */
     function placementFor(address _college, string calldata _courseCode, uint16 _batchYear)
         external

@@ -70,6 +70,7 @@ export {
   getDrive,
   listDrives,
   addApplication,
+  removeApplication,
   hasApplied,
   countApplications,
   listApplicants,
@@ -129,6 +130,8 @@ export {
   getContactDetails,
 } from "./directory.js";
 export { logAdminAction, listAdminActions } from "./adminActions.js";
+export { saveDriveDocument, getDriveDocument, driveDescription } from "./driveDocuments.js";
+export { eraseAccount } from "./erasure.js";
 export {
   getRegistrationNumberClaim,
   claimRegistrationNumber,

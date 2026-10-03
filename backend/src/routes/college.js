@@ -21,6 +21,7 @@ import {
   listPreparationEvents,
   preparationSummary,
   getPreparationEvent,
+  driveDescription,
 } from "../db.js";
 import { getUserSigner } from "../wallets.js";
 import {
@@ -58,7 +59,7 @@ import {
   IdempotencyUnresolvedError,
 } from "../idempotency.js";
 import { approveQueuedStudent, rejectQueuedStudent } from "../studentVerification.js";
-import { registerLimiter, recordLimiter } from "../middleware/chainWriteLimiter.js";
+import { recordLimiter } from "../middleware/chainWriteLimiter.js";
 import { logger } from "../logger.js";
 import { publicChainError } from "../chainErrors.js";
 import { cleanText } from "../validation.js";
@@ -503,7 +504,9 @@ collegeRouter.post("/events/:id/cancel", recordLimiter, async (req, res) => {
     logger.info("preparation_cancelled", { college: req.user.address, id, reason });
     res.json({ txHash: receipt.hash, cancelled: true });
   } catch (err) {
-    const reason2 = err.reason || err.shortMessage || err.message;
+    // Through publicChainError like every other write, so an operator problem
+    // (a dry treasury, say) isn't shown to the user with its wallet address.
+    const reason2 = publicChainError(err);
     logger.error("preparation_cancel_failed", { college: req.user.address, id, reason: reason2 });
     res.status(400).json({ error: `On-chain update failed: ${reason2}` });
   }
@@ -519,7 +522,7 @@ collegeRouter.post("/events/:id/cancel", recordLimiter, async (req, res) => {
  *      supplies and the one most worth inflating by shrinking — so every
  *      revision is permanent and carries its previous value.
  */
-collegeRouter.post("/batches", registerLimiter, async (req, res) => {
+collegeRouter.post("/batches", recordLimiter, async (req, res) => {
   const { courseCode, batchYear, strength } = req.body || {};
   // The same rule the roster and profiles use, so "MECH-B" declared here is the
   // same course as "MECH-B" on the roster. Stripping to letters and digits
@@ -645,7 +648,7 @@ async function decideCompany(req, res, { method, event, expectedStatus, reason }
         error: `Already decided (current status: ${now ? STATUS_NAMES[now.status] : "unknown"}).`,
       });
     }
-    const reason2 = err.reason || err.shortMessage || err.message;
+    const reason2 = publicChainError(err);
     logger.error("company_decision_failed", { company: address, reason: reason2 });
     res.status(502).json({ error: `On-chain transaction failed: ${reason2}` });
   }
@@ -678,7 +681,9 @@ collegeRouter.get("/drives", (req, res) => {
   res.json({
     drives: rows.map((d) => {
       const company = getActor(d.company_address);
-      return serializeDrive(d, { companyName: company?.name ?? null });
+      // The college is deciding whether to host this, so it sees the whole
+      // description, not only the terms.
+      return serializeDrive(d, { companyName: company?.name ?? null, description: driveDescription(d) });
     }),
   });
 });
