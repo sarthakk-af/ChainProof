@@ -26,6 +26,7 @@ import { api } from "../../utils/api.js";
 import { getIdempotencyKey } from "../../utils/idempotency.js";
 import { formatDate } from "../../utils/format.js";
 import { LoadingRows } from "../shared/Loading.jsx";
+import ChainLink from "../shared/ChainLink.jsx";
 import { useEscape } from "../../utils/useEscape.js";
 
 export default function PreparationPanel({ onError, onNotice }) {
@@ -112,6 +113,7 @@ export default function PreparationPanel({ onError, onNotice }) {
                 </span>
                 <span>By {e.conductedBy}</span>
                 {e.batchYear && <span>Batch {e.batchYear}</span>}
+                <ChainLink tx={e.txHash} />
               </div>
               {e.cancelled && e.cancelReason && (
                 <div className="row-meta" style={{ marginTop: 2 }}>Reason: {e.cancelReason}</div>

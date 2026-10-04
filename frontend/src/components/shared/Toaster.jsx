@@ -28,7 +28,17 @@ export default function Toaster() {
         return (
           <div key={t.id} className={`toast toast-${t.kind}`} role={t.kind === "error" ? "alert" : "status"}>
             {t.kind === "loading" ? <span className="spinner toast-spinner" aria-hidden="true" /> : <Icon size={16} aria-hidden="true" />}
-            <span className="toast-message">{t.message}</span>
+            <span className="toast-message">
+              {t.message}
+              {t.link && (
+                <>
+                  {" "}
+                  <a href={t.link.href} target="_blank" rel="noreferrer" className="toast-link">
+                    {t.link.label} ↗
+                  </a>
+                </>
+              )}
+            </span>
             {t.kind !== "loading" && (
               <button type="button" className="toast-close" onClick={() => toast.dismiss(t.id)} aria-label="Dismiss">
                 <X size={14} />

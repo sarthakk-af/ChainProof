@@ -226,7 +226,7 @@ How it stays correct:
 | `/admin` | administrator | create the college, accounts, suspend/restore, action log |
 | `/public` | anyone | batches, drives and funnels, recruiters, preparation, public notices |
 
-### Backend tests — 264
+### Backend tests — 273
 
 These run against a temporary SQLite file with no blockchain. They cover validation, authorisation, the privacy boundaries (a company never sees names; one company's applicant doesn't unlock for another), notices, resumes, preparation counting, batch-revision counting, verification ordering, idempotency and the indexer's position handling.
 
@@ -302,7 +302,7 @@ The platform is built for **one college**: its placement cell signs in and runs 
 | Check | Result |
 |---|---|
 | Contract tests | 229 / 229 |
-| Backend tests | 264 / 264 |
+| Backend tests | 273 / 273 |
 | Live suites | all 3 pass against a running stack, with finality waiting both off and on |
 | Frontend | builds, and lint passes |
 | Public dashboard | checked visually in dark and light themes, at desktop and phone widths |

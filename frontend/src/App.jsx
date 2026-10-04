@@ -11,7 +11,8 @@
  * verification panel — no client-side router needed for one extra page.
  * `/about` and `/profile` follow the same plain-pathname pattern: `/about` is
  * reachable from the navbar at all times (signed in or not) so there's always
- * a way back to "wait, what is this?" without signing out.
+ * a way back to "wait, what is this?" without signing out. `/how-it-works` is
+ * its companion: how the blockchain is used, for anyone, signed in or not.
  */
 
 import React, { useEffect } from "react";
@@ -22,6 +23,7 @@ import CollegeDashboard   from "./components/CollegeDashboard.jsx";
 import CompanyDashboard   from "./components/CompanyDashboard.jsx";
 import LandingPage        from "./components/LandingPage.jsx";
 import ProjectExplainer   from "./components/ProjectExplainer.jsx";
+import HowItWorks         from "./components/HowItWorks.jsx";
 import PrivacyPage        from "./components/PrivacyPage.jsx";
 import ProfilePage        from "./components/ProfilePage.jsx";
 import PendingApproval    from "./components/PendingApproval.jsx";
@@ -46,13 +48,13 @@ const AUTH_PATHS = { "/login": "login", "/signup": "signup" };
 // used to be: an unknown path quietly rendered the landing page, or the
 // dashboard once signed in, so a mistyped or stale link looked like it worked.
 const KNOWN_PATHS = new Set([
-  "/", "/results", "/public", "/about", "/privacy", "/profile",
+  "/", "/results", "/public", "/about", "/how-it-works", "/privacy", "/profile",
   "/login", "/signup", "/reset-password",
 ]);
 
 // The pages a visitor can read without an account. They get the footer, and
 // they get it whether or not somebody is signed in.
-const PUBLIC_PATHS = new Set(["/", "/results", "/public", "/about", "/privacy"]);
+const PUBLIC_PATHS = new Set(["/", "/results", "/public", "/about", "/how-it-works", "/privacy"]);
 
 function AppShell() {
   const { status, actor, verification } = useAuth();
@@ -91,6 +93,7 @@ function AppShell() {
         </div>
       );
     }
+    if (path === "/how-it-works") return <HowItWorks />;
     if (path === "/privacy") return <PrivacyPage />;
     if (status === "unavailable") return <ServiceUnavailable />;
     if (status !== "authenticated") return <LandingPage />;

@@ -9,6 +9,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   Link2, Sun, Moon, BarChart3, LayoutDashboard, User, LogOut, Info, LogIn, UserPlus, Menu, X,
+  Blocks,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext.jsx";
 import { Link, usePath } from "../utils/navigation.jsx";
@@ -85,7 +86,14 @@ export default function Navbar() {
       current: path === "/results" || path === "/public",
       show: true,
     },
-    { to: "/about", label: "How it works", Icon: Info, current: path === "/about", show: signedIn },
+    {
+      to: "/how-it-works",
+      label: "How it works",
+      Icon: Blocks,
+      current: path === "/how-it-works",
+      show: true,
+    },
+    { to: "/about", label: "About", Icon: Info, current: path === "/about", show: signedIn },
     { to: "/", label: "Dashboard", Icon: LayoutDashboard, current: path === "/", show: signedIn },
     { to: "/profile", label: "Account", Icon: User, current: path === "/profile", show: signedIn },
     { to: "/login", label: "Sign in", Icon: LogIn, current: false, show: !signedIn && path !== "/login" },

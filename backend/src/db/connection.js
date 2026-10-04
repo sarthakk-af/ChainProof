@@ -407,6 +407,29 @@ db.exec(`
     content TEXT NOT NULL,
     created_at INTEGER NOT NULL
   );
+
+  -- One row per mirrored chain event, with the transaction that carried it.
+  -- The other mirror tables hold each record's current state, and several are
+  -- overwritten as it changes (a drive's status, an actor's standing), so a
+  -- transaction hash kept on them could only ever name the latest change.
+  -- This keeps every one, which is what a "see it on the blockchain" link
+  -- needs. subject is the address the event is about; details holds the few
+  -- event arguments needed to describe it. Appended, never updated.
+  CREATE TABLE IF NOT EXISTS chain_activity (
+    tx_hash TEXT NOT NULL,
+    log_index INTEGER NOT NULL,
+    block_number INTEGER NOT NULL,
+    block_time INTEGER,
+    contract TEXT NOT NULL,
+    event TEXT NOT NULL,
+    subject TEXT,
+    drive_id INTEGER,
+    details TEXT,
+    PRIMARY KEY (tx_hash, log_index)
+  );
+  CREATE INDEX IF NOT EXISTS idx_activity_order ON chain_activity(block_number, log_index);
+  CREATE INDEX IF NOT EXISTS idx_activity_drive ON chain_activity(drive_id);
+  CREATE INDEX IF NOT EXISTS idx_activity_subject ON chain_activity(subject);
 `);
 
 // Lightweight migration for a database file created before token_version
@@ -507,6 +530,15 @@ if (!driveColumns.includes("count_block")) {
 const indexerStateColumns = db.prepare("PRAGMA table_info(indexer_state)").all().map((c) => c.name);
 if (!indexerStateColumns.includes("deployment_fingerprint")) {
   db.exec("ALTER TABLE indexer_state ADD COLUMN deployment_fingerprint TEXT");
+}
+
+// Whether chain_activity holds every event the mirror has already read. The
+// table arrived after the mirror, so a database from before it has events
+// behind its cursor that were never logged; the indexer reads those once on
+// start (see indexer.js's backfillActivityHistory) and sets this. A brand-new
+// mirror logs every event as it goes, so a reset sets it straight away.
+if (!indexerStateColumns.includes("activity_history_done")) {
+  db.exec("ALTER TABLE indexer_state ADD COLUMN activity_history_done INTEGER NOT NULL DEFAULT 0");
 }
 
 // Emails are stored lowercased (see db/users.js's normalizeEmail). Rows
@@ -622,7 +654,11 @@ export function resetMirrorForNewDeployment(fingerprint) {
   // Gaps recorded against the old chain's block numbers mean nothing on a new
   // one, and holding the cursor below them would stall the fresh backfill.
   db.exec("DELETE FROM sync_failures;");
+  // Transactions on the old chain; their links would lead nowhere.
+  db.exec("DELETE FROM chain_activity;");
   db.prepare(
-    "UPDATE indexer_state SET last_synced_block = 0, deployment_fingerprint = ? WHERE id = 1"
+    `UPDATE indexer_state
+        SET last_synced_block = 0, deployment_fingerprint = ?, activity_history_done = 1
+      WHERE id = 1`
   ).run(fingerprint);
 }

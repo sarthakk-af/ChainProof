@@ -30,6 +30,7 @@ import { api } from "../utils/api.js";
 import { getIdempotencyKey } from "../utils/idempotency.js";
 import { formatDate } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
+import ChainLink from "./shared/ChainLink.jsx";
 import { useScrollToAlert } from "../utils/useScrollToAlert.js";
 import { noEmojis, numbersOnly } from "../utils/validation.js";
 
@@ -422,6 +423,7 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice, on
             <span style={{ fontSize: "var(--text-sm)", color: "var(--text-muted)" }}>
               {drive.applicationsReceived} applied
               {drive.applicationCount !== null && ` · ${drive.applicationCount} published on-chain`}
+              {drive.postedTx && <> · <ChainLink tx={drive.postedTx} label="Drive posted — on the blockchain" /></>}
             </span>
             <span className="flex gap-8" style={{ flexWrap: "wrap" }}>
               {unpublished && (
@@ -494,7 +496,10 @@ function DriveCard({ drive, expanded, onToggle, onChanged, onError, onNotice, on
                       </button>
                       {a.cgpa !== null && <span style={{ color: "var(--text-muted)" }}> · CGPA {a.cgpa.toFixed(2)}</span>}
                     </span>
-                    <span className="badge badge-student">{a.stage ? STAGE_LABEL[a.stage] ?? a.stage : "Applied"}</span>
+                    <span className="flex items-center gap-8">
+                      <ChainLink tx={a.stageTx} label="On the blockchain" />
+                      <span className="badge badge-student">{a.stage ? STAGE_LABEL[a.stage] ?? a.stage : "Applied"}</span>
+                    </span>
                   </div>
                   <div className="flex gap-8" style={{ flexWrap: "wrap" }}>
                     {recordable.filter((s) => s !== a.stage).map((s) => (

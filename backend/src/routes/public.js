@@ -15,7 +15,11 @@ import {
   AUDIENCE,
   listAnnouncements,
   driveDescription,
+  getLastSyncedBlock,
+  listRecentChainActivity,
 } from "../db.js";
+import { deployment } from "../config.js";
+import { describeActivity } from "../chainActivity.js";
 import { ROLE, STATUS, DRIVE_STATUS, STAGE, OFFER_RESPONSE } from "../chain.js";
 import {
   serializeDrive,
@@ -43,6 +47,60 @@ export const publicRouter = Router();
 function pct(numerator, denominator) {
   return denominator === 0 ? 0 : Math.round((numerator / denominator) * 10000) / 100;
 }
+
+/** A network's name and its public block explorer, by chain id. */
+const NETWORKS = {
+  80002: { name: "Polygon Amoy", testnet: true, explorer: "https://amoy.polygonscan.com" },
+  137: { name: "Polygon", testnet: false, explorer: "https://polygonscan.com" },
+  31337: { name: "Local Hardhat chain", testnet: true, explorer: null },
+};
+
+/** How many recent events the feed shows. */
+const ACTIVITY_LIMIT = 15;
+
+/**
+ * The blockchain behind the platform: which network, which contracts, how far
+ * the mirror has read, and the latest events with their transactions — for the
+ * How-it-works page, so its claims can be checked on the chain itself.
+ *
+ * Every activity line is written by describeActivity, which keeps to this
+ * file's rule: no student appears, by name or by address.
+ */
+publicRouter.get("/blockchain", (_req, res) => {
+  const chainId = Number(deployment.chainId);
+  const network = NETWORKS[chainId] ?? { name: deployment.network, testnet: true, explorer: null };
+  const link = (kind, value) => (network.explorer ? `${network.explorer}/${kind}/${value}` : null);
+
+  const activity = [];
+  // Read more than shown: the feed skips a few events (see describeActivity).
+  for (const row of listRecentChainActivity(ACTIVITY_LIMIT * 3)) {
+    const text = describeActivity(row);
+    if (!text) continue;
+    activity.push({
+      text,
+      contract: row.contract,
+      event: row.event,
+      blockNumber: row.block_number,
+      time: row.block_time,
+      txHash: row.tx_hash,
+      txUrl: link("tx", row.tx_hash),
+    });
+    if (activity.length === ACTIVITY_LIMIT) break;
+  }
+
+  res.json({
+    network: { chainId, name: network.name, testnet: network.testnet, explorer: network.explorer },
+    contracts: Object.entries(deployment.contracts).map(([name, c]) => ({
+      name,
+      address: c.address,
+      url: link("address", c.address),
+    })),
+    deployedAt: deployment.deployedAt,
+    deployBlock: deployment.deployBlock ?? null,
+    syncedBlock: getLastSyncedBlock(),
+    activity,
+  });
+});
 
 publicRouter.get("/overview", (_req, res) => {
   const counts = getOverviewCounts({

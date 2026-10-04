@@ -131,6 +131,13 @@ export { logAdminAction, listAdminActions } from "./adminActions.js";
 export { saveDriveDocument, getDriveDocument, driveDescription } from "./driveDocuments.js";
 export { eraseAccount } from "./erasure.js";
 export {
+  addChainActivity,
+  listRecentChainActivity,
+  findChainTx,
+  isActivityHistoryDone,
+  setActivityHistoryDone,
+} from "./chainActivity.js";
+export {
   getRegistrationNumberClaim,
   claimRegistrationNumber,
   releaseClaimsForAddress,

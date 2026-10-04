@@ -25,7 +25,8 @@ export default function SiteFooter() {
 
         <nav className="site-footer-links" aria-label="Footer">
           <Link to="/results">Placement results</Link>
-          <Link to="/about">How it works</Link>
+          <Link to="/about">About</Link>
+          <Link to="/how-it-works">How the blockchain works</Link>
           <Link to="/privacy">Privacy &amp; data</Link>
           {/* Reaching the footer of the long explainer means a lot of
               scrolling; this is the way back without doing it again. */}

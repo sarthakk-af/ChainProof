@@ -12,6 +12,7 @@ import {
   rosterCounts,
   listPendingVerifications,
   listBatches,
+  findChainTx,
   getDrive,
   listDrives,
   logAdminAction,
@@ -582,6 +583,12 @@ collegeRouter.get("/batches", (req, res) => {
       strength: b.strength,
       previousStrength: b.previous_strength,
       revisionCount: b.revision_count,
+      // The latest declaration or revision, on the blockchain.
+      txHash: findChainTx({
+        event: "BatchStrengthRecorded",
+        subject: req.user.address,
+        blockNumber: b.block_number,
+      }),
     })),
   });
 });

@@ -16,6 +16,7 @@ import {
   getOfferResponse,
   saveDriveDocument,
   driveDescription,
+  findChainTx,
 } from "../db.js";
 import { getUserSigner } from "../wallets.js";
 import {
@@ -35,7 +36,12 @@ import {
   syncAfterWrite,
 } from "../indexer.js";
 import { withWalletLock } from "../txQueue.js";
-import { serializeDrive, STAGE_NAMES, DRIVE_STATUS_NAMES } from "../serializers.js";
+import {
+  serializeDrive,
+  STAGE_NAMES,
+  DRIVE_STATUS_NAMES,
+  OFFER_RESPONSE_NAMES,
+} from "../serializers.js";
 import { buildDriveDocument, parseDescription } from "../driveDocument.js";
 import { byteLength } from "../limits.js";
 import {
@@ -61,6 +67,11 @@ import { cleanText } from "../validation.js";
 export const drivesRouter = Router();
 
 const MAX_ROLE_TITLE_BYTES = 100;
+
+/** The transaction that recorded a student's current stage in a drive, if logged. */
+function stageTx(driveId, studentAddress, blockNumber) {
+  return findChainTx({ event: "StageRecorded", subject: studentAddress, driveId, blockNumber });
+}
 
 function requireActiveCompany(req, res) {
   const actor = getActor(req.user.address);
@@ -330,6 +341,7 @@ drivesRouter.get("/:id/applicants", (req, res) => {
         appliedAt: a.applied_at,
         stage: stage ? STAGE_NAMES[stage.stage] : null,
         stageLabel: stage?.label ?? null,
+        stageTx: stage ? stageTx(driveId, a.student_address, stage.block_number) : null,
       };
     }),
   });
@@ -481,6 +493,16 @@ drivesRouter.get("/my-applications", (req, res) => {
         appliedAt: a.applied_at,
         stage: mine ? STAGE_NAMES[mine.stage] : "Applied",
         stageLabel: mine?.label ?? null,
+        stageTx: mine ? stageTx(a.drive_id, req.user.address, mine.block_number) : null,
+        offerResponse: response ? OFFER_RESPONSE_NAMES[response.response] : null,
+        responseTx: response
+          ? findChainTx({
+              event: "OfferAnswered",
+              subject: req.user.address,
+              driveId: a.drive_id,
+              blockNumber: response.block_number,
+            })
+          : null,
         // An offer needs an answer, and only the student can give it — unless
         // the drive was called off, when it can no longer be accepted.
         awaitingResponse:

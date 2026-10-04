@@ -1,4 +1,5 @@
 import { ROLE, STATUS, DRIVE_STATUS, STAGE, OFFER_RESPONSE } from "./chain.js";
+import { findChainTx } from "./db.js";
 
 const ROLE_NAMES = Object.fromEntries(Object.entries(ROLE).map(([k, v]) => [v, k]));
 const STATUS_NAMES = Object.fromEntries(Object.entries(STATUS).map(([k, v]) => [v, k]));
@@ -60,6 +61,9 @@ export function serializeDrive(row, extra = {}) {
     // null, not 0: the company has not stated the figure yet, which is a
     // different fact from "nobody applied".
     applicationCount: row.application_count ?? null,
+    // The transaction that posted it, so any screen can link to the record on
+    // the blockchain. null when the activity log doesn't have it.
+    postedTx: findChainTx({ event: "DrivePosted", driveId: row.id }),
     ...extra,
   };
 }
@@ -73,6 +77,12 @@ export function serializeOutcome(row) {
     label: row.label || null,
     ipfsHash: row.ipfs_hash || null,
     timestamp: row.timestamp,
+    txHash: findChainTx({
+      event: "StageRecorded",
+      subject: row.student_address,
+      driveId: row.drive_id,
+      blockNumber: row.block_number,
+    }),
   };
 }
 
@@ -139,6 +149,7 @@ export function serializePreparationEvent(row, kindLabels) {
     // record written as the year went is a different statement from one
     // assembled afterwards, and only this field can tell them apart.
     recordedAt: row.recorded_at,
+    txHash: findChainTx({ event: "PreparationRecorded", preparationId: row.id }),
   };
 }
 

@@ -33,6 +33,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import { shortAddr, formatDate, formatLPA } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
+import ChainLink from "./shared/ChainLink.jsx";
 import { useScrollToAlert } from "../utils/useScrollToAlert.js";
 import { noEmojis, courseCodeChars, numbersOnly } from "../utils/validation.js";
 
@@ -370,6 +371,7 @@ function DrivesPanel({ onError, onNotice }) {
                   {d.minCgpa ? ` · CGPA ${d.minCgpa.toFixed(2)}+` : " · no CGPA cutoff"}
                   {" · "}drive {formatDate(d.driveDate)}
                 </div>
+                <ChainLink tx={d.postedTx} label="Terms as the company posted them" />
                 <DriveDescription text={d.description} />
               </div>
               <div className="flex gap-8">
@@ -683,6 +685,7 @@ function BatchesPanel({ onError, onNotice }) {
                     Revised {b.revisionCount} time{b.revisionCount === 1 ? "" : "s"} · previously {b.previousStrength}
                   </div>
                 )}
+                <ChainLink tx={b.txHash} label={b.revisionCount > 0 ? "Latest revision — on the blockchain" : "On the blockchain"} />
               </div>
               <span className="badge badge-college">{b.strength} students</span>
             </div>

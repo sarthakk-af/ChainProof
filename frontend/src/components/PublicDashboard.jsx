@@ -24,6 +24,7 @@ import { api } from "../utils/api.js";
 import { formatDate, formatLPA } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
 import DriveDescription from "./shared/DriveDescription.jsx";
+import ChainLink from "./shared/ChainLink.jsx";
 
 const TABS = [
   { id: "companies", label: "Companies" },
@@ -512,6 +513,12 @@ function DriveDetail({ drive }) {
           <dd>{formatDate(drive.driveDate)}</dd>
           <dt>Applications closed</dt>
           <dd>{formatDate(drive.applicationDeadline)}</dd>
+          {drive.postedTx && (
+            <>
+              <dt>Terms on record</dt>
+              <dd><ChainLink tx={drive.postedTx} label="Posted by the company — view on the blockchain" /></dd>
+            </>
+          )}
           {selectionRate !== null && (
             <>
               <dt>Selection rate</dt>
@@ -590,6 +597,7 @@ function Preparation({ preparation, batch }) {
                 {!e.batchYear && " · open to all batches"}
                 {e.cancelled && e.cancelReason ? ` · ${e.cancelReason}` : ""}
               </div>
+              <ChainLink tx={e.txHash} />
             </div>
             <span className="n">{e.cancelled ? "—" : `${e.attendance} attended`}</span>
           </div>

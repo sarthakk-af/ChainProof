@@ -38,12 +38,18 @@ function dismiss(id) {
   emit();
 }
 
-function push(kind, message, { duration } = {}) {
+/**
+ * @param {Object} [options]
+ * @param {number} [options.duration] ms before it goes; 0 keeps it until dismissed.
+ * @param {{href: string, label: string}} [options.link] an external link shown
+ *        after the message — e.g. a transaction on the block explorer.
+ */
+function push(kind, message, { duration, link } = {}) {
   if (!message) return null;
   const id = nextId++;
   // The same message twice in a row is one message: a double click shouldn't
   // stack two identical pop-ups.
-  items = [...items.filter((t) => t.message !== message), { id, kind, message }].slice(-MAX_VISIBLE);
+  items = [...items.filter((t) => t.message !== message), { id, kind, message, link }].slice(-MAX_VISIBLE);
   emit();
   const ms = duration ?? DURATION_MS[kind];
   if (ms) setTimeout(() => dismiss(id), ms);

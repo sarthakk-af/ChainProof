@@ -215,6 +215,10 @@ export default function ProjectExplainer() {
             </div>
           ))}
         </div>
+        <p className="form-hint" style={{ marginTop: "var(--space-4)" }}>
+          Curious what happens behind the scenes?{" "}
+          <Link to="/how-it-works">See how the blockchain works here →</Link>
+        </p>
       </section>
 
       {/* Problem / comparison */}

@@ -29,7 +29,11 @@ import {
   setPlacement,
   upsertPreparationEvent,
   setPreparationCancelled,
+  addChainActivity,
+  isActivityHistoryDone,
+  setActivityHistoryDone,
 } from "./db.js";
+import { activityFields } from "./chainActivity.js";
 
 const STAGE_OFFERED = STAGE.Offered;
 
@@ -344,6 +348,83 @@ async function logsInRange(start, end) {
   return entries;
 }
 
+/** Contract name by lowercase address, for the activity log. */
+const CONTRACT_NAMES = new Map(
+  Object.entries(deployment.contracts).map(([name, c]) => [String(c.address).toLowerCase(), name])
+);
+
+/**
+ * Block timestamps already looked up. Several events often share a block, and
+ * each lookup is a request to the RPC provider. Bounded, since only recent
+ * blocks are asked about again.
+ */
+const blockTimes = new Map();
+async function blockTime(blockNumber) {
+  if (blockTimes.has(blockNumber)) return blockTimes.get(blockNumber);
+  const block = await provider.getBlock(blockNumber);
+  const time = block ? Number(block.timestamp) : null;
+  blockTimes.set(blockNumber, time);
+  if (blockTimes.size > 256) blockTimes.delete(blockTimes.keys().next().value);
+  return time;
+}
+
+/**
+ * Adds a mirrored event to the activity log, with the transaction behind it.
+ * @dev Never throws. The log feeds a public list and the "see it on the
+ *      blockchain" links, and a failure here must not hold back the mirror —
+ *      whose tables are what every screen and figure is read from. A missed
+ *      row costs one link; a held cursor would cost the whole mirror.
+ */
+async function recordActivity(watcher, args, log) {
+  try {
+    const { subject, driveId, details } = activityFields(watcher.eventName, args);
+    let time = null;
+    try {
+      time = await blockTime(log.blockNumber);
+    } catch {
+      // The row is still worth having without its time.
+    }
+    addChainActivity({
+      txHash: log.transactionHash,
+      logIndex: log.index,
+      blockNumber: log.blockNumber,
+      blockTime: time,
+      contract: CONTRACT_NAMES.get(String(log.address).toLowerCase()) ?? "Unknown",
+      event: watcher.eventName,
+      subject,
+      driveId,
+      details,
+    });
+  } catch (err) {
+    console.error(`[indexer] could not log ${watcher.eventName} at block ${log.blockNumber}:`, err.message);
+  }
+}
+
+/**
+ * Logs, once, the events the mirror read before the activity log existed.
+ *
+ * Only the log is written: the mirror tables already hold these events, so
+ * nothing is re-applied to them. Runs over the blocks behind the cursor; the
+ * normal catch-up logs everything after it. Failing leaves the flag unset, so
+ * the next start tries again, and rows already written are not duplicated.
+ */
+async function backfillActivityHistory() {
+  if (isActivityHistoryDone()) return;
+  const deployBlock = Number(deployment.deployBlock);
+  const fromBlock = Number.isInteger(deployBlock) && deployBlock > 0 ? deployBlock : 0;
+  const toBlock = getLastSyncedBlock();
+
+  let logged = 0;
+  for (const [start, end] of blockRanges(fromBlock, toBlock)) {
+    for (const { watcher, args, log } of await logsInRange(start, end)) {
+      await recordActivity(watcher, args, log);
+      logged += 1;
+    }
+  }
+  setActivityHistoryDone();
+  if (logged > 0) console.log(`[indexer] added ${logged} earlier event(s) to the activity log`);
+}
+
 /** Every block range [from, to] to read, in order, at most `size` blocks each. */
 export function blockRanges(fromBlock, toBlock, size = BLOCK_RANGE) {
   const ranges = [];
@@ -393,6 +474,7 @@ async function runBackfill() {
 
     for (const { watcher, args, log } of entries) {
       await watcher.handle(args, log);
+      await recordActivity(watcher, args, log);
     }
     processed += entries.length;
 
@@ -519,6 +601,7 @@ export function startLiveSync({
       enterBlock(blockNumber);
       try {
         await watcher.handle(eventArgs, payload.log);
+        await recordActivity(watcher, eventArgs, payload.log);
         clearSyncFailure(blockNumber);
         leaveBlock(blockNumber);
         // Only ever forwards, never past a known gap, and never past a block
@@ -587,6 +670,12 @@ export async function syncAfterWrite(label, blockNumber, run) {
 
 export async function startIndexer() {
   resetIfRedeployed();
+  try {
+    await backfillActivityHistory();
+  } catch (err) {
+    // Only the activity log is behind; the mirror itself is unaffected.
+    console.error("[indexer] could not log earlier events yet — will retry on next start:", err.message);
+  }
   await backfill();
   startLiveSync();
 }

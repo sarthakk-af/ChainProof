@@ -7,6 +7,7 @@
  */
 
 import { toast } from "./toast.js";
+import { loadExplorer, txUrl } from "./chain.js";
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:4000";
 
@@ -43,9 +44,11 @@ export function noticeIfSlow(method, path, promise) {
   const isChainWrite = CHAIN_WRITES.some((re) => re.test(path.split("?")[0]));
   let toastId = null;
   const timer = setTimeout(() => {
+    // What is actually happening, in order — the browser only hears back at
+    // the end, so this describes the steps rather than pretending to track them.
     toastId = toast.loading(
       isChainWrite
-        ? "Recording this on the blockchain. It takes a few seconds; please keep this page open."
+        ? "Recording this on the blockchain: your account's wallet signs it, the network adds it to a block, and we wait a few seconds until it's final. Please keep this page open."
         : "Still working…"
     );
   }, SLOW_AFTER_MS);
@@ -54,7 +57,29 @@ export function noticeIfSlow(method, path, promise) {
     if (toastId !== null) toast.dismiss(toastId);
   };
   promise.then(done, done);
+  if (isChainWrite) promise.then(announceTransaction, () => {});
   return promise;
+}
+
+/**
+ * After a blockchain write, a link to its transaction on the public explorer —
+ * the record, seconds old, on a site ChainProof doesn't control. Shown beside
+ * the screen's own "done" message rather than replacing it. Nothing when the
+ * response names no transaction or the network has no explorer.
+ */
+function announceTransaction(result) {
+  const hash = result?.txHash;
+  if (!hash) return;
+  loadExplorer().then((base) => {
+    const href = txUrl(base, hash);
+    // Longer than an ordinary toast: it carries a link someone may want to open.
+    if (href) {
+      toast.info("Recorded on the blockchain.", {
+        link: { href, label: "View transaction" },
+        duration: 12000,
+      });
+    }
+  });
 }
 
 /** Called by AuthContext whenever the session token changes (login/logout). */

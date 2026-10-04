@@ -42,7 +42,7 @@ export function getOutcomeHistory(driveId, studentAddress) {
 export function getCurrentStages(driveId) {
   return db
     .prepare(
-      `SELECT student_address, stage, label, timestamp
+      `SELECT student_address, stage, label, timestamp, block_number
          FROM drive_outcomes o
         WHERE drive_id = ?
           AND id = (

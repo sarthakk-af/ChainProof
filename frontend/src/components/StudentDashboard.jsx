@@ -33,6 +33,7 @@ import { useAuth } from "../context/AuthContext.jsx";
 import { api } from "../utils/api.js";
 import { formatDate, formatLPA } from "../utils/format.js";
 import { LoadingRows } from "./shared/Loading.jsx";
+import ChainLink from "./shared/ChainLink.jsx";
 import { useScrollToAlert } from "../utils/useScrollToAlert.js";
 import { noEmojis, rollNumberChars } from "../utils/validation.js";
 
@@ -361,6 +362,14 @@ function MyApplications({ onError, onNotice }) {
             <div className="row-meta" style={{ marginTop: 2 }}>
               {formatLPA(a.annualPackage)} · drive {formatDate(a.driveDate)}
             </div>
+            {(a.stageTx || a.responseTx) && (
+              <div className="flex gap-12" style={{ marginTop: 4, flexWrap: "wrap" }}>
+                <ChainLink tx={a.stageTx} label={`${a.stage} — on the blockchain`} />
+                {a.offerResponse && (
+                  <ChainLink tx={a.responseTx} label={`You ${a.offerResponse.toLowerCase()} — on the blockchain`} />
+                )}
+              </div>
+            )}
           </div>
           <span className="flex items-center gap-8">
             <span className="badge badge-student">{a.stageLabel || a.stage}</span>
