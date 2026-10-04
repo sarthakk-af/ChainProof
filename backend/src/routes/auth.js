@@ -2,7 +2,6 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import {
   createUser,
-  deleteUser,
   getUserByEmail,
   getUserById,
   setPasswordHash,
@@ -31,7 +30,7 @@ import {
   OTP_MAX_ATTEMPTS,
 } from "../auth.js";
 import { generateWallet } from "../wallets.js";
-import { fundWallet, TreasuryExhaustedError, treasuryAddress } from "../treasury.js";
+import { assertCanFund, TreasuryExhaustedError, treasuryAddress } from "../treasury.js";
 import { sendEmail, buildPasswordResetEmail, buildOtpEmail } from "../email.js";
 import { userAuth } from "../middleware/userAuth.js";
 import { tryComplete } from "../studentVerification.js";
@@ -140,32 +139,23 @@ authRouter.post("/signup", signupLimiter, async (req, res) => {
     return res.status(409).json({ error: "An account with this email already exists" });
   }
 
-  let user = null;
   try {
+    // Nothing is spent here. The wallet is funded just before its first
+    // transaction (see ensureFunded in treasury.js), which needs a confirmed
+    // email — so a signup that is abandoned, or made with a mistyped address,
+    // costs the treasury nothing. It used to cost a full gas drip each. Still
+    // checked, so that nobody signs up and confirms their email only to find
+    // nothing can be done with the account.
+    await assertCanFund();
+
     const passwordHash = await hashPassword(password);
     const { address, encryptedPrivateKey } = generateWallet();
-
-    // The row first, gas second. The other way round, two signups racing on the
-    // same email both passed the check above, both drew a gas drip from the
-    // treasury, and the loser's insert failed — leaving a funded wallet with no
-    // account pointing at it, once per race. The UNIQUE constraint decides the
-    // race now, and a wallet is only funded once its account exists.
-    user = createUser({
+    const user = createUser({
       email,
       passwordHash,
       walletAddress: address,
       encryptedPrivateKey,
     });
-
-    try {
-      await fundWallet(address);
-    } catch (err) {
-      // Nothing was spent, so leave nothing behind: the address must stay free
-      // for a real signup later.
-      deleteUser(user.id);
-      user = null;
-      throw err;
-    }
 
     // No token yet — see /login and /verify-email below. An account only
     // becomes usable once this address has been shown to actually reach
@@ -173,9 +163,9 @@ authRouter.post("/signup", signupLimiter, async (req, res) => {
     try {
       await issueAndSendOtp(user);
     } catch (err) {
-      // The account still exists at this point (and its wallet is already
-      // funded) — don't leave it permanently stuck with no way to ever get a
-      // code. /resend-otp is the recovery path if this particular send failed.
+      // The account still exists at this point — don't leave it permanently
+      // stuck with no way to ever get a code. /resend-otp is the recovery path
+      // if this particular send failed.
       logger.error("signup_otp_send_failed", { email, message: err.message });
     }
 

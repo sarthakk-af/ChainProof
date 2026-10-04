@@ -18,7 +18,7 @@ visitor ──https──▶ nginx ──┬──▶ the website (built files) 
 
 - **All your latest code is pushed to GitHub.** The server downloads the project from there.
 - **An Amoy RPC endpoint in `AMOY_RPC_URL`.** PublicNode is free and needs no account: `https://polygon-amoy-bor-rpc.publicnode.com`. Alchemy's free plan works too, but only allows 10-block event queries. With it, also set `INDEXER_BLOCK_RANGE=10`, or the backend fails at start with a "block range" error.
-- **Your deploy wallet has test POL.** Deploying costs about **0.3 POL**, and each new user then gets **0.05 POL** for their own actions. If it runs low, get more from a Polygon Amoy faucet. Check the balance by searching your deploy address on [amoy.polygonscan.com](https://amoy.polygonscan.com).
+- **Your deploy wallet has test POL.** Deploying costs about **0.3 POL**, and each user then gets **0.04 POL** for their own actions, sent when they first act on the blockchain (after confirming their email). If it runs low, get more from a Polygon Amoy faucet. Check the balance by searching your deploy address on [amoy.polygonscan.com](https://amoy.polygonscan.com).
 - **Optional: a free Etherscan API key** from [etherscan.io/myapikey](https://etherscan.io/myapikey). It lets anyone check that the contracts on Polygonscan are exactly the code in this repository.
 
 ## 1. Create the server (AWS console)

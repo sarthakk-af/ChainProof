@@ -17,7 +17,7 @@ import { toast } from "../../utils/toast.js";
 
 const RESEND_COOLDOWN_SECONDS = 30;
 
-export default function ConfirmEmail({ style }) {
+export default function ConfirmEmail({ style, reason = "before you can be verified as a student" }) {
   const { user, verifyEmailOtp, resendOtp } = useAuth();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -69,8 +69,8 @@ export default function ConfirmEmail({ style }) {
         <div>
           <h3 className="card-title">Confirm your email</h3>
           <p className="card-lead">
-            We sent a 6-digit code to <strong>{user?.email}</strong>. You need to confirm it
-            before you can be verified as a student.
+            We sent a 6-digit code to <strong>{user?.email}</strong>. You need to confirm it{" "}
+            {reason}.
           </p>
         </div>
       </div>

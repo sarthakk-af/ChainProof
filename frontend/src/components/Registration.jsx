@@ -132,13 +132,18 @@ export default function Registration() {
         ))}
       </div>
 
-      {/* A student is verified only once their email is confirmed too, and
-          straight after signing up this is the first screen they see. */}
-      {role === "Student" && verification && !verification.emailVerified && (
-        <ConfirmEmail style={{ marginBottom: "var(--space-4)" }} />
+      {/* Either role goes on the blockchain only once the email is confirmed,
+          and straight after signing up this is the first screen they see. */}
+      {role && verification && !verification.emailVerified && (
+        <ConfirmEmail
+          style={{ marginBottom: "var(--space-4)" }}
+          reason={role === "Company" ? "before you can register your company" : undefined}
+        />
       )}
       {role === "Student" && <StudentForm onClaim={claimRollNumber} />}
-      {role === "Company" && <CompanyForm onRegister={registerActor} />}
+      {role === "Company" && (
+        <CompanyForm onRegister={registerActor} emailConfirmed={!!verification?.emailVerified} />
+      )}
     </div>
   );
 }
@@ -278,7 +283,7 @@ function StudentForm({ onClaim }) {
 
 // ---------------------------------------------------------------------------
 
-function CompanyForm({ onRegister }) {
+function CompanyForm({ onRegister, emailConfirmed }) {
   const [name, setName] = useState("");
   const [registrationNumber, setRegistrationNumber] = useState("");
   const [website, setWebsite] = useState("");
@@ -374,9 +379,14 @@ function CompanyForm({ onRegister }) {
         </div>
       )}
 
-      <button type="submit" className="btn btn-primary w-full" disabled={loading}>
+      <button type="submit" className="btn btn-primary w-full" disabled={loading || !emailConfirmed}>
         {loading ? <span className="spinner" /> : <>Register <ArrowRight size={16} /></>}
       </button>
+      {!emailConfirmed && (
+        <p className="form-hint" style={{ textAlign: "center" }}>
+          Confirm your email above to register.
+        </p>
+      )}
     </form>
   );
 }

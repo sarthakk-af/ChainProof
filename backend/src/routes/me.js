@@ -295,6 +295,16 @@ meRouter.post("/register", registerLimiter, async (req, res) => {
   }
   const roleNumber = ROLE.Company;
 
+  // Registering is this wallet's first transaction, so it is what draws the
+  // account's gas from the treasury (see ensureFunded in treasury.js). Asking
+  // for a confirmed email first means an address nobody can receive mail at
+  // never costs anything — the same condition a student's registration has.
+  if (!getUserById(req.user.id)?.email_verified) {
+    return res.status(403).json({
+      error: "Confirm your email first — enter the 6-digit code we sent you, then register.",
+    });
+  }
+
   const existing = getActor(req.user.address);
   if (existing && existing.status !== STATUS.Rejected) {
     return res.status(409).json({ error: "This account is already registered on-chain" });

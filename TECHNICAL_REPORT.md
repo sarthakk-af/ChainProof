@@ -117,6 +117,7 @@ Solidity 0.8.20 with the optimiser on at 200 runs — the usual middle ground fo
 - At signup the backend generates a wallet, encrypts its private key (AES-256-GCM), and stores it. The key is decrypted only for the moment a transaction is signed.
 - A **treasury** wallet sends each new wallet a little gas. When the treasury runs low, signup says so clearly rather than failing vaguely.
 - **A wallet that runs out of gas is topped up before its next transaction.** Wallets used to be funded once, at signup, so a wallet that ran dry — or every wallet at once, after a local chain restart wipes all balances — could never transact again, and its owner saw only a generic failure. The check runs inside the wallet's own queue slot, so it costs one balance read per transaction and cannot race the send.
+- **A wallet is funded only when it is first used, not at sign-up.** Funding at sign-up meant every abandoned sign-up, or one made with a mistyped email, cost the treasury a full grant. Now the same check funds an empty wallet just before its first transaction. That first transaction is always the account's on-chain registration, which needs a confirmed email for students and companies alike, so an account whose email was never confirmed costs nothing. Sign-up still checks that the treasury could fund one more account, and refuses with a clear message when it can't.
 
 ### Transaction queue (`txQueue.js`)
 
@@ -225,7 +226,7 @@ How it stays correct:
 | `/admin` | administrator | create the college, accounts, suspend/restore, action log |
 | `/public` | anyone | batches, drives and funnels, recruiters, preparation, public notices |
 
-### Backend tests — 263
+### Backend tests — 264
 
 These run against a temporary SQLite file with no blockchain. They cover validation, authorisation, the privacy boundaries (a company never sees names; one company's applicant doesn't unlock for another), notices, resumes, preparation counting, batch-revision counting, verification ordering, idempotency and the indexer's position handling.
 
@@ -284,7 +285,7 @@ ChainProof runs at **https://chainproof.duckdns.org**: an AWS EC2 server with ng
 | `DriveOutcomes` | [`0x19071D8D4c7e3E06F8EAE88Cc3018E91e0e01444`](https://amoy.polygonscan.com/address/0x19071D8D4c7e3E06F8EAE88Cc3018E91e0e01444) |
 | `PreparationLog` | [`0x1675Cf70b09b58469E5e96Cc303Bcd90fBe48F78`](https://amoy.polygonscan.com/address/0x1675Cf70b09b58469E5e96Cc303Bcd90fBe48F78) |
 
-Deploying cost 0.29 POL. Each new account is then given 0.05 POL for its own transactions, from the deploy wallet, which is also the platform verifier.
+Deploying cost 0.29 POL. Each account is then given 0.04 POL for its own transactions when it first acts on-chain, from the deploy wallet, which is also the platform verifier.
 
 ## 7. Known gaps, stated plainly
 
@@ -301,7 +302,7 @@ The platform is built for **one college**: its placement cell signs in and runs 
 | Check | Result |
 |---|---|
 | Contract tests | 229 / 229 |
-| Backend tests | 263 / 263 |
+| Backend tests | 264 / 264 |
 | Live suites | all 3 pass against a running stack, with finality waiting both off and on |
 | Frontend | builds, and lint passes |
 | Public dashboard | checked visually in dark and light themes, at desktop and phone widths |

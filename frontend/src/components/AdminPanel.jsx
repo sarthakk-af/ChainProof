@@ -505,7 +505,7 @@ function Health({ chain, counts, syncGaps }) {
               <span className={chain.low ? "kpi-n accent" : "kpi-n"}>
                 {chain.approxSignupsRemaining ?? "—"}
               </span>
-              <span className="kpi-l">Sign-ups the treasury can fund</span>
+              <span className="kpi-l">Accounts the treasury can fund</span>
             </div>
           </div>
 
@@ -532,8 +532,8 @@ function Health({ chain, counts, syncGaps }) {
                   this empties, every signup fails and nothing else says why. */}
               <span>
                 The service wallet is running low. Top up{" "}
-                <span className="mono-addr">{chain.treasuryAddress}</span> — it funds
-                every new account, and sign-ups stop when it empties.
+                <span className="mono-addr">{chain.treasuryAddress}</span> — it pays for
+                every account's blockchain actions, and sign-ups stop when it empties.
               </span>
             </div>
           )}

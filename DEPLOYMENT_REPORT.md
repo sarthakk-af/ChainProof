@@ -126,7 +126,7 @@ Settings were spread over three `.env` files, two of which disagreed: the deploy
 Amoy's node *suggested* a fee tip of 500–660 gwei, set by a few senders overpaying, while blocks were accepting transactions tipping 25 gwei. Following the suggestion would have:
 
 - made deploying cost about **2.9 POL** (more than the wallet held), so it would have failed;
-- made every student action cost more than the 0.05 POL each new account receives, so every action would have failed.
+- made every student action cost more than the gas each account receives, so every action would have failed.
 
 **Fix:** tips are capped at 50 gwei on non-local networks, which is twice the network minimum (`MAX_PRIORITY_FEE_GWEI`). This applies in Hardhat (for deploying) and in the backend (for every transaction). Deploying then cost 0.29 POL, and a student action costs under 0.008 POL.
 
@@ -247,7 +247,7 @@ The server's `.env` holds these settings. Secrets are omitted, and are never com
 | `FRONTEND_URL`, `FRONTEND_ORIGIN` | `https://chainproof.duckdns.org` | Password-reset links and allowed origin |
 | `BREVO_API_KEY`, `EMAIL_FROM_*` | *(secret)* | Sending sign-up codes and password resets |
 
-These defaults switch on automatically off a local chain and don't need setting: finality waiting, the 50-gwei fee cap, and a 0.05 POL gas grant per new account. The website's `frontend/.env` holds only `VITE_BACKEND_URL=https://chainproof.duckdns.org/api`.
+These defaults switch on automatically off a local chain and don't need setting: finality waiting, the 50-gwei fee cap, and a 0.04 POL gas grant per account, sent when it first acts on the blockchain. The website's `frontend/.env` holds only `VITE_BACKEND_URL=https://chainproof.duckdns.org/api`.
 
 ---
 
@@ -256,7 +256,7 @@ These defaults switch on automatically off a local chain and don't need setting:
 | Item | Cost |
 |---|---|
 | Deploying the contracts (once) | 0.29 test POL |
-| Each new account (gas it is given) | 0.05 test POL |
+| Each account (gas it is given at its first blockchain action, after confirming its email) | 0.04 test POL |
 | Each user action (from that account's gas) | under 0.008 test POL |
 | AWS EC2 | Free tier for 12 months; watch the billing page, including the public-IP charge |
 | Domain (DuckDNS), HTTPS (Let's Encrypt), RPC (PublicNode) | Free |

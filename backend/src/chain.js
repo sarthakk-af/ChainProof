@@ -22,7 +22,7 @@ export const provider = new ethers.JsonRpcProvider(config.rpcUrl, network, {
  * On Polygon Amoy the node's suggested tip runs at 500+ gwei — set by a few
  * senders overpaying — while blocks include transactions tipping 25 gwei, the
  * network minimum. Taking the suggestion made a student's registration cost
- * ~0.075 POL: more than the 0.05 each new wallet is given, so every action
+ * ~0.075 POL: more than the gas each wallet is given, so every action
  * failed for want of funds. The fee ceiling is recomputed from the capped tip
  * too, because a node checks a wallet can cover the ceiling before accepting a
  * transaction, whatever it finally charges.

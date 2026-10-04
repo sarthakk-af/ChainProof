@@ -34,7 +34,7 @@ process.env.WALLET_ENCRYPTION_KEY =
   "236d277256c4ac74368580b5be214189ace6dff26eb4e5efe448dbf1c2a1158c";
 process.env.DB_PATH = TEST_DB_PATH;
 
-const { db, createUser, upsertActor, claimRegistrationNumber, releaseClaimsForAddress, getRegistrationNumberClaim } = await import("../src/db.js");
+const { db, createUser, setEmailVerified, upsertActor, claimRegistrationNumber, releaseClaimsForAddress, getRegistrationNumberClaim } = await import("../src/db.js");
 const { validateRegistrationNumber } = await import("../src/registrationNumber.js");
 const { createApp } = await import("../src/app.js");
 const { signToken } = await import("../src/auth.js");
@@ -48,11 +48,21 @@ function authHeader(user) {
   return `Bearer ${token}`;
 }
 
-let plainUser, registeredUser, rejectedUser;
+let plainUser, registeredUser, rejectedUser, unconfirmedUser;
 
 before(() => {
+  // Confirmed, so the validation tests below reach the checks they are about:
+  // registering needs a confirmed email first.
   plainUser = createUser({
     email: "plain@example.com",
+    passwordHash: "hash",
+    walletAddress: ethers.Wallet.createRandom().address,
+    encryptedPrivateKey: "iv:tag:ct",
+  });
+  setEmailVerified(plainUser.id);
+
+  unconfirmedUser = createUser({
+    email: "unconfirmed@example.com",
     passwordHash: "hash",
     walletAddress: ethers.Wallet.createRandom().address,
     encryptedPrivateKey: "iv:tag:ct",
@@ -64,6 +74,7 @@ before(() => {
     walletAddress: ethers.Wallet.createRandom().address,
     encryptedPrivateKey: "iv:tag:ct",
   });
+  setEmailVerified(registeredUser.id);
   upsertActor({
     address: registeredUser.wallet_address,
     role: ROLE.Student,
@@ -153,6 +164,18 @@ test("POST /me/register turns a College away — the admin creates it", async ()
     .send({ role: "College", name: "Some Institute", registrationNumber: "EDU/MH/2024/0142" });
   assert.equal(res.status, 403);
   assert.match(res.body.error, /administrator/i);
+});
+
+test("POST /me/register refuses a company until its email is confirmed", async () => {
+  // Registering is the wallet's first transaction, and so what draws its gas
+  // from the treasury. An address nobody receives mail at must never cost any.
+  const res = await request(app)
+    .post("/me/register")
+    .set("Authorization", authHeader(unconfirmedUser))
+    .send({ role: "Company", name: "Unconfirmed Ltd", registrationNumber: "L12345MH2020PLC654321" });
+  assert.equal(res.status, 403);
+  assert.match(res.body.error, /confirm your email/i);
+  assert.equal(getRegistrationNumberClaim("L12345MH2020PLC654321"), undefined);
 });
 
 test("POST /me/register rejects an already-registered account", async () => {

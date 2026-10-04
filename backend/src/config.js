@@ -143,11 +143,14 @@ export const config = {
   treasuryPrivateKey: process.env.TREASURY_PRIVATE_KEY
     ? withHexPrefix(process.env.TREASURY_PRIVATE_KEY)
     : VERIFIER_KEY,
-  // 1.0 is free on a local chain, where each test account holds 10,000. On a
-  // real network it is a real balance per signup, so unless set explicitly the
-  // drip there is small: ample for a student's handful of transactions on
-  // Polygon, and topped up automatically if a wallet runs low (treasury.js).
-  walletGasDripEth: process.env.WALLET_GAS_DRIP_ETH || (isLocalRpc(RPC_URL) ? "1.0" : "0.05"),
+  // Sent to a wallet before its first transaction, and again whenever it falls
+  // below a quarter of this (treasury.js). 1.0 is free on a local chain, where
+  // each test account holds 10,000. On a real network it is a real balance per
+  // account, so unless set explicitly the drip there is small: several of a
+  // student's transactions on Polygon. Not below 0.04 — a quarter of it is the
+  // refill point, and that must stay above one action's cost (~0.0075 POL), or
+  // a wallet can sit just above the refill point with too little to transact.
+  walletGasDripEth: process.env.WALLET_GAS_DRIP_ETH || (isLocalRpc(RPC_URL) ? "1.0" : "0.04"),
   // Whether to wait for the network to finalise a block before treating what
   // is in it as recorded (see chain.js's settle). On by default anywhere but a
   // local chain, which has no competing blocks to wait out.

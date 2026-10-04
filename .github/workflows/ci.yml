@@ -1,0 +1,77 @@
+# CI: every push and pull request runs the contract tests, the backend tests,
+# and the frontend lint and build. Nothing here needs a secret or a blockchain:
+# the contract tests run on Hardhat's in-memory chain, and the backend tests
+# use a throwaway SQLite file.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: Contract tests
+    runs-on: ubuntu-latest
+    env:
+      # Hardhat checks every network's settings when it loads, including Amoy's,
+      # which is never used here. A public URL keeps that check happy.
+      AMOY_RPC_URL: https://polygon-amoy-bor-rpc.publicnode.com
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npx hardhat test
+
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    env:
+      AMOY_RPC_URL: https://polygon-amoy-bor-rpc.publicnode.com
+      # The backend won't load without a deployment manifest — the contract
+      # addresses, which aren't committed. A throwaway deploy to Hardhat's
+      # in-memory chain writes one here; the tests never contact that chain.
+      DEPLOYMENT_MANIFEST: ${{ github.workspace }}/ci-manifest.mjs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+      - run: npm ci
+      - run: npx hardhat run scripts/deploy.js
+      - run: npm ci
+        working-directory: backend
+      - run: npm test
+        working-directory: backend
+
+  frontend:
+    name: Frontend lint and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+        env:
+          VITE_BACKEND_URL: https://chainproof.duckdns.org/api

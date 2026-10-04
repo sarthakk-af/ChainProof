@@ -94,7 +94,7 @@ Everything the backend stores is one file: `backend/data/chainproof.sqlite`. Ope
 
 ```bash
 npx hardhat test                  # 229 contract tests
-cd backend && npm test            # 263 backend tests (no blockchain needed)
+cd backend && npm test            # 264 backend tests (no blockchain needed)
 cd frontend && npm run lint       # frontend lint
 ```
 
